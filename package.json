@@ -22,5 +22,4 @@
   "engines": {
     "node": ">=18.0.0"
   }
-}</content>
-<parameter name="filePath">/workspaces/codepit/projects/grok_zephyr/package.json
+}
