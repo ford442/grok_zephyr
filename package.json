@@ -1,0 +1,26 @@
+{
+  "name": "grok-zephyr",
+  "version": "1.0.0",
+  "description": "WebGPU-powered orbital simulation with 1M+ satellites",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:standalone": "vite build --mode standalone",
+    "preview": "vite preview",
+    "type-check": "tsc --noEmit",
+    "deploy": "npm run build && echo 'Deploy to gh-pages: copy dist/ contents to gh-pages branch'"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0"
+  },
+  "dependencies": {
+    "satellite.js": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}</content>
+<parameter name="filePath">/workspaces/codepit/projects/grok_zephyr/package.json

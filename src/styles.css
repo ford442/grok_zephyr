@@ -1,0 +1,176 @@
+/**
+ * Grok Zephyr - Main Stylesheet
+ */
+
+/* Reset and base styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: 'Courier New', monospace;
+  color: #0f0;
+}
+
+/* Canvas */
+#gpu-canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+/* UI Panel */
+#ui {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 10;
+  pointer-events: none;
+  text-shadow: 0 0 8px #00ff88;
+}
+
+#ui .title {
+  font-size: 15px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 12px #00aaff;
+  margin-bottom: 4px;
+}
+
+#ui .stat {
+  font-size: 13px;
+  line-height: 1.8;
+  color: #00ff88;
+}
+
+/* View Controls */
+#controls {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  z-index: 10;
+}
+
+.vbtn {
+  background: rgba(0, 255, 136, 0.08);
+  border: 1px solid #00ff88;
+  color: #00ff88;
+  padding: 7px 18px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  transition: background 0.2s, box-shadow 0.2s;
+  pointer-events: auto;
+}
+
+.vbtn:hover {
+  background: rgba(0, 255, 136, 0.25);
+  box-shadow: 0 0 12px #00ff8855;
+}
+
+.vbtn.active {
+  background: rgba(0, 255, 136, 0.25);
+  box-shadow: 0 0 12px #00ff8855;
+}
+
+/* Horizon Indicator */
+#horizon-indicator {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  color: #00ff88;
+  font-size: 11px;
+  text-align: right;
+  opacity: 0.7;
+  pointer-events: none;
+  line-height: 1.6;
+}
+
+/* Error Display */
+#error {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #f44;
+  font-size: 18px;
+  text-align: center;
+  line-height: 1.6;
+  display: none;
+  max-width: 500px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid #f44;
+  border-radius: 4px;
+}
+
+/* Loading Indicator */
+#loading {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #00ff88;
+  font-size: 16px;
+  text-align: center;
+  z-index: 100;
+}
+
+#loading::after {
+  content: '';
+  display: block;
+  width: 40px;
+  height: 40px;
+  margin: 10px auto;
+  border: 3px solid rgba(0, 255, 136, 0.3);
+  border-top-color: #00ff88;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  #ui {
+    top: 10px;
+    left: 10px;
+  }
+  
+  #ui .stat {
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  
+  #controls {
+    flex-direction: column;
+    gap: 5px;
+    bottom: 10px;
+  }
+  
+  .vbtn {
+    padding: 5px 12px;
+    font-size: 10px;
+  }
+  
+  #horizon-indicator {
+    display: none;
+  }
+}
