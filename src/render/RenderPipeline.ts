@@ -273,7 +273,13 @@ export class RenderPipeline {
         fragment: {
           module: this.context.createShaderModule(SHADERS.groundTerrain, 'ground-terrain'),
           entryPoint: 'fs',
-          targets: [{ format: RENDER.HDR_FORMAT }],
+          targets: [{ 
+            format: RENDER.HDR_FORMAT,
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+            },
+          }],
         },
         primitive: { topology: 'triangle-list' },
         depthStencil: {

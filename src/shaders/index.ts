@@ -342,16 +342,14 @@ fn fbm(p:vec2f)->f32 {
 @fragment fn fs(in:VSOut) -> @location(0) vec4f {
   let uv = in.uv;
   
-  // Sky gradient (top portion)
-  let skyColor = mix(vec3f(0.0,0.02,0.08), vec3f(0.01,0.05,0.15), uv.y);
-  
   // Horizon line (around y=0.35)
   let horizonY = 0.35;
   let horizonDist = abs(uv.y - horizonY);
   
-  // Mountains - multiple layers with fbm
+  // Calculate mountain silhouette
   var mountainHeight = 0.0;
-  var mountainColor = vec3f(0.0);
+  var alpha = 0.0;
+  var terrainColor = vec3f(0.0);
   
   if(uv.y < horizonY) {
     // Mountain silhouette using fbm noise
@@ -369,11 +367,9 @@ fn fbm(p:vec2f)->f32 {
     // Mountain silhouette shape
     let mountainY = horizonY - mountainHeight;
     
-    if(uv.y > mountainY) {
-      // Sky area above mountains
-      mountainColor = skyColor;
-    } else {
-      // Mountain terrain
+    if(uv.y <= mountainY) {
+      // We're in the mountain terrain - opaque
+      alpha = 1.0;
       let height = (mountainY - uv.y) * 3.0;
       
       // Base mountain colors
@@ -386,88 +382,74 @@ fn fbm(p:vec2f)->f32 {
       let snowLine = 0.12 - fbm(vec2f(mx*0.5, 100.0))*0.08;
       
       if(mountainHeight > snowLine) {
-        mountainColor = mix(midRock, snow, smoothstep(snowLine, snowLine+0.05, mountainHeight));
+        terrainColor = mix(midRock, snow, smoothstep(snowLine, snowLine+0.05, mountainHeight));
       } else {
-        mountainColor = mix(darkRock, midRock, clamp(height*2.0, 0.0, 1.0));
+        terrainColor = mix(darkRock, midRock, clamp(height*2.0, 0.0, 1.0));
       }
       
       // Add some detail noise
       let detail = noise(uv*vec2f(80.0, 40.0)) * 0.1;
-      mountainColor += detail;
+      terrainColor += detail;
+      
+      // Atmospheric perspective - fade distant mountains
+      let atmoFade = smoothstep(horizonY, 0.0, uv.y) * 0.3;
+      terrainColor = mix(terrainColor, vec3f(0.3, 0.4, 0.6), atmoFade);
     }
   }
   
   // Lake in foreground (bottom portion)
-  var lakeColor = vec3f(0.0);
-  var showLake = false;
-  
   let lakeStart = 0.05;
   let lakeEnd = 0.25;
   
   if(uv.y >= lakeStart && uv.y <= lakeEnd) {
-    showLake = true;
-    
     // Lake depth gradient
     let lakeDepth = (uv.y - lakeStart) / (lakeEnd - lakeStart);
     
-    // Base water color
-    let deepWater = vec3f(0.02, 0.05, 0.12);
-    let shallowWater = vec3f(0.05, 0.12, 0.22);
-    let waterColor = mix(deepWater, shallowWater, lakeDepth);
-    
-    // Reflection of mountains
-    let reflectY = horizonY - (uv.y - lakeStart) * 0.8;
-    let mx = uv.x * 4.0;
-    let m1 = fbm(vec2f(mx, 0.0)) * 0.15;
-    let m2 = fbm(vec2f(mx * 2.3, 10.0)) * 0.08;
-    var reflectHeight = m1 + m2;
-    reflectHeight *= smoothstep(0.0, 0.5, (horizonY - reflectY) / horizonY);
-    let reflectMountainY = horizonY - reflectHeight;
-    
-    // Reflection color
-    var reflectColor = vec3f(0.12, 0.1, 0.14);
-    if(reflectY < reflectMountainY) {
-      reflectColor = vec3f(0.15, 0.13, 0.18);
-    }
-    
-    // Mix water with reflection
-    let reflectivity = 0.4 * (1.0 - lakeDepth * 0.5);
-    lakeColor = mix(waterColor, reflectColor * 0.6, reflectivity);
-    
-    // Add ripples
-    var ripple = sin(uv.x * 80.0 + uni.time * 2.0) * sin(uv.y * 60.0 + uni.time * 1.5);
-    ripple = ripple * 0.5 + 0.5;
-    lakeColor += vec3f(ripple * 0.02);
-    
     // Shore fade at top of lake
     let shoreFade = smoothstep(lakeEnd, lakeEnd - 0.03, uv.y);
-    lakeColor *= shoreFade;
+    
+    if(shoreFade > 0.0) {
+      alpha = 1.0;
+      
+      // Base water color
+      let deepWater = vec3f(0.02, 0.05, 0.12);
+      let shallowWater = vec3f(0.05, 0.12, 0.22);
+      let waterColor = mix(deepWater, shallowWater, lakeDepth);
+      
+      // Reflection of mountains
+      let reflectY = horizonY - (uv.y - lakeStart) * 0.8;
+      let mx = uv.x * 4.0;
+      let m1 = fbm(vec2f(mx, 0.0)) * 0.15;
+      let m2 = fbm(vec2f(mx * 2.3, 10.0)) * 0.08;
+      var reflectHeight = m1 + m2;
+      reflectHeight *= smoothstep(0.0, 0.5, (horizonY - reflectY) / horizonY);
+      let reflectMountainY = horizonY - reflectHeight;
+      
+      // Reflection color
+      var reflectColor = vec3f(0.12, 0.1, 0.14);
+      if(reflectY < reflectMountainY) {
+        reflectColor = vec3f(0.15, 0.13, 0.18);
+      }
+      
+      // Mix water with reflection
+      let reflectivity = 0.4 * (1.0 - lakeDepth * 0.5);
+      terrainColor = mix(waterColor, reflectColor * 0.6, reflectivity);
+      
+      // Add ripples
+      var ripple = sin(uv.x * 80.0 + uni.time * 2.0) * sin(uv.y * 60.0 + uni.time * 1.5);
+      ripple = ripple * 0.5 + 0.5;
+      terrainColor += vec3f(ripple * 0.02);
+      
+      // Apply shore fade
+      terrainColor *= shoreFade;
+    }
   }
   
-  // Combine elements
-  var finalColor = skyColor;
+  // Horizon glow (subtle effect even where transparent)
+  let horizonGlow = smoothstep(0.02, 0.0, horizonDist) * 0.2;
+  terrainColor += vec3f(0.1, 0.15, 0.25) * horizonGlow;
   
-  if(uv.y < horizonY) {
-    finalColor = mountainColor;
-  }
-  
-  if(showLake) {
-    // Blend lake with mountains at horizon
-    let lakeBlend = smoothstep(lakeEnd, lakeStart, uv.y);
-    finalColor = mix(finalColor, lakeColor, lakeBlend);
-  }
-  
-  // Horizon glow
-  let horizonGlow = smoothstep(0.02, 0.0, horizonDist) * 0.3;
-  finalColor += vec3f(0.1, 0.15, 0.25) * horizonGlow;
-  
-  // Atmospheric perspective - fade distant mountains
-  if(uv.y < horizonY && !showLake) {
-    let atmoFade = smoothstep(horizonY, 0.0, uv.y) * 0.3;
-    finalColor = mix(finalColor, vec3f(0.3, 0.4, 0.6), atmoFade);
-  }
-  
-  return vec4f(finalColor, 1.0);
+  return vec4f(terrainColor, alpha);
 }
 `;
 
