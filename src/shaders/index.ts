@@ -435,7 +435,7 @@ fn fbm(p:vec2f)->f32 {
     lakeColor = mix(waterColor, reflectColor * 0.6, reflectivity);
     
     // Add ripples
-    let ripple = sin(uv.x * 80.0 + uni.time * 2.0) * sin(uv.y * 60.0 + uni.time * 1.5);
+    var ripple = sin(uv.x * 80.0 + uni.time * 2.0) * sin(uv.y * 60.0 + uni.time * 1.5);
     ripple = ripple * 0.5 + 0.5;
     lakeColor += vec3f(ripple * 0.02);
     
