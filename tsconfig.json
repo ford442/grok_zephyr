@@ -39,5 +39,4 @@
     "node_modules",
     "dist"
   ]
-}</content>
-<parameter name="filePath">/workspaces/codepit/projects/grok_zephyr/tsconfig.json
+}

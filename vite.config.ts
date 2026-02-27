@@ -171,5 +171,4 @@ export default defineConfig(({ mode }) => {
       standalonePlugin(),
     ],
   };
-});</content>
-<parameter name="filePath">/workspaces/codepit/projects/grok_zephyr/vite.config.ts
+});
