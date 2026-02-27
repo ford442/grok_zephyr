@@ -79,8 +79,20 @@ export class WebGPUContext {
       }
 
       // Log adapter info for debugging
-      const adapterInfo = await this.adapter.requestAdapterInfo();
-      console.log('[WebGPU] Adapter:', adapterInfo.vendor, adapterInfo.architecture);
+      // Use adapter.info (new spec) with fallback to requestAdapterInfo (old spec)
+      let adapterInfo: GPUAdapterInfo | undefined;
+      if (this.adapter.info) {
+        adapterInfo = this.adapter.info;
+      } else if (typeof (this.adapter as any).requestAdapterInfo === 'function') {
+        try {
+          adapterInfo = await (this.adapter as any).requestAdapterInfo();
+        } catch {
+          // Ignore errors from deprecated API
+        }
+      }
+      if (adapterInfo) {
+        console.log('[WebGPU] Adapter:', adapterInfo.vendor, adapterInfo.architecture);
+      }
 
       // Calculate required buffer sizes for 1M satellites
       const requiredStorageSize = CONSTANTS.NUM_SATELLITES * 16 + 16;
