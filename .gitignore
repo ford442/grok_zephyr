@@ -1,0 +1,8 @@
+# ignore node modules and distribution directories
+node_modules/
+dist/
+
+# typical other ignores
+*.log
+.env
+.DS_Store
