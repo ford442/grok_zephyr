@@ -420,7 +420,7 @@ fn fbm(p:vec2f)->f32 {
     let mx = uv.x * 4.0;
     let m1 = fbm(vec2f(mx, 0.0)) * 0.15;
     let m2 = fbm(vec2f(mx * 2.3, 10.0)) * 0.08;
-    let reflectHeight = m1 + m2;
+    var reflectHeight = m1 + m2;
     reflectHeight *= smoothstep(0.0, 0.5, (horizonY - reflectY) / horizonY);
     let reflectMountainY = horizonY - reflectHeight;
     
