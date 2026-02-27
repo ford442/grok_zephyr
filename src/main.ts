@@ -310,6 +310,8 @@ class GrokZephyrApp {
       // Estimate visible satellites (this is approximate)
       // In a full implementation, we'd use occlusion queries
       stats.visibleSatellites = this.estimateVisibleSatellites();
+      // Update UI with modified stats
+      this.ui.updateStats(stats);
     }
     
     // Next frame
