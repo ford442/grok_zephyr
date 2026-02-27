@@ -94,12 +94,17 @@ export class PerformanceProfiler {
   async initialize(device: GPUDevice): Promise<void> {
     this.device = device;
     
-    // Check for timestamp query support
-    const adapter = await navigator.gpu.requestAdapter();
-    this.supportsGPUTiming = adapter?.features.has('timestamp-query') ?? false;
+    // Check for timestamp query support on the device (not just adapter)
+    // The feature must be enabled when creating the device
+    this.supportsGPUTiming = device.features.has('timestamp-query');
     
     if (this.supportsGPUTiming && this.options.enableGPUTiming) {
-      this.initializeGPUTiming();
+      try {
+        this.initializeGPUTiming();
+      } catch (error) {
+        console.warn('[PerformanceProfiler] Failed to initialize GPU timing:', error);
+        this.supportsGPUTiming = false;
+      }
     }
     
     console.log(`[PerformanceProfiler] GPU timing: ${this.supportsGPUTiming ? 'enabled' : 'disabled'}`);
