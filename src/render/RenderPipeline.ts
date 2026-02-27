@@ -278,7 +278,7 @@ export class RenderPipeline {
         primitive: { topology: 'triangle-list' },
         depthStencil: {
           format: RENDER.DEPTH_FORMAT,
-          depthWriteEnabled: true,
+          depthWriteEnabled: false,
           depthCompare: 'always',
         },
       }),
@@ -553,15 +553,15 @@ export class RenderPipeline {
       },
     });
 
-    // Ground terrain (mountains + lake)
-    pass.setPipeline(this.pipelines.groundTerrain);
-    pass.setBindGroup(0, this.bindGroups.groundTerrain);
-    pass.draw(3);
-
-    // Satellites (in the sky above)
+    // Satellites first (in the sky)
     pass.setPipeline(this.pipelines.satellites);
     pass.setBindGroup(0, this.bindGroups.satellites);
     pass.draw(6, CONSTANTS.NUM_SATELLITES);
+
+    // Ground terrain (mountains + lake) rendered on top to occlude foreground
+    pass.setPipeline(this.pipelines.groundTerrain);
+    pass.setBindGroup(0, this.bindGroups.groundTerrain);
+    pass.draw(3);
 
     pass.end();
   }
