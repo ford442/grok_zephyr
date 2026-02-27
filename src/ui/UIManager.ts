@@ -52,6 +52,7 @@ export class UIManager {
         document.getElementById('btn0') as HTMLButtonElement,
         document.getElementById('btn1') as HTMLButtonElement,
         document.getElementById('btn2') as HTMLButtonElement,
+        document.getElementById('btn3') as HTMLButtonElement,
       ],
       horizonIndicator: getEl('horizon-indicator'),
     };
@@ -171,6 +172,7 @@ export class UIManager {
         <button class="vbtn active" id="btn0">720km HORIZON</button>
         <button class="vbtn" id="btn1">GOD VIEW</button>
         <button class="vbtn" id="btn2">FLEET POV</button>
+        <button class="vbtn" id="btn3">GROUND VIEW</button>
       </div>
       <div id="horizon-indicator">
         <div>Earth Radius: 6,371 km</div>
