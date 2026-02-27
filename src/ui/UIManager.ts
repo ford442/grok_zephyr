@@ -88,9 +88,23 @@ export class UIManager {
     this.elements.viewMode.textContent = `View     : ${modeName}`;
     this.elements.altitude.textContent = `Altitude : ${altitude} km`;
     
-    // Show/hide horizon indicator
+    // Show/hide horizon indicator and update content
     if (modeName === '720km Horizon') {
       this.elements.horizonIndicator.style.display = 'block';
+      this.elements.horizonIndicator.innerHTML = `
+        <div>Earth Radius: 6,371 km</div>
+        <div>Orbit Altitude: 550 km</div>
+        <div>Camera Altitude: 720 km</div>
+        <div>Horizon Distance: ~2,970 km</div>
+      `;
+    } else if (modeName === 'Ground View') {
+      this.elements.horizonIndicator.style.display = 'block';
+      this.elements.horizonIndicator.innerHTML = `
+        <div>Earth Radius: 6,371 km</div>
+        <div>Orbit Altitude: 550 km</div>
+        <div>Camera Altitude: 0 km (Surface)</div>
+        <div>Zenith View: Starlink Constellation</div>
+      `;
     } else {
       this.elements.horizonIndicator.style.display = 'none';
     }

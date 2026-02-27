@@ -282,13 +282,17 @@ class GrokZephyrApp {
     // Pass 1: Compute orbital positions
     this.pipeline.encodeComputePass(encoder);
     
-    // Pass 2: Scene rendering
-    this.pipeline.encodeScenePass(
-      encoder,
-      this.earthVertexBuffer,
-      this.earthIndexBuffer,
-      this.earthIndexCount
-    );
+    // Pass 2: Scene rendering (different for ground view)
+    if (this.camera.getViewMode() === 'ground') {
+      this.pipeline.encodeGroundScenePass(encoder);
+    } else {
+      this.pipeline.encodeScenePass(
+        encoder,
+        this.earthVertexBuffer,
+        this.earthIndexBuffer,
+        this.earthIndexCount
+      );
+    }
     
     // Passes 3-5: Bloom
     this.pipeline.encodeBloomPasses(encoder);
@@ -324,6 +328,9 @@ class GrokZephyrApp {
     } else if (mode === 2) {
       // Fleet POV - very few visible
       return Math.floor(CONSTANTS.NUM_SATELLITES * 0.001);
+    } else if (mode === 3) {
+      // Ground view - can see satellites above horizon
+      return Math.floor(CONSTANTS.NUM_SATELLITES * 0.15);
     } else {
       // God view - depends on distance
       return Math.floor(CONSTANTS.NUM_SATELLITES * 0.25);

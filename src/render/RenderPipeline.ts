@@ -36,6 +36,7 @@ export interface PipelineBindGroups {
   earth: GPUBindGroup;
   atmosphere: GPUBindGroup;
   satellites: GPUBindGroup;
+  groundTerrain: GPUBindGroup;
   bloomThreshold: GPUBindGroup;
   bloomHorizontal: GPUBindGroup;
   bloomVertical: GPUBindGroup;
@@ -49,6 +50,7 @@ export interface Pipelines {
   earth: GPURenderPipeline;
   atmosphere: GPURenderPipeline;
   satellites: GPURenderPipeline;
+  groundTerrain: GPURenderPipeline;
   bloomThreshold: GPURenderPipeline;
   bloomBlur: GPURenderPipeline;
   composite: GPURenderPipeline;
@@ -262,6 +264,25 @@ export class RenderPipeline {
         },
       }),
 
+      groundTerrain: device.createRenderPipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [uniformLayout] }),
+        vertex: {
+          module: this.context.createShaderModule(SHADERS.groundTerrain, 'ground-terrain'),
+          entryPoint: 'vs',
+        },
+        fragment: {
+          module: this.context.createShaderModule(SHADERS.groundTerrain, 'ground-terrain'),
+          entryPoint: 'fs',
+          targets: [{ format: RENDER.HDR_FORMAT }],
+        },
+        primitive: { topology: 'triangle-list' },
+        depthStencil: {
+          format: RENDER.DEPTH_FORMAT,
+          depthWriteEnabled: true,
+          depthCompare: 'always',
+        },
+      }),
+
       bloomThreshold: device.createRenderPipeline({
         layout: device.createPipelineLayout({ bindGroupLayouts: [thresholdLayout] }),
         vertex: {
@@ -383,6 +404,11 @@ export class RenderPipeline {
         ],
       }),
 
+      groundTerrain: device.createBindGroup({
+        layout: this.pipelines.groundTerrain.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: { buffer: this.buffers.uniforms } }],
+      }),
+
       bloomThreshold: device.createBindGroup({
         layout: this.pipelines.bloomThreshold.getBindGroupLayout(0),
         entries: [
@@ -499,6 +525,40 @@ export class RenderPipeline {
     pass.drawIndexed(earthIndexCount);
 
     // Satellites
+    pass.setPipeline(this.pipelines.satellites);
+    pass.setBindGroup(0, this.bindGroups.satellites);
+    pass.draw(6, CONSTANTS.NUM_SATELLITES);
+
+    pass.end();
+  }
+
+  /**
+   * Execute ground view scene render pass (mountains, lake, satellites)
+   */
+  encodeGroundScenePass(encoder: GPUCommandEncoder): void {
+    if (!this.pipelines || !this.bindGroups || !this.renderTargets) return;
+
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: this.renderTargets.hdrView,
+        clearValue: { r: 0, g: 0, b: 0.02, a: 1 },
+        loadOp: 'clear',
+        storeOp: 'store',
+      }],
+      depthStencilAttachment: {
+        view: this.renderTargets.depthView,
+        depthClearValue: 1,
+        depthLoadOp: 'clear',
+        depthStoreOp: 'store',
+      },
+    });
+
+    // Ground terrain (mountains + lake)
+    pass.setPipeline(this.pipelines.groundTerrain);
+    pass.setBindGroup(0, this.bindGroups.groundTerrain);
+    pass.draw(3);
+
+    // Satellites (in the sky above)
     pass.setPipeline(this.pipelines.satellites);
     pass.setBindGroup(0, this.bindGroups.satellites);
     pass.draw(6, CONSTANTS.NUM_SATELLITES);

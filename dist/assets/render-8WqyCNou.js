@@ -1,17 +1,4 @@
-/**
- * Grok Zephyr - Shader Collection
- * 
- * Central export for all WGSL shaders.
- * In a production build, these would be imported as strings
- * via a custom Vite plugin.
- */
-
-// For now, we use inline strings that match the .wgsl files
-// In a full implementation, these would be loaded via:
-// import orbitalCompute from './orbital_compute.wgsl?raw';
-
-/** Uniform struct shared across shaders */
-export const UNIFORM_STRUCT = /* wgsl */ `
+var h=Object.defineProperty;var m=(u,e,t)=>e in u?h(u,e,{enumerable:!0,configurable:!0,writable:!0,value:t}):u[e]=t;var a=(u,e,t)=>m(u,typeof e!="symbol"?e+"":e,t);import{R as n,C as v}from"./webgpu-core-DtLl7bce.js";const c=`
 struct Uni {
   view_proj      : mat4x4f,
   camera_pos     : vec4f,
@@ -26,10 +13,7 @@ struct Uni {
   pad1           : vec2f,
 };
 @group(0) @binding(0) var<uniform> uni : Uni;
-`;
-
-/** Orbital mechanics compute shader */
-export const ORBITAL_CS = UNIFORM_STRUCT + /* wgsl */ `
+`,b=c+`
 @group(0) @binding(1) var<storage,read>       orb_elem : array<vec4f>;
 @group(0) @binding(2) var<storage,read_write> sat_pos  : array<vec4f>;
 
@@ -58,10 +42,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
 
   sat_pos[i] = vec4f(x, y, z, cdat);
 }
-`;
-
-/** Starfield background shader */
-export const STARS_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+`,g=c+`
 struct VSOut { @builtin(position) pos:vec4f, @location(0) uv:vec2f };
 
 @vertex fn vs(@builtin(vertex_index) vi:u32) -> VSOut {
@@ -85,10 +66,7 @@ fn hash2(p:vec2f)->f32 {
   let color = mix(vec3f(0.6,0.8,1.0), vec3f(1.0,0.9,0.7), h3);
   return vec4f(color * star * 1.5, 1.0);
 }
-`;
-
-/** Earth sphere shader */
-export const EARTH_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+`,y=c+`
 struct VIn  { @location(0) pos:vec3f, @location(1) nrm:vec3f }
 struct VOut { @builtin(position) cp:vec4f, @location(0) wp:vec3f, @location(1) n:vec3f }
 
@@ -127,10 +105,7 @@ struct VOut { @builtin(position) cp:vec4f, @location(0) wp:vec3f, @location(1) n
 
   return vec4f(lit+city,1.0);
 }
-`;
-
-/** Atmosphere limb glow shader */
-export const ATM_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+`,x=c+`
 struct VIn  { @location(0) pos:vec3f, @location(1) nrm:vec3f }
 struct VOut { @builtin(position) cp:vec4f, @location(0) wp:vec3f, @location(1) n:vec3f }
 
@@ -157,10 +132,7 @@ const ATM_SCALE : f32 = 6471.0/6371.0;
   let alpha   = limb*0.85;
   return vec4f(blue+teal, alpha);
 }
-`;
-
-/** Satellite billboard shader */
-export const SAT_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+`,T=c+`
 @group(0) @binding(1) var<storage,read> sat_pos : array<vec4f>;
 
 struct VOut {
@@ -245,10 +217,7 @@ fn sat_color(idx:u32) -> vec3f {
   let hdr   = in.color * (ring + core*2.2) * in.bright * 2.8;
   return vec4f(hdr, alpha);
 }
-`;
-
-/** Bloom threshold shader */
-export const BLOOM_THRESHOLD_SHADER = /* wgsl */ `
+`,S=`
 @group(0) @binding(0) var tex : texture_2d<f32>;
 @group(0) @binding(1) var smp : sampler;
 
@@ -266,10 +235,7 @@ struct VSOut { @builtin(position) pos:vec4f, @location(0) uv:vec2f }
   let t   = smoothstep(0.75,1.4,lum);
   return vec4f(c*t,1.0);
 }
-`;
-
-/** Bloom blur shader */
-export const BLOOM_BLUR_SHADER = /* wgsl */ `
+`,R=`
 struct BlurUni { texel:vec2f, horizontal:u32, pad:u32 }
 @group(0) @binding(0) var<uniform> buni : BlurUni;
 @group(0) @binding(1) var tex : texture_2d<f32>;
@@ -294,10 +260,7 @@ struct VSOut { @builtin(position) pos:vec4f, @location(0) uv:vec2f }
   }
   return vec4f(c,1.0);
 }
-`;
-
-/** Ground terrain shader - mountains and lake for ground view */
-export const GROUND_TERRAIN_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+`,G=c+`
 struct VSOut { @builtin(position) pos:vec4f, @location(0) uv:vec2f }
 
 @vertex fn vs(@builtin(vertex_index) vi:u32) -> VSOut {
@@ -469,10 +432,7 @@ fn fbm(p:vec2f)->f32 {
   
   return vec4f(finalColor, 1.0);
 }
-`;
-
-/** Composite + tonemapping shader */
-export const COMPOSITE_SHADER = /* wgsl */ `
+`,P=`
 @group(0) @binding(0) var scene_tex : texture_2d<f32>;
 @group(0) @binding(1) var bloom_tex : texture_2d<f32>;
 @group(0) @binding(2) var smp       : sampler;
@@ -496,19 +456,5 @@ fn aces(x:vec3f)->vec3f {
   let hdr   = scene + bloom*1.8;
   return vec4f(aces(hdr),1.0);
 }
-`;
-
-/** Export all shaders as a collection */
-export const SHADERS = {
-  orbital: ORBITAL_CS,
-  stars: STARS_SHADER,
-  earth: EARTH_SHADER,
-  atmosphere: ATM_SHADER,
-  satellites: SAT_SHADER,
-  groundTerrain: GROUND_TERRAIN_SHADER,
-  bloomThreshold: BLOOM_THRESHOLD_SHADER,
-  bloomBlur: BLOOM_BLUR_SHADER,
-  composite: COMPOSITE_SHADER,
-} as const;
-
-export default SHADERS;
+`,s={orbital:b,stars:g,earth:y,atmosphere:x,satellites:T,groundTerrain:G,bloomThreshold:S,bloomBlur:R,composite:P};class M{constructor(e,t){a(this,"context");a(this,"buffers");a(this,"linearSampler");a(this,"pipelines",null);a(this,"bindGroups",null);a(this,"renderTargets",null);a(this,"width",0);a(this,"height",0);this.context=e,this.buffers=t,this.linearSampler=e.createLinearSampler()}initialize(e,t){this.width=e,this.height=t,console.log(`[RenderPipeline] Initializing ${e}x${t}`),this.createPipelines(),this.createRenderTargets(e,t),this.createBindGroups(),console.log("[RenderPipeline] Initialization complete")}createPipelines(){const e=this.context.getDevice(),t=e.createPipelineLayout({bindGroupLayouts:[e.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.COMPUTE,buffer:{type:"uniform"}},{binding:1,visibility:GPUShaderStage.COMPUTE,buffer:{type:"read-only-storage"}},{binding:2,visibility:GPUShaderStage.COMPUTE,buffer:{type:"storage"}}]})]}),i=e.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.VERTEX|GPUShaderStage.FRAGMENT,buffer:{type:"uniform"}}]}),o=e.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.VERTEX|GPUShaderStage.FRAGMENT,buffer:{type:"uniform"}},{binding:1,visibility:GPUShaderStage.VERTEX,buffer:{type:"read-only-storage"}}]}),r=e.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.FRAGMENT,buffer:{type:"uniform"}},{binding:1,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:"float"}},{binding:2,visibility:GPUShaderStage.FRAGMENT,sampler:{type:"filtering"}}]}),l=e.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:"float"}},{binding:1,visibility:GPUShaderStage.FRAGMENT,sampler:{type:"filtering"}}]}),p=e.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:"float"}},{binding:1,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:"float"}},{binding:2,visibility:GPUShaderStage.FRAGMENT,sampler:{type:"filtering"}}]}),d={arrayStride:24,attributes:[{shaderLocation:0,offset:0,format:"float32x3"},{shaderLocation:1,offset:12,format:"float32x3"}]},f={color:{srcFactor:"src-alpha",dstFactor:"one",operation:"add"},alpha:{srcFactor:"one",dstFactor:"one",operation:"add"}};this.pipelines={compute:e.createComputePipeline({layout:t,compute:{module:this.context.createShaderModule(s.orbital,"orbital"),entryPoint:"main"}}),stars:e.createRenderPipeline({layout:e.createPipelineLayout({bindGroupLayouts:[i]}),vertex:{module:this.context.createShaderModule(s.stars,"stars"),entryPoint:"vs"},fragment:{module:this.context.createShaderModule(s.stars,"stars"),entryPoint:"fs",targets:[{format:n.HDR_FORMAT}]},primitive:{topology:"triangle-list"},depthStencil:{format:n.DEPTH_FORMAT,depthWriteEnabled:!1,depthCompare:"always"}}),earth:e.createRenderPipeline({layout:e.createPipelineLayout({bindGroupLayouts:[i]}),vertex:{module:this.context.createShaderModule(s.earth,"earth"),entryPoint:"vs",buffers:[d]},fragment:{module:this.context.createShaderModule(s.earth,"earth"),entryPoint:"fs",targets:[{format:n.HDR_FORMAT}]},primitive:{topology:"triangle-list",cullMode:"back"},depthStencil:{format:n.DEPTH_FORMAT,depthWriteEnabled:!0,depthCompare:"less"}}),atmosphere:e.createRenderPipeline({layout:e.createPipelineLayout({bindGroupLayouts:[i]}),vertex:{module:this.context.createShaderModule(s.atmosphere,"atmosphere"),entryPoint:"vs",buffers:[d]},fragment:{module:this.context.createShaderModule(s.atmosphere,"atmosphere"),entryPoint:"fs",targets:[{format:n.HDR_FORMAT,blend:f}]},primitive:{topology:"triangle-list",cullMode:"front"},depthStencil:{format:n.DEPTH_FORMAT,depthWriteEnabled:!1,depthCompare:"less"}}),satellites:e.createRenderPipeline({layout:e.createPipelineLayout({bindGroupLayouts:[o]}),vertex:{module:this.context.createShaderModule(s.satellites,"satellites"),entryPoint:"vs"},fragment:{module:this.context.createShaderModule(s.satellites,"satellites"),entryPoint:"fs",targets:[{format:n.HDR_FORMAT,blend:f}]},primitive:{topology:"triangle-list"},depthStencil:{format:n.DEPTH_FORMAT,depthWriteEnabled:!1,depthCompare:"less"}}),groundTerrain:e.createRenderPipeline({layout:e.createPipelineLayout({bindGroupLayouts:[i]}),vertex:{module:this.context.createShaderModule(s.groundTerrain,"ground-terrain"),entryPoint:"vs"},fragment:{module:this.context.createShaderModule(s.groundTerrain,"ground-terrain"),entryPoint:"fs",targets:[{format:n.HDR_FORMAT}]},primitive:{topology:"triangle-list"},depthStencil:{format:n.DEPTH_FORMAT,depthWriteEnabled:!0,depthCompare:"always"}}),bloomThreshold:e.createRenderPipeline({layout:e.createPipelineLayout({bindGroupLayouts:[l]}),vertex:{module:this.context.createShaderModule(s.bloomThreshold,"bloom-threshold"),entryPoint:"vs"},fragment:{module:this.context.createShaderModule(s.bloomThreshold,"bloom-threshold"),entryPoint:"fs",targets:[{format:n.HDR_FORMAT}]},primitive:{topology:"triangle-list"}}),bloomBlur:e.createRenderPipeline({layout:e.createPipelineLayout({bindGroupLayouts:[r]}),vertex:{module:this.context.createShaderModule(s.bloomBlur,"bloom-blur"),entryPoint:"vs"},fragment:{module:this.context.createShaderModule(s.bloomBlur,"bloom-blur"),entryPoint:"fs",targets:[{format:n.HDR_FORMAT}]},primitive:{topology:"triangle-list"}}),composite:e.createRenderPipeline({layout:e.createPipelineLayout({bindGroupLayouts:[p]}),vertex:{module:this.context.createShaderModule(s.composite,"composite"),entryPoint:"vs"},fragment:{module:this.context.createShaderModule(s.composite,"composite"),entryPoint:"fs",targets:[{format:this.context.getFormat()}]},primitive:{topology:"triangle-list"}})}}createRenderTargets(e,t){const i=(d,f)=>this.context.getDevice().createTexture({size:[e,t],format:d,usage:f|GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.RENDER_ATTACHMENT}),o=i(n.HDR_FORMAT,GPUTextureUsage.TEXTURE_BINDING),r=this.context.getDevice().createTexture({size:[e,t],format:n.DEPTH_FORMAT,usage:GPUTextureUsage.RENDER_ATTACHMENT}),l=i(n.HDR_FORMAT,GPUTextureUsage.TEXTURE_BINDING),p=i(n.HDR_FORMAT,GPUTextureUsage.TEXTURE_BINDING);this.renderTargets={hdr:o,depth:r,bloomA:l,bloomB:p,hdrView:o.createView(),depthView:r.createView(),bloomAView:l.createView(),bloomBView:p.createView()}}createBindGroups(){if(!this.pipelines||!this.renderTargets)return;const e=this.context.getDevice(),t=this.buffers.positions instanceof GPUBuffer?this.buffers.positions:this.buffers.positions.read;this.bindGroups={compute:e.createBindGroup({layout:this.pipelines.compute.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.buffers.uniforms}},{binding:1,resource:{buffer:this.buffers.orbitalElements}},{binding:2,resource:{buffer:t}}]}),stars:e.createBindGroup({layout:this.pipelines.stars.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.buffers.uniforms}}]}),earth:e.createBindGroup({layout:this.pipelines.earth.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.buffers.uniforms}}]}),atmosphere:e.createBindGroup({layout:this.pipelines.atmosphere.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.buffers.uniforms}}]}),satellites:e.createBindGroup({layout:this.pipelines.satellites.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.buffers.uniforms}},{binding:1,resource:{buffer:t}}]}),groundTerrain:e.createBindGroup({layout:this.pipelines.groundTerrain.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.buffers.uniforms}}]}),bloomThreshold:e.createBindGroup({layout:this.pipelines.bloomThreshold.getBindGroupLayout(0),entries:[{binding:0,resource:this.renderTargets.hdrView},{binding:1,resource:this.linearSampler}]}),bloomHorizontal:e.createBindGroup({layout:this.pipelines.bloomBlur.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.buffers.bloomUniforms.horizontal}},{binding:1,resource:this.renderTargets.bloomAView},{binding:2,resource:this.linearSampler}]}),bloomVertical:e.createBindGroup({layout:this.pipelines.bloomBlur.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:this.buffers.bloomUniforms.vertical}},{binding:1,resource:this.renderTargets.bloomBView},{binding:2,resource:this.linearSampler}]}),composite:e.createBindGroup({layout:this.pipelines.composite.getBindGroupLayout(0),entries:[{binding:0,resource:this.renderTargets.hdrView},{binding:1,resource:this.renderTargets.bloomAView},{binding:2,resource:this.linearSampler}]})}}resize(e,t){var i,o,r,l;e===this.width&&t===this.height||(this.width=e,this.height=t,(i=this.renderTargets)==null||i.hdr.destroy(),(o=this.renderTargets)==null||o.depth.destroy(),(r=this.renderTargets)==null||r.bloomA.destroy(),(l=this.renderTargets)==null||l.bloomB.destroy(),this.createRenderTargets(e,t),this.createBindGroups())}encodeComputePass(e){if(!this.pipelines||!this.bindGroups)return;const t=e.beginComputePass();t.setPipeline(this.pipelines.compute),t.setBindGroup(0,this.bindGroups.compute),t.dispatchWorkgroups(Math.ceil(v.NUM_SATELLITES/n.WORKGROUP_SIZE)),t.end()}encodeScenePass(e,t,i,o){if(!this.pipelines||!this.bindGroups||!this.renderTargets)return;const r=e.beginRenderPass({colorAttachments:[{view:this.renderTargets.hdrView,clearValue:{r:0,g:0,b:.02,a:1},loadOp:"clear",storeOp:"store"}],depthStencilAttachment:{view:this.renderTargets.depthView,depthClearValue:1,depthLoadOp:"clear",depthStoreOp:"store"}});r.setPipeline(this.pipelines.stars),r.setBindGroup(0,this.bindGroups.stars),r.draw(3),r.setPipeline(this.pipelines.earth),r.setBindGroup(0,this.bindGroups.earth),r.setVertexBuffer(0,t),r.setIndexBuffer(i,"uint32"),r.drawIndexed(o),r.setPipeline(this.pipelines.atmosphere),r.setBindGroup(0,this.bindGroups.atmosphere),r.setVertexBuffer(0,t),r.setIndexBuffer(i,"uint32"),r.drawIndexed(o),r.setPipeline(this.pipelines.satellites),r.setBindGroup(0,this.bindGroups.satellites),r.draw(6,v.NUM_SATELLITES),r.end()}encodeGroundScenePass(e){if(!this.pipelines||!this.bindGroups||!this.renderTargets)return;const t=e.beginRenderPass({colorAttachments:[{view:this.renderTargets.hdrView,clearValue:{r:0,g:0,b:.02,a:1},loadOp:"clear",storeOp:"store"}],depthStencilAttachment:{view:this.renderTargets.depthView,depthClearValue:1,depthLoadOp:"clear",depthStoreOp:"store"}});t.setPipeline(this.pipelines.groundTerrain),t.setBindGroup(0,this.bindGroups.groundTerrain),t.draw(3),t.setPipeline(this.pipelines.satellites),t.setBindGroup(0,this.bindGroups.satellites),t.draw(6,v.NUM_SATELLITES),t.end()}encodeBloomPasses(e){if(!this.pipelines||!this.bindGroups||!this.renderTargets)return;const t=e.beginRenderPass({colorAttachments:[{view:this.renderTargets.bloomAView,clearValue:{r:0,g:0,b:0,a:1},loadOp:"clear",storeOp:"store"}]});t.setPipeline(this.pipelines.bloomThreshold),t.setBindGroup(0,this.bindGroups.bloomThreshold),t.draw(3),t.end();const i=e.beginRenderPass({colorAttachments:[{view:this.renderTargets.bloomBView,clearValue:{r:0,g:0,b:0,a:1},loadOp:"clear",storeOp:"store"}]});i.setPipeline(this.pipelines.bloomBlur),i.setBindGroup(0,this.bindGroups.bloomHorizontal),i.draw(3),i.end();const o=e.beginRenderPass({colorAttachments:[{view:this.renderTargets.bloomAView,clearValue:{r:0,g:0,b:0,a:1},loadOp:"clear",storeOp:"store"}]});o.setPipeline(this.pipelines.bloomBlur),o.setBindGroup(0,this.bindGroups.bloomVertical),o.draw(3),o.end()}encodeCompositePass(e,t){if(!this.pipelines||!this.bindGroups)return;const i=e.beginRenderPass({colorAttachments:[{view:t,clearValue:{r:0,g:0,b:0,a:1},loadOp:"clear",storeOp:"store"}]});i.setPipeline(this.pipelines.composite),i.setBindGroup(0,this.bindGroups.composite),i.draw(3),i.end()}getRenderTargets(){return this.renderTargets}destroy(){var e,t,i,o;(e=this.renderTargets)==null||e.hdr.destroy(),(t=this.renderTargets)==null||t.depth.destroy(),(i=this.renderTargets)==null||i.bloomA.destroy(),(o=this.renderTargets)==null||o.bloomB.destroy(),this.renderTargets=null,this.pipelines=null,this.bindGroups=null}}export{M as R};
+//# sourceMappingURL=render-8WqyCNou.js.map
