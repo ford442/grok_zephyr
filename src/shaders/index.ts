@@ -425,7 +425,7 @@ fn fbm(p:vec2f)->f32 {
     let reflectMountainY = horizonY - reflectHeight;
     
     // Reflection color
-    let reflectColor = vec3f(0.12, 0.1, 0.14);
+    var reflectColor = vec3f(0.12, 0.1, 0.14);
     if(reflectY < reflectMountainY) {
       reflectColor = vec3f(0.15, 0.13, 0.18);
     }
