@@ -130,6 +130,9 @@ export class CameraController {
       case 2:
         this.currentMode = 'sat-pov';
         break;
+      case 3:
+        this.currentMode = 'ground';
+        break;
       default:
         this.currentMode = 'horizon-720';
     }
@@ -170,6 +173,8 @@ export class CameraController {
         return this.calculateGodView();
       case 'sat-pov':
         return this.calculateFleetPOV(satellitePosition, satelliteVelocity, time);
+      case 'ground':
+        return this.calculateGroundView();
       default:
         return this.calculateHorizonView();
     }
@@ -248,6 +253,25 @@ export class CameraController {
       position,
       target,
       up: radial,
+      fov: CAMERA.DEFAULT_FOV,
+      near: 1.0,
+      far: CAMERA.FAR_PLANE,
+    };
+  }
+
+  /**
+   * Ground View
+   *
+   * Camera on Earth's surface looking upward at the night sky.
+   * Position: surface of Earth on +X axis (altitude 0 km).
+   * Target: orbit altitude along +X (pointing radially outward toward zenith).
+   * Up: +Z so the horizon aligns naturally.
+   */
+  private calculateGroundView(): CameraState {
+    return {
+      position: [CONSTANTS.EARTH_RADIUS_KM, 0, 0],
+      target: [CONSTANTS.ORBIT_RADIUS_KM, 0, 0],
+      up: [0, 0, 1],
       fov: CAMERA.DEFAULT_FOV,
       near: 1.0,
       far: CAMERA.FAR_PLANE,

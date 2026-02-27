@@ -36,6 +36,7 @@ export const VIEW_MODES: ViewModeConfig[] = [
   { id: 0, name: '720km Horizon', altitude: '720', default: true },
   { id: 1, name: 'God View', altitude: '---', default: false },
   { id: 2, name: 'Fleet POV', altitude: '550', default: false },
+  { id: 3, name: 'Ground View', altitude: '0', default: false },
 ] as const;
 
 /** Camera settings */
