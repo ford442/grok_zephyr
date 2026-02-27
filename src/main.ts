@@ -103,7 +103,13 @@ class GrokZephyrApp {
       
       // Initialize render pipeline
       this.pipeline = new RenderPipeline(this.context, bufferSet);
-      this.handleResize();
+      
+      // Set initial canvas size and initialize pipeline
+      const dpr = window.devicePixelRatio || 1;
+      const width = Math.floor(this.canvas.clientWidth * dpr);
+      const height = Math.floor(this.canvas.clientHeight * dpr);
+      this.pipeline.initialize(width, height);
+      this.buffers.updateBloomUniforms(width, height);
       
       // Update UI
       this.ui.setFleetCount(CONSTANTS.NUM_SATELLITES);
