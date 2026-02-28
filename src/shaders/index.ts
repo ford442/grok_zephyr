@@ -57,7 +57,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
   // Extract shell index (upper 8 bits) and color (lower 8 bits)
   let shellDataU = u32(shellData);
   let shellIndex = shellDataU >> 8u;
-  let colorIndex = shellDataU & 255u;
+  let colorIndex = f32(shellDataU & 255u);
   
   // Select orbit parameters based on shell
   let orbitR = ORBIT_RADII_KM[shellIndex];
