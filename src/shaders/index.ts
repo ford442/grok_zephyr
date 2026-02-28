@@ -76,7 +76,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
 }
 `;
 
-/** Starfield background shader */
+/** Starfield background shader - parallax layers + twinkling */
 export const STARS_SHADER = UNIFORM_STRUCT + /* wgsl */ `
 struct VSOut { @builtin(position) pos:vec4f, @location(0) uv:vec2f };
 
@@ -93,13 +93,30 @@ fn hash2(p:vec2f)->f32 {
 }
 
 @fragment fn fs(in:VSOut) -> @location(0) vec4f {
-  let cell  = floor(in.uv * 512.0);
-  let h     = hash2(cell);
-  let h2    = hash2(cell + vec2f(1.0,0.0));
-  let h3    = hash2(cell + vec2f(0.0,1.0));
-  let star  = f32(h > 0.994) * pow(h2,6.0);
-  let color = mix(vec3f(0.6,0.8,1.0), vec3f(1.0,0.9,0.7), h3);
-  return vec4f(color * star * 1.5, 1.0);
+  var total = vec3f(0.0);
+  
+  // Layer 1: Distant fine stars (small, many)
+  let cell1  = floor(in.uv * 512.0);
+  let h1     = hash2(cell1);
+  let h1b    = hash2(cell1 + vec2f(1.0,0.0));
+  let h1c    = hash2(cell1 + vec2f(0.0,1.0));
+  let star1  = f32(h1 > 0.994) * pow(h1b,6.0);
+  // Magnitude-based twinkling: brighter stars twinkle slower
+  let twinkle1 = 0.7 + 0.3*sin(uni.time*(1.5 + h1b*2.0) + h1*20.0);
+  let color1 = mix(vec3f(0.6,0.8,1.0), vec3f(1.0,0.9,0.7), h1c);
+  total += color1 * star1 * twinkle1 * 1.5;
+  
+  // Layer 2: Mid-range brighter stars (fewer, larger)
+  let cell2  = floor(in.uv * 200.0);
+  let h2     = hash2(cell2 + vec2f(43.0,17.0));
+  let h2b    = hash2(cell2 + vec2f(71.0,53.0));
+  let h2c    = hash2(cell2 + vec2f(97.0,23.0));
+  let star2  = f32(h2 > 0.997) * pow(h2b,4.0);
+  let twinkle2 = 0.8 + 0.2*sin(uni.time*(0.8 + h2b*1.2) + h2*15.0);
+  let color2 = mix(vec3f(0.9,0.95,1.0), vec3f(1.0,0.85,0.6), h2c);
+  total += color2 * star2 * twinkle2 * 2.5;
+  
+  return vec4f(total, 1.0);
 }
 `;
 
@@ -136,12 +153,17 @@ struct VOut { @builtin(position) cp:vec4f, @location(0) wp:vec3f, @location(1) n
   let ambient   = 0.04;
   let lit       = surf * (diff*0.92 + ambient);
 
+  // Enhanced night side with brighter city lights and ocean specular
   let night = smoothstep(0.08,-0.08,dot(N,sun_dir));
-  let city  = night * 0.025 * vec3f(1.0,0.85,0.4)
-              * smoothstep(0.4,0.6,land)
-              * (0.5+0.5*sin(lon*18.0+lat*14.0));
+  let cityNoise = 0.5+0.5*sin(lon*18.0+lat*14.0);
+  let cityNoise2 = 0.5+0.5*sin(lon*42.0+lat*30.0);
+  let cityMask = smoothstep(0.4,0.6,land) * cityNoise * (0.5 + 0.5*cityNoise2);
+  let city  = night * 0.045 * vec3f(1.0,0.82,0.35) * cityMask;
+  
+  // Ocean specular on night side (moonlight/starlight reflection)
+  let oceanSpec = night * (1.0 - land) * 0.008 * vec3f(0.15,0.2,0.35);
 
-  return vec4f(lit+city,1.0);
+  return vec4f(lit+city+oceanSpec,1.0);
 }
 `;
 
@@ -175,7 +197,7 @@ const ATM_SCALE : f32 = 6471.0/6371.0;
 }
 `;
 
-/** Satellite billboard shader */
+/** Satellite billboard shader - shell-specific aesthetics */
 export const SAT_SHADER = UNIFORM_STRUCT + /* wgsl */ `
 @group(0) @binding(1) var<storage,read> sat_pos : array<vec4f>;
 
@@ -186,15 +208,37 @@ struct VOut {
   @location(2) bright   : f32,
 }
 
-fn sat_color(idx:u32) -> vec3f {
-  let c = idx % 7u;
+// Shell-specific colors: blue (low/340km), white (mid/550km), gold (high/1150km)
+fn shell_color(colorIdx:u32) -> vec3f {
+  // colorIdx from orbital elements: 2=blue, 6=white, 3=gold
+  if(colorIdx==2u){return vec3f(0.15,0.55,1.0);}   // Electric cyan-blue (low shell)
+  if(colorIdx==6u){return vec3f(0.85,0.92,1.0);}    // Cool white (mid shell)
+  if(colorIdx==3u){return vec3f(1.0,0.78,0.28);}    // Warm gold (high shell)
+  // Fallback rainbow for variety
+  let c = colorIdx % 7u;
   if(c==0u){return vec3f(1.0,0.18,0.18);}
   if(c==1u){return vec3f(0.18,1.0,0.18);}
-  if(c==2u){return vec3f(0.25,0.45,1.0);}
-  if(c==3u){return vec3f(1.0,1.0,0.1);}
   if(c==4u){return vec3f(0.1,1.0,1.0);}
   if(c==5u){return vec3f(1.0,0.1,1.0);}
   return vec3f(1.0,1.0,1.0);
+}
+
+// Shell-specific pulse speed: low=fast cyan flicker, mid=steady, high=slow warm glow
+fn shell_pulse(colorIdx:u32, phase:f32, time:f32) -> f32 {
+  if(colorIdx==2u){
+    // Low shell: fast pulsing cyan
+    return 0.4 + 0.6*(0.5 + 0.5*sin(phase*0.2 + time*2.5));
+  }
+  if(colorIdx==6u){
+    // Mid shell: steady white with subtle variation
+    return 0.7 + 0.3*(0.5 + 0.5*sin(phase*0.1 + time*0.6));
+  }
+  if(colorIdx==3u){
+    // High shell: slow warm glow with longer persistence
+    return 0.5 + 0.5*(0.5 + 0.5*sin(phase*0.08 + time*0.35));
+  }
+  // Fallback
+  return 0.35 + 0.65*(0.5 + 0.5*sin(phase*0.15 + time*0.8));
 }
 
 @vertex fn vs(
@@ -210,7 +254,7 @@ fn sat_color(idx:u32) -> vec3f {
   const EARTH_RADIUS_KM: f32 = 6371.0;
 
   var visible = true;
-  if (dist > 180000.0) { visible = false; }  // Support extreme zoom out
+  if (dist > 180000.0) { visible = false; }
   if (visible) {
     for (var p=0u; p<6u; p++) {
       let pl = uni.frustum[p];
@@ -245,9 +289,15 @@ fn sat_color(idx:u32) -> vec3f {
     return o;
   }
 
-  // Sqrt falloff for better visibility at planetary scales
-  var bsize = 800.0 / sqrt(max(dist, 80.0));
-  bsize = clamp(bsize, 0.6, 80.0);
+  // Distance-adaptive billboard sizing with sqrt falloff
+  // Tuned for multiple scales: God View (60k km), Horizon (few k), Fleet POV (close)
+  var bsize = 900.0 / sqrt(max(dist, 60.0));
+  bsize = clamp(bsize, 0.5, 90.0);
+  
+  // Fleet POV (view_mode 2): enlarge nearby satellites for cinematic feel
+  if (uni.view_mode == 2u && dist < 500.0) {
+    bsize = bsize * (1.0 + smoothstep(500.0, 50.0, dist) * 1.5);
+  }
 
   const quad = array<vec2f,6>(
     vec2f(-1,-1),vec2f(1,-1),vec2f(-1,1),
@@ -260,11 +310,10 @@ fn sat_color(idx:u32) -> vec3f {
   let fpos   = wp + offset;
 
   let cidx    = u32(abs(cdat)) % 7u;
-  var col     = sat_color(cidx);
-  let phase   = cdat*0.15 + uni.time*(0.8+0.4*fract(f32(ii)*0.000613));
-  let pattern = 0.35 + 0.65*(0.5 + 0.5*sin(phase));
+  var col     = shell_color(cidx);
+  let pattern = shell_pulse(cidx, cdat*0.15 + f32(ii)*0.000613, uni.time);
 
-  let atten   = 1.0/(1.0 + dist*0.00075);
+  let atten   = 1.0/(1.0 + dist*0.0006);
   var bright  = pattern * atten;
 
   // RGB blinking test pattern for ground view
@@ -291,10 +340,10 @@ fn sat_color(idx:u32) -> vec3f {
 @fragment fn fs(in:VOut) -> @location(0) vec4f {
   let d     = length(in.uv - 0.5)*2.0;
   if (d > 1.0) { discard; }
-  let ring  = 1.0 - smoothstep(0.55,1.0,d);
-  let core  = 1.0 - smoothstep(0.0,0.22,d);
+  let ring  = 1.0 - smoothstep(0.5,1.0,d);
+  let core  = 1.0 - smoothstep(0.0,0.18,d);
   let alpha = ring * in.bright;
-  let hdr   = in.color * (ring + core*2.2) * in.bright * 2.8;
+  let hdr   = in.color * (ring + core*2.8) * in.bright * 3.0;
   return vec4f(hdr, alpha);
 }
 `;
@@ -591,17 +640,22 @@ fn vs_main(
 @fragment
 fn fs_main(in : VSOut) -> @location(0) vec4f {
   let dist = abs(in.lineCoord.y);
-  let edgeAlpha = 1.0 - smoothstep(0.0, 0.9, dist);
+  // Softer edge falloff for more realistic energy beam look
+  let edgeAlpha = 1.0 - smoothstep(0.0, 0.85, dist);
+  // Add a bright core
+  let core = 1.0 - smoothstep(0.0, 0.25, dist);
   
-  let col = hsl_to_rgb(in.hue, 1.0, 0.5);
-  var hdrCol = col * in.intensity * 7.2;  // HDR glow boost
+  let col = hsl_to_rgb(in.hue, 0.85, 0.55);
+  var hdrCol = col * in.intensity * 6.0;
+  // Bright core adds white-hot center
+  hdrCol += vec3f(1.0, 0.95, 0.9) * core * in.intensity * 3.0;
   
   // Logo beams get extra intensity
   if (in.intensity > 0.9) {
-    hdrCol *= 1.3;
+    hdrCol *= 1.4;
   }
   
-  let alpha = edgeAlpha * edgeAlpha * 0.97 * in.intensity;
+  let alpha = edgeAlpha * edgeAlpha * 0.95 * in.intensity;
   return vec4f(hdrCol, alpha);
 }
 `;
@@ -838,7 +892,7 @@ fn fbm(p:vec2f)->f32 {
 }
 `;
 
-/** Composite + tonemapping shader */
+/** Composite + tonemapping shader with cinematic teal-orange grading */
 export const COMPOSITE_SHADER = /* wgsl */ `
 @group(0) @binding(0) var scene_tex : texture_2d<f32>;
 @group(0) @binding(1) var bloom_tex : texture_2d<f32>;
@@ -860,8 +914,23 @@ fn aces(x:vec3f)->vec3f {
   var uv = in.uv; uv.y = 1.0-uv.y;
   let scene = textureSample(scene_tex,smp,uv).rgb;
   let bloom = textureSample(bloom_tex,smp,uv).rgb;
-  let hdr   = scene + bloom*1.8;
-  return vec4f(aces(hdr),1.0);
+  let hdr   = scene + bloom*2.0;
+  var col   = aces(hdr);
+  
+  // Cinematic teal-orange color grading (xAI / SpaceX palette)
+  // Push shadows toward teal, highlights toward warm gold
+  let lum = dot(col, vec3f(0.2126, 0.7152, 0.0722));
+  let shadowTint = vec3f(0.05, 0.12, 0.15);  // Deep teal shadows
+  let highlightTint = vec3f(0.12, 0.08, 0.02); // Warm gold highlights
+  col += shadowTint * (1.0 - lum) * 0.15;
+  col += highlightTint * lum * 0.1;
+  
+  // Subtle vignette for cinematic feel
+  let vigUV = uv * 2.0 - 1.0;
+  let vignette = 1.0 - dot(vigUV, vigUV) * 0.15;
+  col *= vignette;
+  
+  return vec4f(col,1.0);
 }
 `;
 
