@@ -492,6 +492,114 @@ In the vertex shader, after calculating `col` and `bright`, add:
 
 ---
 
+## Bug Fix: God View Satellites Not Visible
+
+### Possible Causes
+
+1. **Distance culling too aggressive for god view** - God view can zoom out to 60,000 km, but satellites are culled at 14,000 km
+2. **is_ground_view flag incorrectly affecting god view**
+3. **Camera positioned inside Earth** in god view (pitch/yaw issue)
+
+### Diagnostic Checks
+
+**Check 1: Verify is_ground_view is 0 in god view**
+In `src/main.ts` writeUniforms(), add debug log:
+```typescript
+console.log('Camera radius:', cameraRadius, 'isGroundView:', isGroundView, 'mode:', this.camera.getViewMode());
+```
+
+**Check 2: Distance culling adjustment**
+The current distance cull is `dist > 14000.0`. For god view, this might be too close. Consider:
+```wgsl
+// In satellite shader - increase cull distance for non-ground views
+var max_dist = select(14000.0, 80000.0, uni.is_ground_view == 0u);
+if (dist > max_dist) { visible = false; }
+```
+
+Or keep it simple - just increase the constant:
+```wgsl
+if (dist > 80000.0) { visible = false; }  // Allow viewing from far away in god view
+```
+
+**Check 3: God view camera position debug**
+Add to `calculateGodView()`:
+```typescript
+console.log('God view pos:', position, 'distance:', Math.sqrt(position[0]**2 + position[1]**2 + position[2]**2));
+```
+
+### Quick Fix for Distance Culling
+
+**File**: `src/shaders/index.ts` in `SAT_SHADER`
+
+**Change**: Increase max distance or make it view-mode dependent:
+
+```wgsl
+  var visible = true;
+  // Increase max distance to support god view zoom out
+  if (dist > 80000.0) { visible = false; }  // Was 14000.0
+```
+
+Or use a conditional based on view mode:
+```wgsl
+  // Distance cull: closer limit for ground view, farther for other views
+  let max_dist = select(80000.0, 14000.0, uni.is_ground_view != 0u);
+  if (dist > max_dist) { visible = false; }
+```
+
+---
+
+## Improvement: Increase Satellite Visibility in God View
+
+### Issue
+At god view default distance (~25,000 km), satellites are rendered at minimum billboard size (0.4 km), making them hard to see. The size formula is:
+```wgsl
+let bsize = clamp(1200.0/max(dist,50.0), 0.4, 60.0);
+```
+
+At 25,000 km: `1200/25000 = 0.048` → clamped to `0.4` (minimum)
+
+### Solutions
+
+**Option 1: Increase minimum size**
+```wgsl
+let bsize = clamp(1200.0/max(dist,50.0), 2.0, 60.0);  // Was 0.4, now 2.0
+```
+
+**Option 2: Add view-mode dependent sizing**
+```wgsl
+// Larger minimum size for god view to improve visibility
+let min_size = select(3.0, 0.4, uni.is_ground_view != 0u);  // 3.0 for space views, 0.4 for ground
+let bsize = clamp(1200.0/max(dist,50.0), min_size, 60.0);
+```
+
+**Option 3: Exponential size falloff (better for large distance ranges)**
+```wgsl
+// Size falls off with square root of distance instead of linear
+let bsize = clamp(300.0 / sqrt(max(dist, 100.0)), 1.0, 60.0);
+```
+
+At 25,000 km: `300/sqrt(25000)` = `300/158` = **1.9 km** (vs 0.4 km before)
+At 50,000 km: `300/sqrt(50000)` = `300/224` = **1.34 km** (vs 0.4 km before)
+
+### Recommended Fix
+
+**File**: `src/shaders/index.ts` in `SAT_SHADER`
+
+Replace the billboard size calculation:
+```wgsl
+  // Billboard size: closer → bigger, with caps
+  // Use sqrt falloff for better visibility at god view distances
+  let bsize = clamp(400.0 / sqrt(max(dist, 100.0)), 1.5, 60.0);
+```
+
+This gives:
+- At 1,000 km: 12.6 km size (big and clear)
+- At 25,000 km (god view default): 2.5 km size (visible)
+- At 50,000 km (max zoom): 1.8 km size (still visible)
+- Ground view at 550 km: 17 km size (will dominate sky appropriately)
+
+---
+
 ## Immediate Next Steps
 
 1. **Verify Ground View camera position** - Ensure camera is slightly above surface (6371.1 km) not exactly at 6371.0 km to avoid z-fighting
@@ -499,3 +607,4 @@ In the vertex shader, after calculating `col` and `bright`, add:
 3. **Test without Earth/Atmosphere** - Temporarily disable to confirm satellites render
 4. **Implement horizon culling** - Add the line-sphere intersection test to satellite shader
 5. **Prototype RGB blinking** - Hardcode a test pattern in satellite shader to verify visibility
+6. **Fix god view distance culling** - Increase max distance from 14,000 km to 80,000 km
