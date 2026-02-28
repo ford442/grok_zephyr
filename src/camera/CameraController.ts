@@ -10,7 +10,7 @@
 
 import type { Vec3, ViewMode } from '@/types/index.js';
 import { CONSTANTS, CAMERA, MATH, VIEW_MODES } from '@/types/constants.js';
-import { v3, v3add, v3scale, v3norm, mat4lookAt, mat4persp } from '@/utils/math.js';
+import { v3, v3add, v3sub, v3scale, v3norm, v3cross, v3dot, mat4lookAt, mat4persp } from '@/utils/math.js';
 
 /** Camera state for each view mode */
 export interface CameraState {
@@ -81,6 +81,15 @@ export class CameraController {
   // Canvas reference for pointer lock
   private canvas: HTMLCanvasElement | null = null;
   
+  // Fleet POV micro-movement speed (km per frame)
+  private readonly FLEET_MOVE_SPEED = 0.08;
+  
+  // Keyboard state for Fleet POV movement
+  private keys: Record<string, boolean> = {};
+  
+  // Fleet POV local offset (for WASD micro-movement)
+  private fleetOffset: Vec3 = [0, 0, 0];
+  
   // Callbacks
   private modeChangeCallback: ((mode: ViewMode, name: string, altitude: string) => void) | null = null;
   private angleChangeCallback: ((yaw: number, pitch: number) => void) | null = null;
@@ -134,9 +143,11 @@ export class CameraController {
       
       // Update pitch (up/down) - inverted so dragging up looks up
       this.cameraAngles.pitch += dy * this.MOUSE_SENSITIVITY;
+      // Fleet POV allows wider pitch range for full head look
+      const pitchLimit = this.currentMode === 'sat-pov' ? 89 : this.PITCH_LIMIT;
       this.cameraAngles.pitch = Math.max(
-        -this.PITCH_LIMIT,
-        Math.min(this.PITCH_LIMIT, this.cameraAngles.pitch)
+        -pitchLimit,
+        Math.min(pitchLimit, this.cameraAngles.pitch)
       );
       
       // Also update godView for backwards compatibility
@@ -176,6 +187,14 @@ export class CameraController {
     
     // Set initial cursor
     canvas.style.cursor = 'grab';
+    
+    // Keyboard input for Fleet POV micro-movement
+    window.addEventListener('keydown', (e) => {
+      this.keys[e.key.toLowerCase()] = true;
+    });
+    window.addEventListener('keyup', (e) => {
+      this.keys[e.key.toLowerCase()] = false;
+    });
   }
   
   /**
@@ -202,6 +221,9 @@ export class CameraController {
    */
   setViewMode(index: number): void {
     this.modeIndex = index;
+    
+    // Reset fleet offset when switching modes
+    this.fleetOffset = [0, 0, 0];
     
     switch (index) {
       case 0:
@@ -352,8 +374,10 @@ export class CameraController {
   /**
    * Fleet POV
    * 
-   * Follow satellite #0 in first-person with head-look control
-   * Drag to look around while flying with the fleet
+   * True first-person experience riding satellite #0.
+   * Full 360° yaw + pitch head look using a proper local coordinate frame
+   * derived from the satellite's radial and velocity vectors.
+   * WASD for micro-movement, QE for roll-like lateral drift.
    */
   private calculateFleetPOV(
     getPosition: (index: number, time: number) => Vec3,
@@ -363,53 +387,74 @@ export class CameraController {
     const satPos = getPosition(0, time);
     const satVel = getVelocity(0, time);
     
-    // Camera slightly above satellite
+    // Build a proper local coordinate frame:
+    // radial = outward from Earth center
+    // forward = velocity direction (prograde)
+    // right = cross(forward, radial)
     const radial = v3norm(satPos);
-    const position = v3add(satPos, v3scale(radial, 15));
-    
-    // Base forward direction (satellite velocity)
     const forward = v3norm(satVel);
+    const right = v3norm(v3cross(forward, radial));
+    // Re-orthogonalize up from right × forward
+    const localUp = v3norm(v3cross(right, forward));
     
-    // Apply pitch/yaw head look
-    const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD * 0.6;  // Reduced sensitivity
-    const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD * 0.6;
+    // Apply WASD micro-movement in local frame
+    const moveSpeed = this.FLEET_MOVE_SPEED;
+    if (this.keys['w']) this.fleetOffset = v3add(this.fleetOffset, v3scale(forward, moveSpeed));
+    if (this.keys['s']) this.fleetOffset = v3add(this.fleetOffset, v3scale(forward, -moveSpeed));
+    if (this.keys['a'] || this.keys['q']) this.fleetOffset = v3add(this.fleetOffset, v3scale(right, -moveSpeed));
+    if (this.keys['d'] || this.keys['e']) this.fleetOffset = v3add(this.fleetOffset, v3scale(right, moveSpeed));
+    if (this.keys[' ']) this.fleetOffset = v3add(this.fleetOffset, v3scale(localUp, moveSpeed));
+    if (this.keys['shift']) this.fleetOffset = v3add(this.fleetOffset, v3scale(localUp, -moveSpeed));
     
-    // Create rotation for head look
+    // Dampen offset back toward zero (keeps pilot anchored)
+    this.fleetOffset = v3scale(this.fleetOffset, 0.98);
+    
+    // Camera position: slightly above satellite + local offset
+    const position = v3add(v3add(satPos, v3scale(radial, 12)), this.fleetOffset);
+    
+    // Full 360° yaw + wide pitch for head look
+    const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
+    const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
+    
+    // Rotate the forward direction by yaw around localUp, then by pitch around right
     const cosY = Math.cos(yaw);
     const sinY = Math.sin(yaw);
+    
+    // Yaw rotation around localUp axis (Rodrigues' rotation formula)
+    let lookDir: Vec3 = [
+      forward[0] * cosY + v3cross(localUp, forward)[0] * sinY + localUp[0] * v3dot(localUp, forward) * (1 - cosY),
+      forward[1] * cosY + v3cross(localUp, forward)[1] * sinY + localUp[1] * v3dot(localUp, forward) * (1 - cosY),
+      forward[2] * cosY + v3cross(localUp, forward)[2] * sinY + localUp[2] * v3dot(localUp, forward) * (1 - cosY),
+    ];
+    lookDir = v3norm(lookDir);
+    
+    // Compute the right vector after yaw
+    const lookRight = v3norm(v3cross(lookDir, localUp));
+    
+    // Pitch rotation around lookRight axis
     const cosP = Math.cos(pitch);
     const sinP = Math.sin(pitch);
-    
-    // Rotate forward vector by pitch and yaw
-    // Simplified: apply yaw around radial axis, pitch perpendicular
-    const right = v3norm([radial[1], -radial[0], 0]); // Perpendicular to radial in XY
-    const up = v3norm([0, 0, 1]);
-    
-    // Apply rotations to forward vector
-    let lookDir = forward;
-    // Yaw (left/right)
     lookDir = [
-      lookDir[0] * cosY - lookDir[1] * sinY,
-      lookDir[0] * sinY + lookDir[1] * cosY,
-      lookDir[2]
+      lookDir[0] * cosP + v3cross(lookRight, lookDir)[0] * sinP + lookRight[0] * v3dot(lookRight, lookDir) * (1 - cosP),
+      lookDir[1] * cosP + v3cross(lookRight, lookDir)[1] * sinP + lookRight[1] * v3dot(lookRight, lookDir) * (1 - cosP),
+      lookDir[2] * cosP + v3cross(lookRight, lookDir)[2] * sinP + lookRight[2] * v3dot(lookRight, lookDir) * (1 - cosP),
     ];
-    // Pitch (up/down)
-    lookDir = [
-      lookDir[0] * cosP - lookDir[2] * sinP,
-      lookDir[1],
-      lookDir[0] * sinP + lookDir[2] * cosP
-    ];
+    lookDir = v3norm(lookDir);
     
-    const target: Vec3 = [
-      position[0] + lookDir[0] * 100,
-      position[1] + lookDir[1] * 100,
-      position[2] + lookDir[2] * 100
-    ];
+    const target: Vec3 = v3add(position, v3scale(lookDir, 100));
+    
+    // Compute actual up for the view (perpendicular to lookDir in the plane of localUp)
+    const viewRight = v3norm(v3cross(lookDir, localUp));
+    const viewUp = v3norm(v3cross(viewRight, lookDir));
+    
+    // Subtle head bob based on orbital motion
+    const bob = Math.sin(time * 1.7) * 0.3;
+    const bobbedPos: Vec3 = v3add(position, v3scale(localUp, bob));
     
     return {
-      position,
+      position: bobbedPos,
       target,
-      up: radial,
+      up: viewUp,
       fov: CAMERA.DEFAULT_FOV,
       near: 1.0,
       far: CAMERA.FAR_PLANE,
