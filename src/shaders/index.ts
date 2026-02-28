@@ -230,7 +230,7 @@ fn sat_color(idx:u32) -> vec3f {
   }
 
   // Sqrt falloff for better visibility at planetary scales
-  let bsize = 800.0 / sqrt(max(dist, 80.0));
+  var bsize = 800.0 / sqrt(max(dist, 80.0));
   bsize = clamp(bsize, 0.6, 80.0);
 
   const quad = array<vec2f,6>(
@@ -334,7 +334,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
   let dir = normalize(pos);
   
   // Target: Earth surface along radial line
-  let target = dir * EARTH_RADIUS_KM;
+  let earthTarget = dir * EARTH_RADIUS_KM;
   
   // Subtle motion chaos
   let t = uni.time;
@@ -348,7 +348,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
   let hue = fract(t * 0.03 + f32(i) * 0.0001) * 360.0;
   
   beams[i].start = vec4f(pos, 0.9);
-  beams[i].end = vec4f(target + chaos, hue);
+  beams[i].end = vec4f(earthTarget + chaos, hue);
 }
 `;
 
