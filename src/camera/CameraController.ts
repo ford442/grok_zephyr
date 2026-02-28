@@ -268,12 +268,14 @@ export class CameraController {
    * Up: +Z so the horizon aligns naturally.
    */
   private calculateGroundView(): CameraState {
+    // Position camera 0.1 km (100m) above surface to avoid z-fighting
+    const surface_altitude = 0.1;
     return {
-      position: [CONSTANTS.EARTH_RADIUS_KM, 0, 0],
+      position: [CONSTANTS.EARTH_RADIUS_KM + surface_altitude, 0, 0],
       target: [CONSTANTS.ORBIT_RADIUS_KM, 0, 0],
       up: [0, 0, 1],
       fov: CAMERA.DEFAULT_FOV,
-      near: 1.0,
+      near: 0.1,  // Reduce near plane for closer rendering
       far: CAMERA.FAR_PLANE,
     };
   }
