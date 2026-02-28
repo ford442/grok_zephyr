@@ -28,13 +28,20 @@ struct Uni {
 @group(0) @binding(0) var<uniform> uni : Uni;
 `;
 
-/** Orbital mechanics compute shader */
+/** Orbital mechanics compute shader - multi-shell version */
 export const ORBITAL_CS = UNIFORM_STRUCT + /* wgsl */ `
 @group(0) @binding(1) var<storage,read>       orb_elem : array<vec4f>;
 @group(0) @binding(2) var<storage,read_write> sat_pos  : array<vec4f>;
 
-const ORBIT_KM    : f32 = 6921.0;
-const MEAN_MOTION : f32 = 0.001097;
+// Multi-shell orbit radii (km from Earth center)
+// Shell 0: 340km alt = 6711km radius
+// Shell 1: 550km alt = 6921km radius  
+// Shell 2: 1150km alt = 7521km radius
+const ORBIT_RADII_KM = array<f32,3>(6711.0, 6921.0, 7521.0);
+
+// Mean motion (rad/s) for each shell - lower orbits = faster
+// ω = sqrt(μ/r³) where μ = 3.986e5 km³/s²
+const MEAN_MOTIONS = array<f32,3>(0.001153, 0.001097, 0.000946);
 
 @compute @workgroup_size(64,1,1)
 fn main(@builtin(global_invocation_id) gid : vec3u) {
@@ -45,18 +52,26 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
   let raan = e.x;
   let inc  = e.y;
   let m0   = e.z;
-  let cdat = e.w;
+  let shellData = e.w;
+  
+  // Extract shell index (upper 8 bits) and color (lower 8 bits)
+  let shellIndex = u32(shellData) >> 8u;
+  let colorIndex = shellData & 255.0;
+  
+  // Select orbit parameters based on shell
+  let orbitR = ORBIT_RADII_KM[shellIndex];
+  let meanMotion = MEAN_MOTIONS[shellIndex];
 
-  let M  = m0 + MEAN_MOTION * uni.time;
+  let M  = m0 + meanMotion * uni.time;
   let cM = cos(M); let sM = sin(M);
   let cR = cos(raan); let sR = sin(raan);
   let cI = cos(inc);  let sI = sin(inc);
 
-  let x = ORBIT_KM * (cR*cM - sR*sM*cI);
-  let y = ORBIT_KM * (sR*cM + cR*sM*cI);
-  let z = ORBIT_KM * sM * sI;
+  let x = orbitR * (cR*cM - sR*sM*cI);
+  let y = orbitR * (sR*cM + cR*sM*cI);
+  let z = orbitR * sM * sI;
 
-  sat_pos[i] = vec4f(x, y, z, cdat);
+  sat_pos[i] = vec4f(x, y, z, colorIndex);
 }
 `;
 
@@ -304,19 +319,126 @@ struct VSOut { @builtin(position) pos:vec4f, @location(0) uv:vec2f }
 }
 `;
 
-/** Beam compute shader - generates beam positions from satellites */
+/** Beam compute shader - generates beam positions from satellites with logo patterns */
 export const BEAM_COMPUTE_SHADER = UNIFORM_STRUCT + /* wgsl */ `
 struct Beam {
   start : vec4f,  // xyz = sat pos, w = intensity (0-1)
   end   : vec4f,  // xyz = target pos, w = hue (0-360)
 };
 
+struct BeamParams {
+  time : f32,
+  patternMode : u32,
+  density : u32,
+  pad : u32,
+};
+
 @group(0) @binding(1) var<storage, read> sat_pos : array<vec4f>;
 @group(0) @binding(2) var<storage, read_write> beams : array<Beam>;
+@group(0) @binding(3) var<uniform> beamParams : BeamParams;
 
 const EARTH_RADIUS_KM : f32 = 6371.0;
 const MAX_BEAMS : u32 = 65536u;
 const SATELLITE_STRIDE : u32 = 16u;  // Every 16th satellite
+
+// "GROK" text pattern using SDF (simplified - just dots forming letters)
+// This is a procedural approximation - coordinates in UV space (0-1)
+fn getLetterOffset(letterIdx: u32, t: f32) -> vec2f {
+  // Simple letter shapes as point clouds
+  // G = 0, R = 1, O = 2, K = 3
+  let phase = fract(t * 0.5 + f32(letterIdx) * 0.25);
+  
+  // Return offset within letter (0-1 range)
+  return vec2f(
+    fract(phase * 7.0),  // x varies within letter
+    fract(phase * 3.0)   // y varies within letter
+  );
+}
+
+// Procedural "GROK" pattern - returns 0-1 mask value
+fn logoPattern(uv: vec2f, t: f32) -> f32 {
+  // GROK positioned across the night side
+  // UV coordinates on Earth's surface (lat/lon mapping)
+  
+  let x = uv.x;
+  let y = uv.y;
+  
+  // Letter positions (left to right)
+  // G: 0.1-0.25, R: 0.3-0.45, O: 0.5-0.65, K: 0.7-0.85
+  
+  var intensity = 0.0;
+  
+  // G shape
+  if (x > 0.1 && x < 0.25) {
+    let gx = (x - 0.1) / 0.15;
+    let gy = y;
+    // G is a C with a crossbar
+    let inG = (abs(gx - 0.5) < 0.4 && abs(gy - 0.5) < 0.4) && 
+              !(gx > 0.3 && gy > 0.2 && gy < 0.5 && gx < 0.7);
+    if (inG) { intensity = 1.0; }
+  }
+  
+  // R shape  
+  if (x > 0.3 && x < 0.45) {
+    let rx = (x - 0.3) / 0.15;
+    let ry = y;
+    // Vertical + curve + leg
+    let inR = (rx < 0.3) || // vertical
+              (abs(rx - 0.5) < 0.25 && abs(ry - 0.65) < 0.25) || // loop
+              (rx > 0.4 && ry < 0.5); // leg
+    if (inR) { intensity = 1.0; }
+  }
+  
+  // O shape
+  if (x > 0.5 && x < 0.65) {
+    let ox = (x - 0.5) / 0.15;
+    let oy = y;
+    let d = length(vec2f(ox - 0.5, oy - 0.5));
+    if (d > 0.25 && d < 0.45) { intensity = 1.0; }
+  }
+  
+  // K shape
+  if (x > 0.7 && x < 0.85) {
+    let kx = (x - 0.7) / 0.15;
+    let ky = y;
+    // Vertical + two diagonals
+    let inK = (kx < 0.3) || // vertical
+              (abs(ky - (1.0 - kx * 0.8)) < 0.15) || // upper diag
+              (abs(ky - (0.2 + kx * 0.6)) < 0.15);    // lower diag
+    if (inK) { intensity = 1.0; }
+  }
+  
+  return intensity;
+}
+
+// X logo pattern
+fn xLogoPattern(uv: vec2f) -> f32 {
+  let x = uv.x;
+  let y = uv.y;
+  
+  // Two crossing diagonals
+  let diag1 = abs((y - 0.5) - (x - 0.5));
+  let diag2 = abs((y - 0.5) + (x - 0.5));
+  
+  if (diag1 < 0.1 || diag2 < 0.1) {
+    return 1.0;
+  }
+  return 0.0;
+}
+
+// Convert direction to UV coordinates on Earth surface
+fn dirToUV(dir: vec3f) -> vec2f {
+  // dir is normalized position on sphere
+  // lat = asin(dir.z), lon = atan2(dir.y, dir.x)
+  let lat = asin(clamp(dir.z, -1.0, 1.0));
+  let lon = atan2(dir.y, dir.x);
+  
+  // Map to 0-1 UV
+  return vec2f(
+    fract(lon / (3.14159 * 2.0) + 0.5),
+    lat / 3.14159 + 0.5
+  );
+}
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid : vec3u) {
@@ -333,22 +455,61 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
   let pos = sat.xyz;
   let dir = normalize(pos);
   
-  // Target: Earth surface along radial line
+  // Base target: Earth surface along radial line
   let earthTarget = dir * EARTH_RADIUS_KM;
   
-  // Subtle motion chaos
-  let t = uni.time;
-  let chaos = vec3f(
-    sin(t + f32(i) * 0.1) * 30.0,
-    cos(t * 0.7 + f32(i) * 0.13) * 30.0,
-    sin(t * 0.3 + f32(i) * 0.07) * 20.0
-  );
+  var finalTarget = earthTarget;
+  var hue = 0.0;
+  var intensity = 0.9;
   
-  // Rainbow cycling
-  let hue = fract(t * 0.03 + f32(i) * 0.0001) * 360.0;
+  let t = beamParams.time;
+  let patternMode = beamParams.patternMode;
   
-  beams[i].start = vec4f(pos, 0.9);
-  beams[i].end = vec4f(earthTarget + chaos, hue);
+  // Pattern logic
+  if (patternMode == 0u) {
+    // Chaos mode - random motion
+    let chaos = vec3f(
+      sin(t + f32(i) * 0.1) * 50.0,
+      cos(t * 0.7 + f32(i) * 0.13) * 50.0,
+      sin(t * 0.3 + f32(i) * 0.07) * 30.0
+    );
+    finalTarget = earthTarget + chaos;
+    hue = fract(t * 0.03 + f32(i) * 0.0001) * 360.0;
+  }
+  else if (patternMode == 1u) {
+    // GROK logo mode
+    let uv = dirToUV(dir);
+    let mask = logoPattern(uv, t);
+    
+    if (mask > 0.5) {
+      // Beam is part of logo - bright white/cyan
+      hue = 180.0 + sin(t + f32(i) * 0.01) * 30.0; // Cyan range
+      intensity = 1.0;
+    } else {
+      // Dim background beams
+      hue = fract(t * 0.01 + f32(i) * 0.001) * 360.0;
+      intensity = 0.3;
+    }
+    
+    // Add subtle wave motion to logo
+    let wave = sin(t * 2.0 + uv.x * 10.0) * 20.0;
+    finalTarget = earthTarget + dir * wave;
+  }
+  else if (patternMode == 2u) {
+    // X logo mode
+    let uv = dirToUV(dir);
+    let mask = xLogoPattern(uv);
+    
+    if (mask > 0.5) {
+      hue = 0.0; // Red
+      intensity = 1.0;
+    } else {
+      intensity = 0.0; // Hide non-X beams
+    }
+  }
+  
+  beams[i].start = vec4f(pos, intensity);
+  beams[i].end = vec4f(finalTarget, hue);
 }
 `;
 
@@ -415,7 +576,7 @@ fn vs_main(
   let along = f32(vtx / 2u);
   let across = f32(vtx % 2u) * 2.0 - 1.0;
   
-  let width = 12.0;  // km
+  let width = 9.5;  // km - tuned for optimal bloom
   let worldPos = start + dir * along + right * (across * width * 0.5);
   
   var out : VSOut;
@@ -432,9 +593,15 @@ fn fs_main(in : VSOut) -> @location(0) vec4f {
   let edgeAlpha = 1.0 - smoothstep(0.0, 0.9, dist);
   
   let col = hsl_to_rgb(in.hue, 1.0, 0.5);
-  let hdrCol = col * in.intensity * 6.0;
+  var hdrCol = col * in.intensity * 7.2;  // HDR glow boost
   
-  return vec4f(hdrCol, edgeAlpha * in.intensity);
+  // Logo beams get extra intensity
+  if (in.intensity > 0.9) {
+    hdrCol *= 1.3;
+  }
+  
+  let alpha = edgeAlpha * edgeAlpha * 0.97 * in.intensity;
+  return vec4f(hdrCol, alpha);
 }
 `;
 
@@ -516,10 +683,47 @@ fn fbm(p:vec2f)->f32 {
   let horizonY = 0.35;
   let horizonDist = abs(uv.y - horizonY);
   
+  // ===== BLUE SKY GRADIENT =====
+  // Calculate view direction from UV (assuming fullscreen quad at near plane)
+  let viewDir = normalize(vec3f(
+    (uv.x - 0.5) * 2.0,  // horizontal spread
+    (uv.y - 0.5) * -2.0, // vertical (flipped, -1 is up)
+    -1.0                  // forward into screen
+  ));
+  
+  // Sky gradient based on elevation angle (dot with up vector)
+  let up = vec3f(0.0, 1.0, 0.0);
+  let elevation = dot(viewDir, up);
+  
+  // Rayleigh scattering approximation
+  let skyZenith = vec3f(0.2, 0.5, 0.95);      // Deep blue at top
+  let skyHorizon = vec3f(0.7, 0.85, 1.0);     // Light blue/white at horizon
+  let skyLow = vec3f(1.0, 0.6, 0.3);          // Orange/pink near horizon (sunset effect)
+  
+  // Blend based on elevation
+  var skyColor : vec3f;
+  if (elevation > 0.0) {
+    // Above horizon: zenith to horizon
+    skyColor = mix(skyHorizon, skyZenith, pow(elevation, 0.5));
+  } else {
+    // Below horizon: horizon to low
+    skyColor = mix(skyLow, skyHorizon, smoothstep(-0.3, 0.0, elevation));
+  }
+  
+  // Sun glow (simplified - assume sun at some angle)
+  let sunDir = normalize(vec3f(0.3, 0.6, -0.7));
+  let sunDot = dot(viewDir, sunDir);
+  let sunGlow = pow(max(0.0, sunDot), 256.0) * 2.0;
+  let sunScatter = pow(max(0.0, sunDot), 8.0) * 0.3;
+  skyColor += vec3f(1.0, 0.95, 0.8) * (sunGlow + sunScatter);
+  
+  // Start with sky as background
+  var finalColor = skyColor;
+  var finalAlpha = 1.0;
+  
   // Calculate mountain silhouette
   var mountainHeight = 0.0;
-  var alpha = 0.0;
-  var terrainColor = vec3f(0.0);
+  var terrainColor = skyColor;  // Start with sky
   
   if(uv.y < horizonY) {
     // Mountain silhouette using fbm noise
@@ -538,8 +742,7 @@ fn fbm(p:vec2f)->f32 {
     let mountainY = horizonY - mountainHeight;
     
     if(uv.y <= mountainY) {
-      // We're in the mountain terrain - opaque
-      alpha = 1.0;
+      // We're in the mountain terrain
       let height = (mountainY - uv.y) * 3.0;
       
       // Base mountain colors
@@ -579,7 +782,6 @@ fn fbm(p:vec2f)->f32 {
     let shoreFade = smoothstep(lakeEnd, lakeEnd - 0.03, uv.y);
     
     if(shoreFade > 0.0) {
-      alpha = 1.0;
       
       // Base water color
       let deepWater = vec3f(0.02, 0.05, 0.12);
@@ -615,11 +817,22 @@ fn fbm(p:vec2f)->f32 {
     }
   }
   
-  // Horizon glow (subtle effect even where transparent)
+  // Horizon glow (subtle atmospheric effect)
   let horizonGlow = smoothstep(0.02, 0.0, horizonDist) * 0.2;
   terrainColor += vec3f(0.1, 0.15, 0.25) * horizonGlow;
   
-  return vec4f(terrainColor, alpha);
+  // Blend terrain with sky based on whether we drew terrain
+  var resultColor = skyColor;
+  if (uv.y < horizonY && uv.y <= mountainY) {
+    // Solid terrain area
+    resultColor = terrainColor;
+  } else if (uv.y >= lakeStart && uv.y <= lakeEnd && uv.y <= (horizonY - 0.02)) {
+    // Lake area
+    let shoreFade = smoothstep(lakeEnd, lakeEnd - 0.03, uv.y);
+    resultColor = mix(skyColor, terrainColor, shoreFade);
+  }
+  
+  return vec4f(resultColor, 1.0);
 }
 `;
 

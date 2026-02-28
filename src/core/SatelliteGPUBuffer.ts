@@ -43,6 +43,8 @@ export interface SatelliteBufferSet {
   };
   /** Beam data storage (start + end vec4 per beam) */
   beams: GPUBuffer;
+  /** Beam params uniform (time, patternMode, density, padding) */
+  beamParams: GPUBuffer;
 }
 
 /**
@@ -129,6 +131,16 @@ export class SatelliteGPUBuffer {
       beamBufferSize,
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     );
+    
+    // Create beam params uniform buffer (16 bytes: time, patternMode, density, pad)
+    const beamParams = this.context.createUniformBuffer(16);
+    // Initialize with default pattern mode 1 (GROK logo)
+    const beamParamsData = new Float32Array(4);
+    beamParamsData[0] = 0;      // time
+    beamParamsData[1] = 1;      // patternMode (GROK logo default)
+    beamParamsData[2] = MAX_BEAMS;  // density
+    beamParamsData[3] = 0;      // padding
+    this.context.writeBuffer(beamParams, beamParamsData);
 
     this.buffers = {
       orbitalElements,
@@ -136,39 +148,66 @@ export class SatelliteGPUBuffer {
       uniforms,
       bloomUniforms,
       beams,
+      beamParams,
     };
 
     return this.buffers;
   }
 
   /**
-   * Generate Walker constellation orbital elements
+   * Generate Walker constellation orbital elements with multi-shell orbits
    * 
-   * Creates a evenly distributed constellation across multiple
-   * inclination shells similar to Starlink.
+   * Creates Starlink-style constellation with 3 altitude shells:
+   * - Shell 0: 340 km altitude (6711 km radius) - ~30% of satellites
+   * - Shell 1: 550 km altitude (6921 km radius) - ~50% of satellites  
+   * - Shell 2: 1150 km altitude (7521 km radius) - ~20% of satellites
    */
   generateOrbitalElements(): Float32Array {
     const { NUM_PLANES, SATELLITES_PER_PLANE } = CONSTANTS;
     const shells = INCLINATION_SHELLS;
     
-    console.log(`[SatelliteGPUBuffer] Generating orbital elements...`);
+    // Multi-shell configuration
+    const SHELL_DISTRIBUTION = [0.3, 0.5, 0.2];  // 30%, 50%, 20%
+    const SHELL_ALTITUDES_KM = [340.0, 550.0, 1150.0];
+    const SHELL_RADII_KM = SHELL_ALTITUDES_KM.map(alt => 6371.0 + alt);
+    
+    console.log(`[SatelliteGPUBuffer] Generating multi-shell orbital elements...`);
+    console.log(`[SatelliteGPUBuffer] Shells: 340km (${(SHELL_DISTRIBUTION[0]*100).toFixed(0)}%), 550km (${(SHELL_DISTRIBUTION[1]*100).toFixed(0)}%), 1150km (${(SHELL_DISTRIBUTION[2]*100).toFixed(0)}%)`);
     const startTime = performance.now();
 
     for (let plane = 0; plane < NUM_PLANES; plane++) {
       const raan = (plane / NUM_PLANES) * Math.PI * 2;
-      const shellIndex = Math.floor(plane / (NUM_PLANES / shells.length));
-      const inclination = shells[shellIndex] + (Math.random() - 0.5) * 0.008;
+      const inclinationShellIdx = Math.floor(plane / (NUM_PLANES / shells.length));
+      const inclination = shells[inclinationShellIdx] + (Math.random() - 0.5) * 0.008;
 
       for (let sat = 0; sat < SATELLITES_PER_PLANE; sat++) {
         const idx = (plane * SATELLITES_PER_PLANE + sat) * 4;
         const meanAnomaly = (sat / SATELLITES_PER_PLANE) * Math.PI * 2;
+        
+        // Determine altitude shell based on distribution
+        const rand = Math.random();
+        let shellIndex = 0;
+        let cumulative = 0;
+        for (let s = 0; s < SHELL_DISTRIBUTION.length; s++) {
+          cumulative += SHELL_DISTRIBUTION[s];
+          if (rand < cumulative) {
+            shellIndex = s;
+            break;
+          }
+        }
+        
+        // Color based on shell (0=blue, 1=white, 2=gold)
+        const shellColors = [2.0, 6.0, 3.0];  // Blue, White, Gold
+        const colorIndex = shellColors[shellIndex];
 
-        // Store as vec4f: [raan, inclination, meanAnomaly, colorIndex]
+        // Store as vec4f: [raan, inclination, meanAnomaly, shellData]
+        // shellData encodes: shellIndex in upper bits, colorIndex in lower bits
+        const shellData = (shellIndex << 8) | (colorIndex & 0xFF);
+        
         this.orbitalElementData[idx + 0] = raan;
         this.orbitalElementData[idx + 1] = inclination;
         this.orbitalElementData[idx + 2] = meanAnomaly;
-        // Color index: rainbow by plane (0-6)
-        this.orbitalElementData[idx + 3] = Math.floor((plane * 7) / NUM_PLANES);
+        this.orbitalElementData[idx + 3] = shellData;
       }
     }
 
@@ -280,14 +319,24 @@ export class SatelliteGPUBuffer {
 
   /**
    * Calculate satellite position on CPU (for camera tracking)
+   * Supports multi-shell orbits
    */
   calculateSatellitePosition(index: number, time: number): [number, number, number] {
     const i = index * 4;
     const raan = this.orbitalElementData[i];
     const inclination = this.orbitalElementData[i + 1];
     const meanAnomaly0 = this.orbitalElementData[i + 2];
+    const shellData = this.orbitalElementData[i + 3];
     
-    const meanAnomaly = meanAnomaly0 + CONSTANTS.MEAN_MOTION * time;
+    // Extract shell index
+    const shellIndex = (shellData >> 8) & 0xFF;
+    const SHELL_RADII_KM = [6711.0, 6921.0, 7521.0];
+    const orbitR = SHELL_RADII_KM[shellIndex] || 6921.0;
+    
+    const meanMotions = [0.001153, 0.001097, 0.000946];
+    const meanMotion = meanMotions[shellIndex] || 0.001097;
+    
+    const meanAnomaly = meanAnomaly0 + meanMotion * time;
     
     const cM = Math.cos(meanAnomaly);
     const sM = Math.sin(meanAnomaly);
@@ -297,22 +346,27 @@ export class SatelliteGPUBuffer {
     const sI = Math.sin(inclination);
 
     return [
-      CONSTANTS.ORBIT_RADIUS_KM * (cR * cM - sR * sM * cI),
-      CONSTANTS.ORBIT_RADIUS_KM * (sR * cM + cR * sM * cI),
-      CONSTANTS.ORBIT_RADIUS_KM * sM * sI,
+      orbitR * (cR * cM - sR * sM * cI),
+      orbitR * (sR * cM + cR * sM * cI),
+      orbitR * sM * sI,
     ];
   }
 
   /**
-   * Calculate satellite velocity on CPU
+   * Calculate satellite velocity on CPU (multi-shell)
    */
   calculateSatelliteVelocity(index: number, time: number): [number, number, number] {
     const i = index * 4;
     const raan = this.orbitalElementData[i];
     const inclination = this.orbitalElementData[i + 1];
     const meanAnomaly0 = this.orbitalElementData[i + 2];
+    const shellData = this.orbitalElementData[i + 3];
     
-    const meanAnomaly = meanAnomaly0 + CONSTANTS.MEAN_MOTION * time;
+    const shellIndex = (shellData >> 8) & 0xFF;
+    const meanMotions = [0.001153, 0.001097, 0.000946];
+    const meanMotion = meanMotions[shellIndex] || 0.001097;
+    
+    const meanAnomaly = meanAnomaly0 + meanMotion * time;
     
     const cM = Math.cos(meanAnomaly);
     const sM = Math.sin(meanAnomaly);
@@ -392,6 +446,7 @@ export class SatelliteGPUBuffer {
       this.buffers.bloomUniforms.horizontal.destroy();
       this.buffers.bloomUniforms.vertical.destroy();
       this.buffers.beams.destroy();
+      this.buffers.beamParams.destroy();
       
       if (this.isBufferPair(this.buffers.positions)) {
         this.buffers.positions.read.destroy();

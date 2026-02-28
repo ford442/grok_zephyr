@@ -183,7 +183,7 @@ export class RenderPipeline {
       alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
     };
 
-    // Beam compute bind group layout
+    // Beam compute bind group layout (includes beamParams uniform)
     const beamComputeLayout = device.createPipelineLayout({
       bindGroupLayouts: [
         device.createBindGroupLayout({
@@ -191,6 +191,7 @@ export class RenderPipeline {
             { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
             { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
             { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+            { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
           ],
         }),
       ],
@@ -454,6 +455,7 @@ export class RenderPipeline {
           { binding: 0, resource: { buffer: this.buffers.uniforms } },
           { binding: 1, resource: { buffer: posBuffer } },
           { binding: 2, resource: { buffer: this.buffers.beams } },
+          { binding: 3, resource: { buffer: this.buffers.beamParams } },
         ],
       }),
 

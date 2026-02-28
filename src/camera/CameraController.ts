@@ -29,6 +29,13 @@ export interface GodViewParams {
   distance: number;
 }
 
+/** Camera angle state for all modes */
+export interface CameraAngles {
+  yaw: number;      // degrees, left/right
+  pitch: number;    // degrees, up/down  
+  distance: number; // km, for zoom
+}
+
 /** Mouse input state */
 export interface MouseState {
   down: boolean;
@@ -53,6 +60,17 @@ export class CameraController {
     distance: CAMERA.GOD_VIEW_DISTANCE,
   };
   
+  // Camera angles for ALL modes (yaw/pitch in degrees)
+  private cameraAngles: CameraAngles = {
+    yaw: 0,
+    pitch: 0,
+    distance: 25000, // km
+  };
+  
+  // Constants
+  private readonly PITCH_LIMIT = 89;
+  private readonly MOUSE_SENSITIVITY = 0.25;
+  
   // Mouse state
   private mouse: MouseState = {
     down: false,
@@ -60,8 +78,12 @@ export class CameraController {
     lastY: 0,
   };
   
+  // Canvas reference for pointer lock
+  private canvas: HTMLCanvasElement | null = null;
+  
   // Callbacks
   private modeChangeCallback: ((mode: ViewMode, name: string, altitude: string) => void) | null = null;
+  private angleChangeCallback: ((yaw: number, pitch: number) => void) | null = null;
 
   constructor() {
     this.setupEventListeners();
@@ -76,42 +98,103 @@ export class CameraController {
 
   /**
    * Attach to canvas for mouse input
+   * Enhanced: All camera modes support pitch/yaw drag + zoom
    */
   attachToCanvas(canvas: HTMLCanvasElement): void {
+    this.canvas = canvas;
+    
+    // Mouse down - start dragging
     canvas.addEventListener('mousedown', (e) => {
-      this.mouse.down = true;
-      this.mouse.lastX = e.clientX;
-      this.mouse.lastY = e.clientY;
+      if (e.button === 0) { // Left click only
+        this.mouse.down = true;
+        this.mouse.lastX = e.clientX;
+        this.mouse.lastY = e.clientY;
+        canvas.style.cursor = 'grabbing';
+      }
     });
 
+    // Mouse up - stop dragging
     window.addEventListener('mouseup', () => {
       this.mouse.down = false;
+      if (this.canvas) {
+        this.canvas.style.cursor = 'grab';
+      }
     });
 
+    // Mouse move - update angles for ALL modes
     window.addEventListener('mousemove', (e) => {
-      if (!this.mouse.down || this.currentMode !== 'god') return;
+      if (!this.mouse.down) return;
       
-      const dx = e.clientX - this.mouse.lastX;
-      const dy = e.clientY - this.mouse.lastY;
+      const dx = e.movementX || (e.clientX - this.mouse.lastX);
+      const dy = e.movementY || (e.clientY - this.mouse.lastY);
       
-      this.godView.yaw += dx * 0.004;
-      this.godView.pitch = Math.max(
-        -1.4,
-        Math.min(1.4, this.godView.pitch - dy * 0.004)
+      // Update yaw (left/right)
+      this.cameraAngles.yaw -= dx * this.MOUSE_SENSITIVITY;
+      this.cameraAngles.yaw = ((this.cameraAngles.yaw % 360) + 360) % 360;
+      
+      // Update pitch (up/down) - inverted so dragging up looks up
+      this.cameraAngles.pitch += dy * this.MOUSE_SENSITIVITY;
+      this.cameraAngles.pitch = Math.max(
+        -this.PITCH_LIMIT,
+        Math.min(this.PITCH_LIMIT, this.cameraAngles.pitch)
       );
+      
+      // Also update godView for backwards compatibility
+      if (this.currentMode === 'god') {
+        this.godView.yaw = this.cameraAngles.yaw * Math.PI / 180;
+        this.godView.pitch = this.cameraAngles.pitch * Math.PI / 180;
+      }
       
       this.mouse.lastX = e.clientX;
       this.mouse.lastY = e.clientY;
+      
+      // Notify UI of angle change
+      if (this.angleChangeCallback) {
+        this.angleChangeCallback(this.cameraAngles.yaw, this.cameraAngles.pitch);
+      }
     });
 
+    // Wheel - zoom distance (works in all modes)
     canvas.addEventListener('wheel', (e) => {
-      if (this.currentMode !== 'god') return;
-      
-      this.godView.distance = Math.max(
-        CAMERA.GOD_VIEW_MIN_DISTANCE,
-        Math.min(CAMERA.GOD_VIEW_MAX_DISTANCE, this.godView.distance + e.deltaY * 10)
+      e.preventDefault();
+      const zoomSpeed = 40;
+      this.cameraAngles.distance = Math.max(
+        500,
+        Math.min(180000, this.cameraAngles.distance + e.deltaY * zoomSpeed)
       );
+      
+      // Also update godView distance
+      if (this.currentMode === 'god') {
+        this.godView.distance = this.cameraAngles.distance;
+      }
     });
+    
+    // Double-click to reset
+    canvas.addEventListener('dblclick', () => {
+      this.resetCameraAngle();
+    });
+    
+    // Set initial cursor
+    canvas.style.cursor = 'grab';
+  }
+  
+  /**
+   * Reset camera angle to default
+   */
+  resetCameraAngle(): void {
+    this.cameraAngles.yaw = 0;
+    this.cameraAngles.pitch = 0;
+    this.cameraAngles.distance = 25000;
+    
+    this.godView.yaw = 0;
+    this.godView.pitch = 0.35;
+    this.godView.distance = CAMERA.GOD_VIEW_DISTANCE;
+    
+    console.log('🔄 Camera angle reset');
+    
+    if (this.angleChangeCallback) {
+      this.angleChangeCallback(0, 0);
+    }
   }
 
   /**
@@ -183,13 +266,45 @@ export class CameraController {
   /**
    * 720km Horizon View
    * 
-   * Camera at 720km altitude looking along the constellation
+   * Camera at 720km altitude with full pitch/yaw control
+   * Now supports looking up/down and around the constellation wall
    */
   private calculateHorizonView(): CameraState {
+    const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
+    const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
+    
+    // Base position at 720km on X axis
+    const baseRadius = CONSTANTS.CAMERA_RADIUS_KM;
+    
+    // Apply yaw rotation around Z axis (look left/right along orbit)
+    // Apply pitch to look up/down at the constellation
+    const cosY = Math.cos(yaw);
+    const sinY = Math.sin(yaw);
+    const cosP = Math.cos(pitch);
+    const sinP = Math.sin(pitch);
+    
+    // Position: fixed radius, rotated by yaw
+    const position: Vec3 = [
+      baseRadius * cosY,
+      baseRadius * sinY,
+      0
+    ];
+    
+    // Target: look outward + pitch offset
+    // Pitch looks up/down relative to the orbital plane
+    const target: Vec3 = [
+      baseRadius * cosY + 1000 * cosP * cosY,
+      baseRadius * sinY + 1000 * cosP * sinY,
+      1000 * sinP + 5000  // Base upward look + pitch
+    ];
+    
+    // Up vector: radial outward from Earth center
+    const up: Vec3 = v3norm(position);
+    
     return {
-      position: [CONSTANTS.CAMERA_RADIUS_KM, 0, 0],
-      target: [CONSTANTS.CAMERA_RADIUS_KM, 3000, 0],
-      up: [1, 0, 0],
+      position,
+      target,
+      up,
       fov: CAMERA.DEFAULT_FOV,
       near: CAMERA.NEAR_PLANE,
       far: CAMERA.FAR_PLANE,
@@ -199,10 +314,13 @@ export class CameraController {
   /**
    * God View
    * 
-   * Orbiting camera with mouse controls
+   * Full spherical orbit with pitch/yaw/distance control
    */
   private calculateGodView(): CameraState {
-    const { yaw, pitch, distance } = this.godView;
+    // Use cameraAngles directly (in degrees, convert to radians)
+    const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
+    const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
+    const distance = this.cameraAngles.distance;
     
     const cosP = Math.cos(pitch);
     const sinP = Math.sin(pitch);
@@ -234,7 +352,8 @@ export class CameraController {
   /**
    * Fleet POV
    * 
-   * Follow satellite #0 in first-person
+   * Follow satellite #0 in first-person with head-look control
+   * Drag to look around while flying with the fleet
    */
   private calculateFleetPOV(
     getPosition: (index: number, time: number) => Vec3,
@@ -247,7 +366,45 @@ export class CameraController {
     // Camera slightly above satellite
     const radial = v3norm(satPos);
     const position = v3add(satPos, v3scale(radial, 15));
-    const target = v3add(position, satVel);
+    
+    // Base forward direction (satellite velocity)
+    const forward = v3norm(satVel);
+    
+    // Apply pitch/yaw head look
+    const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD * 0.6;  // Reduced sensitivity
+    const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD * 0.6;
+    
+    // Create rotation for head look
+    const cosY = Math.cos(yaw);
+    const sinY = Math.sin(yaw);
+    const cosP = Math.cos(pitch);
+    const sinP = Math.sin(pitch);
+    
+    // Rotate forward vector by pitch and yaw
+    // Simplified: apply yaw around radial axis, pitch perpendicular
+    const right = v3norm([radial[1], -radial[0], 0]); // Perpendicular to radial in XY
+    const up = v3norm([0, 0, 1]);
+    
+    // Apply rotations to forward vector
+    let lookDir = forward;
+    // Yaw (left/right)
+    lookDir = [
+      lookDir[0] * cosY - lookDir[1] * sinY,
+      lookDir[0] * sinY + lookDir[1] * cosY,
+      lookDir[2]
+    ];
+    // Pitch (up/down)
+    lookDir = [
+      lookDir[0] * cosP - lookDir[2] * sinP,
+      lookDir[1],
+      lookDir[0] * sinP + lookDir[2] * cosP
+    ];
+    
+    const target: Vec3 = [
+      position[0] + lookDir[0] * 100,
+      position[1] + lookDir[1] * 100,
+      position[2] + lookDir[2] * 100
+    ];
     
     return {
       position,
@@ -262,20 +419,50 @@ export class CameraController {
   /**
    * Ground View
    *
-   * Camera on Earth's surface looking upward at the night sky.
-   * Position: surface of Earth on +X axis (altitude 0 km).
-   * Target: orbit altitude along +X (pointing radially outward toward zenith).
-   * Up: +Z so the horizon aligns naturally.
+   * Surface observer with free look - like standing on Earth looking at the sky.
+   * Full pitch/yaw control to look around the horizon and up at satellites.
    */
   private calculateGroundView(): CameraState {
-    // Position camera 0.1 km (100m) above surface to avoid z-fighting
-    const surface_altitude = 0.1;
+    const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
+    const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
+    
+    // Position on Earth's surface (100m above to avoid z-fighting)
+    const surfaceRadius = CONSTANTS.EARTH_RADIUS_KM + 0.1;
+    
+    // Apply yaw rotation around Z axis to position on different longitudes
+    // Base position on +X axis, rotated by yaw
+    const position: Vec3 = [
+      surfaceRadius * Math.cos(yaw),
+      surfaceRadius * Math.sin(yaw),
+      0
+    ];
+    
+    // Calculate look direction based on pitch
+    // pitch = -90 (look down at ground), 0 (look at horizon), +90 (look up/zenith)
+    // Invert pitch because dragging up should look up
+    const lookPitch = -pitch;
+    
+    // Look direction: start at horizon, rotate by pitch
+    // Horizon direction is tangent to surface (perpendicular to radial)
+    const cosP = Math.cos(lookPitch);
+    const sinP = Math.sin(lookPitch);
+    
+    // Target: look out from surface
+    const target: Vec3 = [
+      position[0] + (Math.cos(yaw) * cosP - Math.sin(yaw) * 0) * 10000,
+      position[1] + (Math.sin(yaw) * cosP + Math.cos(yaw) * 0) * 10000,
+      position[2] + sinP * 10000
+    ];
+    
+    // Up is radial from Earth center
+    const up: Vec3 = v3norm(position);
+    
     return {
-      position: [CONSTANTS.EARTH_RADIUS_KM + surface_altitude, 0, 0],
-      target: [CONSTANTS.ORBIT_RADIUS_KM, 0, 0],
-      up: [0, 0, 1],
+      position,
+      target,
+      up,
       fov: CAMERA.DEFAULT_FOV,
-      near: 0.1,  // Reduce near plane for closer rendering
+      near: 0.1,
       far: CAMERA.FAR_PLANE,
     };
   }
@@ -334,6 +521,20 @@ export class CameraController {
    */
   onModeChange(callback: (mode: ViewMode, name: string, altitude: string) => void): void {
     this.modeChangeCallback = callback;
+  }
+
+  /**
+   * Register angle change callback (for UI updates)
+   */
+  onAngleChange(callback: (yaw: number, pitch: number) => void): void {
+    this.angleChangeCallback = callback;
+  }
+
+  /**
+   * Get current camera angles
+   */
+  getCameraAngles(): CameraAngles {
+    return { ...this.cameraAngles };
   }
 
   /**

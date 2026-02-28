@@ -16,6 +16,14 @@
     <div class="stat" id="s-fps">FPS      : --</div>
     <div class="stat" id="s-view">View     : 720km Horizon</div>
     <div class="stat" id="s-visible">Visible  : --</div>
+    
+    <div id="camera-controls">
+      <div class="angle-display">
+        <span id="angleInfo">Yaw: 0° Pitch: 0°</span>
+        <button id="resetAngle" title="Reset camera angle">↺</button>
+      </div>
+      <div class="hint">Drag to rotate • Scroll to zoom • Double-click to reset</div>
+    </div>
   </div>
   
   <div id="controls">
@@ -23,6 +31,13 @@
     <button class="vbtn" id="btn1">GOD VIEW</button>
     <button class="vbtn" id="btn2">FLEET POV</button>
     <button class="vbtn" id="btn3">GROUND VIEW</button>
+    
+    <div id="pattern-controls">
+      <div class="pattern-label">BEAM PATTERN</div>
+      <button class="pbtn active" id="pbtn0" data-pattern="0">CHAOS</button>
+      <button class="pbtn" id="pbtn1" data-pattern="1">GROK</button>
+      <button class="pbtn" id="pbtn2" data-pattern="2">𝕏 LOGO</button>
+    </div>
   </div>
   
   <div id="horizon-indicator">

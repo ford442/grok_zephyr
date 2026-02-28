@@ -52,6 +52,9 @@ class GrokZephyrApp {
     this.setupCallbacks();
   }
 
+  /** Current beam pattern mode (0=chaos, 1=GROK, 2=X) */
+  private currentPatternMode = 1;
+
   /**
    * Setup UI and camera callbacks
    */
@@ -71,6 +74,75 @@ class GrokZephyrApp {
     this.profiler.onStatsUpdate((stats) => {
       this.ui.updateStats(stats);
     });
+
+    // Pattern button setup
+    this.setupPatternButtons();
+    
+    // Camera angle change updates UI
+    this.camera.onAngleChange((yaw, pitch) => {
+      this.updateAngleDisplay(yaw, pitch);
+    });
+    
+    // Reset angle button
+    const resetBtn = document.getElementById('resetAngle');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        this.camera.resetCameraAngle();
+        this.updateAngleDisplay(0, 0);
+      });
+    }
+  }
+  
+  /**
+   * Update angle display in UI
+   */
+  private updateAngleDisplay(yaw: number, pitch: number): void {
+    const angleInfo = document.getElementById('angleInfo');
+    if (angleInfo) {
+      angleInfo.textContent = `Yaw: ${yaw.toFixed(0)}° Pitch: ${pitch.toFixed(0)}°`;
+    }
+  }
+
+  /**
+   * Setup pattern switcher buttons
+   */
+  private setupPatternButtons(): void {
+    const patternButtons = document.querySelectorAll('.pbtn');
+    patternButtons.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const target = e.target as HTMLButtonElement;
+        const mode = parseInt(target.dataset.pattern || '1');
+        this.setPatternMode(mode);
+        
+        // Update active state
+        patternButtons.forEach(b => b.classList.remove('active'));
+        target.classList.add('active');
+      });
+    });
+  }
+
+  /**
+   * Set beam pattern mode (0=chaos, 1=GROK, 2=X logo)
+   */
+  setPatternMode(mode: number): void {
+    if (!this.context || !this.buffers) return;
+    
+    this.currentPatternMode = mode;
+    
+    // Update beam params uniform buffer
+    const beamParamsData = new ArrayBuffer(16);
+    const f32 = new Float32Array(beamParamsData);
+    const u32 = new Uint32Array(beamParamsData);
+    
+    f32[0] = performance.now() / 1000;  // time
+    u32[1] = mode;                       // patternMode
+    u32[2] = 65536;                      // density
+    u32[3] = 0;                          // padding
+    
+    this.context.writeBuffer(this.buffers.getBuffers().beamParams, beamParamsData);
+    
+    const modeNames = ['CHAOS', 'GROK', '𝕏 LOGO'];
+    console.log(`🔄 Beam pattern switched to: ${modeNames[mode]}`);
   }
 
   /**
@@ -255,6 +327,27 @@ class GrokZephyrApp {
     
     // Write to GPU
     this.context.writeBuffer(this.buffers.getBuffers().uniforms, uniformData);
+    
+    // Update beam params time
+    this.updateBeamParamsTime(time);
+  }
+
+  /**
+   * Update beam params time for animation
+   */
+  private updateBeamParamsTime(time: number): void {
+    if (!this.context || !this.buffers) return;
+    
+    const beamParamsData = new ArrayBuffer(16);
+    const f32 = new Float32Array(beamParamsData);
+    const u32 = new Uint32Array(beamParamsData);
+    
+    f32[0] = time;
+    u32[1] = this.currentPatternMode;
+    u32[2] = 65536;
+    u32[3] = 0;
+    
+    this.context.writeBuffer(this.buffers.getBuffers().beamParams, beamParamsData);
   }
 
   /**
