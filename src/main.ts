@@ -290,6 +290,9 @@ class GrokZephyrApp {
     // Pass 1: Compute orbital positions
     this.pipeline.encodeComputePass(encoder);
     
+    // Pass 1.5: Compute beam positions
+    this.pipeline.encodeBeamComputePass(encoder);
+    
     // Pass 2: Scene rendering (different for ground view)
     if (this.camera.getViewMode() === 'ground') {
       this.pipeline.encodeGroundScenePass(encoder);

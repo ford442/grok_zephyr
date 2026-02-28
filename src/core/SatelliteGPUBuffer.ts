@@ -25,6 +25,9 @@ export interface SatelliteBufferConfig {
   usage: GPUBufferUsageFlags;
 }
 
+/** Maximum number of laser beams */
+export const MAX_BEAMS = 65536;
+
 /** GPU buffer set for satellite data */
 export interface SatelliteBufferSet {
   /** Orbital elements (read-only storage) */
@@ -38,6 +41,8 @@ export interface SatelliteBufferSet {
     horizontal: GPUBuffer;
     vertical: GPUBuffer;
   };
+  /** Beam data storage (start + end vec4 per beam) */
+  beams: GPUBuffer;
 }
 
 /**
@@ -117,11 +122,20 @@ export class SatelliteGPUBuffer {
       vertical: this.context.createUniformBuffer(BUFFER_SIZES.BLOOM_UNIFORM),
     };
 
+    // Create beam storage buffer (2 vec4f per beam = 32 bytes per beam)
+    const beamBufferSize = MAX_BEAMS * 32;
+    console.log(`[SatelliteGPUBuffer] Beam buffer: ${(beamBufferSize / 1024).toFixed(2)} KB (${MAX_BEAMS} beams)`);
+    const beams = this.context.createBuffer(
+      beamBufferSize,
+      GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+    );
+
     this.buffers = {
       orbitalElements,
       positions,
       uniforms,
       bloomUniforms,
+      beams,
     };
 
     return this.buffers;
@@ -377,6 +391,7 @@ export class SatelliteGPUBuffer {
       this.buffers.uniforms.destroy();
       this.buffers.bloomUniforms.horizontal.destroy();
       this.buffers.bloomUniforms.vertical.destroy();
+      this.buffers.beams.destroy();
       
       if (this.isBufferPair(this.buffers.positions)) {
         this.buffers.positions.read.destroy();

@@ -32,10 +32,12 @@ export interface RenderTargets {
 /** Pipeline bind groups */
 export interface PipelineBindGroups {
   compute: GPUBindGroup;
+  beamCompute: GPUBindGroup;
   stars: GPUBindGroup;
   earth: GPUBindGroup;
   atmosphere: GPUBindGroup;
   satellites: GPUBindGroup;
+  beam: GPUBindGroup;
   groundTerrain: GPUBindGroup;
   bloomThreshold: GPUBindGroup;
   bloomHorizontal: GPUBindGroup;
@@ -43,13 +45,18 @@ export interface PipelineBindGroups {
   composite: GPUBindGroup;
 }
 
+/** Maximum number of laser beams */
+export const MAX_BEAMS = 65536;
+
 /** All render pipelines */
 export interface Pipelines {
   compute: GPUComputePipeline;
+  beamCompute: GPUComputePipeline;
   stars: GPURenderPipeline;
   earth: GPURenderPipeline;
   atmosphere: GPURenderPipeline;
   satellites: GPURenderPipeline;
+  beam: GPURenderPipeline;
   groundTerrain: GPURenderPipeline;
   bloomThreshold: GPURenderPipeline;
   bloomBlur: GPURenderPipeline;
@@ -176,12 +183,45 @@ export class RenderPipeline {
       alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
     };
 
+    // Beam compute bind group layout
+    const beamComputeLayout = device.createPipelineLayout({
+      bindGroupLayouts: [
+        device.createBindGroupLayout({
+          entries: [
+            { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+            { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+            { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          ],
+        }),
+      ],
+    });
+
+    // Beam render bind group layout (same as satellites - uniform + storage)
+    const beamRenderLayout = device.createPipelineLayout({
+      bindGroupLayouts: [
+        device.createBindGroupLayout({
+          entries: [
+            { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+            { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+          ],
+        }),
+      ],
+    });
+
     // Create pipelines
     this.pipelines = {
       compute: device.createComputePipeline({
         layout: computeLayout,
         compute: {
           module: this.context.createShaderModule(SHADERS.orbital, 'orbital'),
+          entryPoint: 'main',
+        },
+      }),
+
+      beamCompute: device.createComputePipeline({
+        layout: beamComputeLayout,
+        compute: {
+          module: this.context.createShaderModule(SHADERS.beamCompute, 'beam-compute'),
           entryPoint: 'main',
         },
       }),
@@ -257,6 +297,27 @@ export class RenderPipeline {
           targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
         },
         primitive: { topology: 'triangle-list' },
+        depthStencil: {
+          format: RENDER.DEPTH_FORMAT,
+          depthWriteEnabled: false,
+          depthCompare: 'less',
+        },
+      }),
+
+      beam: device.createRenderPipeline({
+        layout: beamRenderLayout,
+        vertex: {
+          module: this.context.createShaderModule(SHADERS.beamRender, 'beam-render'),
+          entryPoint: 'vs_main',
+        },
+        fragment: {
+          module: this.context.createShaderModule(SHADERS.beamRender, 'beam-render'),
+          entryPoint: 'fs_main',
+          targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
+        },
+        primitive: { 
+          topology: 'triangle-strip',
+        },
         depthStencil: {
           format: RENDER.DEPTH_FORMAT,
           depthWriteEnabled: false,
@@ -387,6 +448,15 @@ export class RenderPipeline {
         ],
       }),
 
+      beamCompute: device.createBindGroup({
+        layout: this.pipelines.beamCompute.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.buffers.uniforms } },
+          { binding: 1, resource: { buffer: posBuffer } },
+          { binding: 2, resource: { buffer: this.buffers.beams } },
+        ],
+      }),
+
       stars: device.createBindGroup({
         layout: this.pipelines.stars.getBindGroupLayout(0),
         entries: [{ binding: 0, resource: { buffer: this.buffers.uniforms } }],
@@ -407,6 +477,14 @@ export class RenderPipeline {
         entries: [
           { binding: 0, resource: { buffer: this.buffers.uniforms } },
           { binding: 1, resource: { buffer: posBuffer } },
+        ],
+      }),
+
+      beam: device.createBindGroup({
+        layout: this.pipelines.beam.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.buffers.uniforms } },
+          { binding: 1, resource: { buffer: this.buffers.beams } },
         ],
       }),
 
@@ -486,6 +564,19 @@ export class RenderPipeline {
   }
 
   /**
+   * Execute beam compute pass
+   */
+  encodeBeamComputePass(encoder: GPUCommandEncoder): void {
+    if (!this.pipelines || !this.bindGroups) return;
+    
+    const pass = encoder.beginComputePass();
+    pass.setPipeline(this.pipelines.beamCompute);
+    pass.setBindGroup(0, this.bindGroups.beamCompute);
+    pass.dispatchWorkgroups(Math.ceil(MAX_BEAMS / 256));
+    pass.end();
+  }
+
+  /**
    * Execute scene render pass
    */
   encodeScenePass(
@@ -535,11 +626,16 @@ export class RenderPipeline {
     pass.setBindGroup(0, this.bindGroups.satellites);
     pass.draw(6, CONSTANTS.NUM_SATELLITES);
 
+    // Laser beams (65k beams, 4 verts each via triangle strip)
+    pass.setPipeline(this.pipelines.beam);
+    pass.setBindGroup(0, this.bindGroups.beam);
+    pass.draw(4, MAX_BEAMS);
+
     pass.end();
   }
 
   /**
-   * Execute ground view scene render pass (mountains, lake, satellites)
+   * Execute ground view scene render pass (mountains, lake, satellites, beams)
    */
   encodeGroundScenePass(encoder: GPUCommandEncoder): void {
     if (!this.pipelines || !this.bindGroups || !this.renderTargets) return;
@@ -563,6 +659,11 @@ export class RenderPipeline {
     pass.setPipeline(this.pipelines.satellites);
     pass.setBindGroup(0, this.bindGroups.satellites);
     pass.draw(6, CONSTANTS.NUM_SATELLITES);
+
+    // Laser beams from satellites to Earth surface
+    pass.setPipeline(this.pipelines.beam);
+    pass.setBindGroup(0, this.bindGroups.beam);
+    pass.draw(4, MAX_BEAMS);
 
     // Ground terrain (mountains + lake) rendered on top to occlude foreground
     pass.setPipeline(this.pipelines.groundTerrain);

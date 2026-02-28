@@ -194,7 +194,7 @@ fn sat_color(idx:u32) -> vec3f {
   const EARTH_RADIUS_KM: f32 = 6371.0;
 
   var visible = true;
-  if (dist > 14000.0) { visible = false; }
+  if (dist > 180000.0) { visible = false; }  // Support extreme zoom out
   if (visible) {
     for (var p=0u; p<6u; p++) {
       let pl = uni.frustum[p];
@@ -229,7 +229,9 @@ fn sat_color(idx:u32) -> vec3f {
     return o;
   }
 
-  let bsize = clamp(1200.0/max(dist,50.0), 0.4, 60.0);
+  // Sqrt falloff for better visibility at planetary scales
+  let bsize = 800.0 / sqrt(max(dist, 80.0));
+  bsize = clamp(bsize, 0.6, 80.0);
 
   const quad = array<vec2f,6>(
     vec2f(-1,-1),vec2f(1,-1),vec2f(-1,1),
@@ -299,6 +301,140 @@ struct VSOut { @builtin(position) pos:vec4f, @location(0) uv:vec2f }
   let lum = dot(c,vec3f(0.2126,0.7152,0.0722));
   let t   = smoothstep(0.75,1.4,lum);
   return vec4f(c*t,1.0);
+}
+`;
+
+/** Beam compute shader - generates beam positions from satellites */
+export const BEAM_COMPUTE_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+struct Beam {
+  start : vec4f,  // xyz = sat pos, w = intensity (0-1)
+  end   : vec4f,  // xyz = target pos, w = hue (0-360)
+};
+
+@group(0) @binding(1) var<storage, read> sat_pos : array<vec4f>;
+@group(0) @binding(2) var<storage, read_write> beams : array<Beam>;
+
+const EARTH_RADIUS_KM : f32 = 6371.0;
+const MAX_BEAMS : u32 = 65536u;
+const SATELLITE_STRIDE : u32 = 16u;  // Every 16th satellite
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid : vec3u) {
+  let i = gid.x;
+  if (i >= MAX_BEAMS) { return; }
+  
+  let satIdx = i * SATELLITE_STRIDE;
+  if (satIdx >= 1048576u) { 
+    beams[i].start.w = 0.0;
+    return; 
+  }
+  
+  let sat = sat_pos[satIdx];
+  let pos = sat.xyz;
+  let dir = normalize(pos);
+  
+  // Target: Earth surface along radial line
+  let target = dir * EARTH_RADIUS_KM;
+  
+  // Subtle motion chaos
+  let t = uni.time;
+  let chaos = vec3f(
+    sin(t + f32(i) * 0.1) * 30.0,
+    cos(t * 0.7 + f32(i) * 0.13) * 30.0,
+    sin(t * 0.3 + f32(i) * 0.07) * 20.0
+  );
+  
+  // Rainbow cycling
+  let hue = fract(t * 0.03 + f32(i) * 0.0001) * 360.0;
+  
+  beams[i].start = vec4f(pos, 0.9);
+  beams[i].end = vec4f(target + chaos, hue);
+}
+`;
+
+/** Beam render shader - instanced camera-aligned ribbons */
+export const BEAM_RENDER_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+struct Beam {
+  start : vec4f,
+  end   : vec4f,
+};
+
+@group(0) @binding(1) var<storage, read> beams : array<Beam>;
+
+struct VSOut {
+  @builtin(position) pos : vec4f,
+  @location(0) lineCoord : vec2f,
+  @location(1) intensity : f32,
+  @location(2) hue : f32,
+};
+
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> vec3f {
+  let hf = h / 360.0;
+  let c = (1.0 - abs(2.0 * l - 1.0)) * s;
+  let x = c * (1.0 - abs(fract(hf * 6.0) * 2.0 - 1.0));
+  let m = l - c * 0.5;
+  
+  var rgb : vec3f;
+  let hp = hf * 6.0;
+  if (hp < 1.0) { rgb = vec3f(c, x, 0.0); }
+  else if (hp < 2.0) { rgb = vec3f(x, c, 0.0); }
+  else if (hp < 3.0) { rgb = vec3f(0.0, c, x); }
+  else if (hp < 4.0) { rgb = vec3f(0.0, x, c); }
+  else if (hp < 5.0) { rgb = vec3f(x, 0.0, c); }
+  else { rgb = vec3f(c, 0.0, x); }
+  
+  return rgb + m;
+}
+
+@vertex
+fn vs_main(
+  @builtin(instance_index) inst : u32,
+  @builtin(vertex_index) vtx : u32
+) -> VSOut {
+  let beam = beams[inst];
+  
+  if (beam.start.w <= 0.0) {
+    var dummy : VSOut;
+    dummy.pos = vec4f(0.0);
+    return dummy;
+  }
+  
+  let start = beam.start.xyz;
+  let end = beam.end.xyz;
+  let hue = beam.end.w;
+  
+  let dir = end - start;
+  let len = length(dir);
+  let dirN = dir / len;
+  
+  // Camera-facing basis
+  let toCam = normalize(uni.camera_pos.xyz - start);
+  let right = normalize(cross(dirN, toCam));
+  
+  // vtx: 0=BL, 1=BR, 2=TL, 3=TR
+  let along = f32(vtx / 2u);
+  let across = f32(vtx % 2u) * 2.0 - 1.0;
+  
+  let width = 12.0;  // km
+  let worldPos = start + dir * along + right * (across * width * 0.5);
+  
+  var out : VSOut;
+  out.pos = uni.view_proj * vec4f(worldPos, 1.0);
+  out.lineCoord = vec2f(along, across);
+  out.intensity = beam.start.w;
+  out.hue = hue;
+  return out;
+}
+
+@fragment
+fn fs_main(in : VSOut) -> @location(0) vec4f {
+  let dist = abs(in.lineCoord.y);
+  let edgeAlpha = 1.0 - smoothstep(0.0, 0.9, dist);
+  
+  let col = hsl_to_rgb(in.hue, 1.0, 0.5);
+  let hdrCol = col * in.intensity * 6.0;
+  
+  return vec4f(hdrCol, edgeAlpha * in.intensity);
 }
 `;
 
@@ -522,6 +658,8 @@ export const SHADERS = {
   atmosphere: ATM_SHADER,
   satellites: SAT_SHADER,
   groundTerrain: GROUND_TERRAIN_SHADER,
+  beamCompute: BEAM_COMPUTE_SHADER,
+  beamRender: BEAM_RENDER_SHADER,
   bloomThreshold: BLOOM_THRESHOLD_SHADER,
   bloomBlur: BLOOM_BLUR_SHADER,
   composite: COMPOSITE_SHADER,
