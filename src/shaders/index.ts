@@ -208,7 +208,10 @@ struct VOut {
   @location(2) bright   : f32,
 }
 
-// Shell-specific colors: blue (low/340km), white (mid/550km), gold (high/1150km)
+// Shell-specific colors matching orbital shells:
+// colorIdx 2 = low shell (340km alt, 6711km radius) → Electric cyan-blue
+// colorIdx 6 = mid shell (550km alt, 6921km radius) → Cool white
+// colorIdx 3 = high shell (1150km alt, 7521km radius) → Warm gold
 fn shell_color(colorIdx:u32) -> vec3f {
   // colorIdx from orbital elements: 2=blue, 6=white, 3=gold
   if(colorIdx==2u){return vec3f(0.15,0.55,1.0);}   // Electric cyan-blue (low shell)

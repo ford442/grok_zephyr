@@ -81,6 +81,9 @@ export class CameraController {
   // Canvas reference for pointer lock
   private canvas: HTMLCanvasElement | null = null;
   
+  // Fleet POV micro-movement speed (km per frame)
+  private readonly FLEET_MOVE_SPEED = 0.08;
+  
   // Keyboard state for Fleet POV movement
   private keys: Record<string, boolean> = {};
   
@@ -395,7 +398,7 @@ export class CameraController {
     const localUp = v3norm(v3cross(right, forward));
     
     // Apply WASD micro-movement in local frame
-    const moveSpeed = 0.08; // km per frame
+    const moveSpeed = this.FLEET_MOVE_SPEED;
     if (this.keys['w']) this.fleetOffset = v3add(this.fleetOffset, v3scale(forward, moveSpeed));
     if (this.keys['s']) this.fleetOffset = v3add(this.fleetOffset, v3scale(forward, -moveSpeed));
     if (this.keys['a'] || this.keys['q']) this.fleetOffset = v3add(this.fleetOffset, v3scale(right, -moveSpeed));
