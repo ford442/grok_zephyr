@@ -229,7 +229,15 @@ class GrokZephyrApp {
     f32[28] = time;
     f32[29] = deltaTime;
     u32[30] = this.camera.getViewModeIndex();
-    u32[31] = 0;
+
+    // is_ground_view flag (offset 124) - 1 if camera is near/on surface
+    const cameraRadius = Math.sqrt(
+      camera.position[0] * camera.position[0] +
+      camera.position[1] * camera.position[1] +
+      camera.position[2] * camera.position[2]
+    );
+    const isGroundView = cameraRadius < CONSTANTS.EARTH_RADIUS_KM + 100.0 ? 1 : 0;
+    u32[31] = isGroundView;
     
     // Frustum planes (128-223) - 6 planes * 4 floats each
     for (let p = 0; p < 6; p++) {

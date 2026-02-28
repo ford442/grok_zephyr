@@ -79,8 +79,8 @@ export interface UniformData {
   deltaTime: number;
   /** View mode index (offset 120, 4 bytes) */
   viewMode: number;
-  /** Padding (offset 124, 4 bytes) */
-  pad0: number;
+  /** Is ground view flag (offset 124, 4 bytes) */
+  isGroundView: number;
   /** Frustum planes (offset 128, 96 bytes) - 6 planes, each vec4f */
   frustum: Float32Array;
   /** Screen size in pixels (offset 224, 8 bytes) */

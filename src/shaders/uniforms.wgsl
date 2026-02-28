@@ -12,7 +12,7 @@ struct Uni {
   time           : f32,           // offset 112  size 4
   delta_time     : f32,           // offset 116  size 4
   view_mode      : u32,           // offset 120  size 4
-  pad0           : u32,           // offset 124  size 4
+  is_ground_view : u32,           // offset 124  size 4
   frustum        : array<vec4f,6>,// offset 128  size 96
   screen_size    : vec2f,         // offset 224  size 8
   pad1           : vec2f,         // offset 232  size 8

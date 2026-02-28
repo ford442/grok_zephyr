@@ -20,7 +20,7 @@ struct Uni {
   time           : f32,
   delta_time     : f32,
   view_mode      : u32,
-  pad0           : u32,
+  is_ground_view : u32,
   frustum        : array<vec4f,6>,
   screen_size    : vec2f,
   pad1           : vec2f,
@@ -191,12 +191,32 @@ fn sat_color(idx:u32) -> vec3f {
   let cam     = uni.camera_pos.xyz;
   let dist    = length(wp - cam);
 
+  const EARTH_RADIUS_KM: f32 = 6371.0;
+
   var visible = true;
   if (dist > 14000.0) { visible = false; }
   if (visible) {
     for (var p=0u; p<6u; p++) {
       let pl = uni.frustum[p];
       if (dot(pl.xyz, wp) + pl.w < -200.0) { visible=false; break; }
+    }
+  }
+
+  // Ground view: only show satellites above horizon
+  if (visible && uni.is_ground_view != 0u) {
+    let ray_dir = wp - cam;
+    let ray_len_sq = dot(ray_dir, ray_dir);
+    let a = ray_len_sq;
+    let b = 2.0 * dot(cam, ray_dir);
+    let c = dot(cam, cam) - EARTH_RADIUS_KM * EARTH_RADIUS_KM;
+    let discriminant = b * b - 4.0 * a * c;
+    if (discriminant >= 0.0) {
+      let sqrt_disc = sqrt(discriminant);
+      let t1 = (-b - sqrt_disc) / (2.0 * a);
+      let t2 = (-b + sqrt_disc) / (2.0 * a);
+      if ((t1 > 0.0 && t1 < 1.0) || (t2 > 0.0 && t2 < 1.0)) {
+        visible = false;
+      }
     }
   }
 
@@ -222,12 +242,26 @@ fn sat_color(idx:u32) -> vec3f {
   let fpos   = wp + offset;
 
   let cidx    = u32(abs(cdat)) % 7u;
-  let col     = sat_color(cidx);
+  var col     = sat_color(cidx);
   let phase   = cdat*0.15 + uni.time*(0.8+0.4*fract(f32(ii)*0.000613));
   let pattern = 0.35 + 0.65*(0.5 + 0.5*sin(phase));
 
   let atten   = 1.0/(1.0 + dist*0.00075);
-  let bright  = pattern * atten;
+  var bright  = pattern * atten;
+
+  // RGB blinking test pattern for ground view
+  if (uni.is_ground_view != 0u) {
+    let test_phase = uni.time * 2.0 + f32(ii) * 0.001;
+    let cycle = fract(test_phase);
+    if (cycle < 0.33) {
+      col = vec3f(1.0, 0.0, 0.0);
+    } else if (cycle < 0.66) {
+      col = vec3f(0.0, 1.0, 0.0);
+    } else {
+      col = vec3f(0.0, 0.0, 1.0);
+    }
+    bright = 2.0;
+  }
 
   o.cp     = uni.view_proj * vec4f(fpos,1);
   o.uv     = (qv + 1.0)*0.5;
