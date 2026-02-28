@@ -55,8 +55,9 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
   let shellData = e.w;
   
   // Extract shell index (upper 8 bits) and color (lower 8 bits)
-  let shellIndex = u32(shellData) >> 8u;
-  let colorIndex = shellData & 255.0;
+  let shellDataU = u32(shellData);
+  let shellIndex = shellDataU >> 8u;
+  let colorIndex = shellDataU & 255u;
   
   // Select orbit parameters based on shell
   let orbitR = ORBIT_RADII_KM[shellIndex];
@@ -723,6 +724,7 @@ fn fbm(p:vec2f)->f32 {
   
   // Calculate mountain silhouette
   var mountainHeight = 0.0;
+  var mountainY = horizonY;  // Default to horizon (no mountain)
   var terrainColor = skyColor;  // Start with sky
   
   if(uv.y < horizonY) {
@@ -739,7 +741,7 @@ fn fbm(p:vec2f)->f32 {
     mountainHeight *= smoothstep(0.0, 0.5, dist);
     
     // Mountain silhouette shape
-    let mountainY = horizonY - mountainHeight;
+    mountainY = horizonY - mountainHeight;
     
     if(uv.y <= mountainY) {
       // We're in the mountain terrain
