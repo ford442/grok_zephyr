@@ -12,8 +12,24 @@ import { UIManager } from '@/ui/UIManager.js';
 import { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
 import { genSphere, extractFrustum } from '@/utils/math.js';
 import { CONSTANTS, RENDER, CAMERA, BUFFER_SIZES } from '@/types/constants.js';
+import { TLELoader } from '@/data/TLELoader.js';
 
 import './styles.css';
+
+/**
+ * Known CelesTrak group names for the ?tle= query param shorthand.
+ * Usage: ?tle=starlink or ?tle=https://example.com/my-tles.txt
+ */
+const CELESTRAK_GROUPS: Record<string, string> = {
+  starlink: 'starlink',
+  oneweb: 'oneweb',
+  iridium: 'iridium',
+  'iridium-next': 'iridium-NEXT',
+  gps: 'gps-ops',
+  galileo: 'galileo',
+  stations: 'stations',
+  active: 'active',
+};
 
 /**
  * Main Application Class
@@ -122,6 +138,35 @@ class GrokZephyrApp {
   }
 
   /**
+   * Resolve the TLE data source from the query string.
+   *
+   * Supports:
+   *   ?tle=starlink       → CelesTrak Starlink group
+   *   ?tle=oneweb         → CelesTrak OneWeb group
+   *   ?tle=https://...    → arbitrary URL returning 3-line TLE text
+   *
+   * Returns null if no ?tle param is present (uses default procedural mode).
+   */
+  private getTLESource(): string | null {
+    const params = new URLSearchParams(window.location.search);
+    const tleParam = params.get('tle');
+    if (!tleParam) return null;
+
+    const lower = tleParam.toLowerCase();
+    if (CELESTRAK_GROUPS[lower]) {
+      return `https://celestrak.org/NORAD/elements/gp.php?GROUP=${CELESTRAK_GROUPS[lower]}&FORMAT=tle`;
+    }
+
+    // Treat as a direct URL if it starts with http(s)
+    if (tleParam.startsWith('http://') || tleParam.startsWith('https://')) {
+      return tleParam;
+    }
+
+    // Otherwise treat as a CelesTrak group name (best-effort)
+    return `https://celestrak.org/NORAD/elements/gp.php?GROUP=${encodeURIComponent(tleParam)}&FORMAT=tle`;
+  }
+
+  /**
    * Set beam pattern mode (0=chaos, 1=GROK, 2=X logo)
    */
   setPatternMode(mode: number): void {
@@ -165,9 +210,31 @@ class GrokZephyrApp {
       // Initialize buffers
       this.buffers = new SatelliteGPUBuffer(this.context);
       const bufferSet = this.buffers.initialize();
-      
-      // Generate and upload orbital elements
-      this.buffers.generateOrbitalElements();
+
+      // Load orbital data: TLE if requested via query param, else procedural Walker
+      const tleSource = this.getTLESource();
+      let dataSourceLabel = 'Procedural Walker';
+      let realTLECount = 0;
+
+      if (tleSource) {
+        try {
+          console.log(`[GrokZephyr] Loading TLE data from: ${tleSource}`);
+          const tles = await TLELoader.fromFile(tleSource);
+          if (tles.length > 0) {
+            realTLECount = this.buffers.loadFromTLEData(tles);
+            dataSourceLabel = `TLE (${realTLECount.toLocaleString()} real)`;
+            console.log(`[GrokZephyr] Loaded ${realTLECount} TLE satellites, padded to ${CONSTANTS.NUM_SATELLITES.toLocaleString()}`);
+          } else {
+            console.warn('[GrokZephyr] TLE source returned 0 records, falling back to procedural');
+            this.buffers.generateOrbitalElements();
+          }
+        } catch (err) {
+          console.warn('[GrokZephyr] TLE fetch/parse failed, falling back to procedural generation:', err);
+          this.buffers.generateOrbitalElements();
+        }
+      } else {
+        this.buffers.generateOrbitalElements();
+      }
       this.buffers.uploadOrbitalElements();
       
       // Create Earth geometry
@@ -185,6 +252,7 @@ class GrokZephyrApp {
       
       // Update UI
       this.ui.setFleetCount(CONSTANTS.NUM_SATELLITES);
+      this.ui.setDataSource(dataSourceLabel);
       this.ui.hideError();
       
       // Set initial view mode

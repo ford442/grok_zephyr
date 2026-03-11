@@ -7,6 +7,7 @@
 
 import type WebGPUContext from './WebGPUContext.js';
 import { CONSTANTS, BUFFER_SIZES, INCLINATION_SHELLS } from '@/types/constants.js';
+import type { TLEData } from '@/types/index.js';
 
 /** Buffer pair for double-buffering */
 export interface BufferPair {
@@ -215,6 +216,114 @@ export class SatelliteGPUBuffer {
     console.log(`[SatelliteGPUBuffer] Generated elements in ${elapsed.toFixed(2)}ms`);
 
     return this.orbitalElementData;
+  }
+
+  /**
+   * Load orbital elements from parsed TLE data.
+   *
+   * Data flow: TLE text → TLELoader.parse() → TLEData[] → this method → GPU buffer
+   *
+   * Each TLE line-2 encodes: inclination, RAAN, eccentricity, arg of perigee,
+   * mean anomaly, and mean motion. We extract RAAN, inclination, and mean anomaly
+   * into the compact vec4f GPU format. The shell index is inferred from altitude.
+   *
+   * If tleCount < NUM_SATELLITES, the remaining slots are filled deterministically
+   * with procedural Walker satellites (same as generateOrbitalElements) so the
+   * compute shader always processes a full 1,048,576-element buffer.
+   *
+   * @param tles - Parsed TLE records from TLELoader.parse()
+   * @returns Number of real TLE satellites loaded (before padding)
+   */
+  loadFromTLEData(tles: TLEData[]): number {
+    const startTime = performance.now();
+    const tleCount = Math.min(tles.length, this.numSatellites);
+
+    console.log(`[SatelliteGPUBuffer] Loading ${tleCount} TLE satellites...`);
+
+    for (let t = 0; t < tleCount; t++) {
+      const { line2 } = tles[t];
+      // TLE line-2 format (fixed-width columns):
+      //   col 9-16:  inclination (deg)
+      //   col 18-25: RAAN (deg)
+      //   col 27-33: eccentricity (leading decimal point implied)
+      //   col 35-42: argument of perigee (deg)
+      //   col 44-51: mean anomaly (deg)
+      //   col 53-63: mean motion (rev/day)
+      const incDeg = parseFloat(line2.substring(8, 16).trim());
+      const raanDeg = parseFloat(line2.substring(17, 25).trim());
+      const meanAnomalyDeg = parseFloat(line2.substring(43, 51).trim());
+      const meanMotionRevPerDay = parseFloat(line2.substring(52, 63).trim());
+
+      const DEG_TO_RAD = Math.PI / 180;
+      const raan = raanDeg * DEG_TO_RAD;
+      const inc = incDeg * DEG_TO_RAD;
+      const M = meanAnomalyDeg * DEG_TO_RAD;
+
+      // Derive altitude from mean motion: n(rad/s) = meanMotion * 2π / 86400
+      // a = (μ / n²)^(1/3), altitude = a - R_earth
+      const nRadPerSec = meanMotionRevPerDay * 2 * Math.PI / 86400;
+      const MU = 398600.4418;
+      const a = Math.pow(MU / (nRadPerSec * nRadPerSec), 1 / 3);
+      const altKm = a - 6371.0;
+
+      // Classify into shell by altitude
+      let shellIndex: number;
+      if (altKm < 450) {
+        shellIndex = 0; // low shell (~340 km)
+      } else if (altKm < 800) {
+        shellIndex = 1; // mid shell (~550 km)
+      } else {
+        shellIndex = 2; // high shell (~1150 km)
+      }
+
+      const shellColors = [2.0, 6.0, 3.0]; // Blue, White, Gold
+      const colorIndex = shellColors[shellIndex];
+      const shellData = (shellIndex << 8) | (colorIndex & 0xFF);
+
+      const idx = t * 4;
+      this.orbitalElementData[idx + 0] = raan;
+      this.orbitalElementData[idx + 1] = inc;
+      this.orbitalElementData[idx + 2] = M;
+      this.orbitalElementData[idx + 3] = shellData;
+    }
+
+    // Fill remaining slots with deterministic procedural Walker satellites.
+    // Uses the same distribution as generateOrbitalElements but with a fixed
+    // seed (no Math.random) so results are reproducible.
+    if (tleCount < this.numSatellites) {
+      const remaining = this.numSatellites - tleCount;
+      console.log(`[SatelliteGPUBuffer] Padding ${remaining.toLocaleString()} remaining slots with procedural Walker data`);
+
+      const { NUM_PLANES, SATELLITES_PER_PLANE } = CONSTANTS;
+      const shells = INCLINATION_SHELLS;
+
+      for (let j = 0; j < remaining; j++) {
+        const globalIdx = tleCount + j;
+        const plane = globalIdx % NUM_PLANES;
+        const sat = Math.floor(globalIdx / NUM_PLANES) % SATELLITES_PER_PLANE;
+
+        const raan = (plane / NUM_PLANES) * Math.PI * 2;
+        const shellIdx = Math.floor(plane / (NUM_PLANES / shells.length));
+        const inclination = shells[shellIdx];
+        const meanAnomaly = (sat / SATELLITES_PER_PLANE) * Math.PI * 2;
+
+        // Deterministic shell assignment based on global index
+        const shellIndex = globalIdx % 3 === 0 ? 0 : globalIdx % 3 === 1 ? 1 : 2;
+        const shellColors = [2.0, 6.0, 3.0];
+        const colorIndex = shellColors[shellIndex];
+        const shellData = (shellIndex << 8) | (colorIndex & 0xFF);
+
+        const idx = globalIdx * 4;
+        this.orbitalElementData[idx + 0] = raan;
+        this.orbitalElementData[idx + 1] = inclination;
+        this.orbitalElementData[idx + 2] = meanAnomaly;
+        this.orbitalElementData[idx + 3] = shellData;
+      }
+    }
+
+    const elapsed = performance.now() - startTime;
+    console.log(`[SatelliteGPUBuffer] TLE load complete in ${elapsed.toFixed(2)}ms (${tleCount} real + ${this.numSatellites - tleCount} procedural)`);
+    return tleCount;
   }
 
   /**

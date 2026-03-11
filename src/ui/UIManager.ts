@@ -132,6 +132,21 @@ export class UIManager {
   }
 
   /**
+   * Display the orbital data source (procedural or TLE).
+   * Shown below the fleet count in the HUD.
+   */
+  setDataSource(label: string): void {
+    let el = document.getElementById('s-datasrc');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 's-datasrc';
+      el.className = 'stat';
+      this.elements.fleet.parentElement?.insertBefore(el, this.elements.fleet.nextSibling);
+    }
+    el.textContent = `Source   : ${label}`;
+  }
+
+  /**
    * Update all stats from performance data
    */
   updateStats(stats: PerformanceStats): void {
