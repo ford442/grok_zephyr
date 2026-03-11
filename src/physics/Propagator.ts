@@ -295,11 +295,7 @@ export class SGP4Propagator {
     const satnum = parseInt(line.substring(2, 7).trim());
     const epochYear = parseInt(line.substring(18, 20));
     const epochDay = parseFloat(line.substring(20, 32));
-    const ndot = parseFloat(line.substring(33, 43).trim());  // first derivative of mean motion
-    const nddotStr = line.substring(44, 52);                 // second derivative
     const bstarStr = line.substring(53, 61);                 // BSTAR drag term
-    const ephtype = parseInt(line[62]);
-    const elnum = parseInt(line.substring(64, 68));
 
     // Convert epoch year to full year
     const fullYear = epochYear < 57 ? 2000 + epochYear : 1900 + epochYear;
@@ -425,8 +421,6 @@ export class SGP4Propagator {
     const sqrt1me2 = Math.sqrt(1 - e * e);
     
     // Distance from center
-    const r = a * (1 - e * cosE);
-    
     // Position and velocity in orbital plane
     const xOrb = a * (cosE - e);
     const yOrb = a * sqrt1me2 * sinE;

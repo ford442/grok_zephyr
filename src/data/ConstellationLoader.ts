@@ -14,7 +14,6 @@ import {
   KeplerianElements,
   PHYSICAL_CONSTANTS,
   SGP4Propagator,
-  J2Perturbation,
 } from '../physics/Propagator';
 
 // Simulation constants
@@ -263,12 +262,6 @@ export class TLELoader {
  *               in mean anomaly, with phase difference between planes
  */
 export class WalkerConstellationGenerator {
-  private j2: J2Perturbation;
-
-  constructor() {
-    this.j2 = new J2Perturbation();
-  }
-
   /**
    * Generate Walker Delta constellation
    * 
@@ -385,12 +378,10 @@ export class WalkerConstellationGenerator {
  */
 export class ConstellationLoader {
   private tleLoader: TLELoader;
-  private walkerGen: WalkerConstellationGenerator;
   private config: ConstellationConfig;
 
   constructor(config: ConstellationConfig = CONSTELLATIONS.STARLINK) {
     this.tleLoader = new TLELoader();
-    this.walkerGen = new WalkerConstellationGenerator();
     this.config = config;
   }
 
@@ -504,7 +495,6 @@ export class ConstellationLoader {
     satellites: SatelliteState[];
     shellDistribution: number[];
   } {
-    const elements = this.walkerGen.generateConstellation(this.config);
     const satellites: SatelliteState[] = [];
     const gpuData = new Float32Array(NUM_SAT * 4);
     const extendedData = new Float32Array(NUM_SAT * 16);
