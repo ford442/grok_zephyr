@@ -174,3 +174,10 @@ export const BLINK_TIMING = {
   /** Pixel drift: 1150km shell (px/s) */
   DRIFT_1150KM_PX_PER_SEC: 62.9,
 } as const;
+
+/** Physics mode configurations */
+export const PHYSICS_MODES = [
+  { id: 0, name: 'Simple', description: 'Basic circular orbits', implemented: true },
+  { id: 1, name: 'Keplerian', description: 'Elliptical orbits with mean anomaly', implemented: true },
+  { id: 2, name: 'J2 Perturbed', description: 'Oblateness corrections', implemented: false },
+] as const;

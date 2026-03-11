@@ -4,6 +4,9 @@
  * Main exports for the orbital propagation system.
  */
 
+import type { KeplerianElements } from './Propagator.js';
+import { PHYSICAL_CONSTANTS } from './Propagator.js';
+
 // Core propagator exports
 export {
   Propagator,
@@ -13,15 +16,14 @@ export {
   PHYSICAL_CONSTANTS,
   STARLINK_SHELLS,
   defaultPropagator,
-} from './Propagator';
+} from './Propagator.js';
 
 export type {
-  KeplerianElements,
   CartesianState,
   SatelliteState,
   TLE,
   VisibilityResult,
-} from './Propagator';
+} from './Propagator.js';
 
 // Constellation loader exports
 export {
@@ -117,17 +119,17 @@ export function calculateSatellitePosition(
   const sinΩ = Math.sin(Ω_current);
   const cosω = Math.cos(ω_current);
   const sinω = Math.sin(ω_current);
-  const cosI = Math.cos(i);
+  const cosIfinal = Math.cos(i);
   const sinI = Math.sin(i);
   
   // Position
-  const x = (cosΩ * cosω - sinΩ * sinω * cosI) * xOrb + (-cosΩ * sinω - sinΩ * cosω * cosI) * yOrb;
-  const y = (sinΩ * cosω + cosΩ * sinω * cosI) * xOrb + (-sinΩ * sinω + cosΩ * cosω * cosI) * yOrb;
+  const x = (cosΩ * cosω - sinΩ * sinω * cosIfinal) * xOrb + (-cosΩ * sinω - sinΩ * cosω * cosIfinal) * yOrb;
+  const y = (sinΩ * cosω + cosΩ * sinω * cosIfinal) * xOrb + (-sinΩ * sinω + cosΩ * cosω * cosIfinal) * yOrb;
   const z = (sinω * sinI) * xOrb + (cosω * sinI) * yOrb;
   
   // Velocity
-  const vx = (cosΩ * cosω - sinΩ * sinω * cosI) * vxOrb + (-cosΩ * sinω - sinΩ * cosω * cosI) * vyOrb;
-  const vy = (sinΩ * cosω + cosΩ * sinω * cosI) * vxOrb + (-sinΩ * sinω + cosΩ * cosω * cosI) * vyOrb;
+  const vx = (cosΩ * cosω - sinΩ * sinω * cosIfinal) * vxOrb + (-cosΩ * sinω - sinΩ * cosω * cosIfinal) * vyOrb;
+  const vy = (sinΩ * cosω + cosΩ * sinω * cosIfinal) * vxOrb + (-sinΩ * sinω + cosΩ * cosω * cosIfinal) * vyOrb;
   const vz = (sinω * sinI) * vxOrb + (cosω * sinI) * vyOrb;
   
   return {

@@ -171,11 +171,11 @@ export class RenderPipeline {
       ],
     };
 
-    // HDR blend state
-    const hdrBlend: GPUBlendState = {
-      color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-      alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-    };
+    // HDR blend state (unused but kept for reference)
+    // const hdrBlend: GPUBlendState = {
+    //   color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+    //   alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+    // };
 
     // Additive blend state
     const additiveBlend: GPUBlendState = {

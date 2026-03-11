@@ -221,7 +221,7 @@ export class SatelliteColorBuffer {
     this.context.getDevice().queue.writeBuffer(
       this.gpuBuffer,
       byteOffset,
-      data
+      data as GPUAllowSharedBufferSource
     );
   }
 

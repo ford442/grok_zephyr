@@ -297,3 +297,54 @@ html, body {
     display: none;
   }
 }
+
+/* Physics Controls */
+#physics-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-left: 20px;
+  padding-left: 20px;
+  border-left: 1px solid #ffaa0055;
+}
+
+.physics-label {
+  font-size: 10px;
+  color: #ffaa00;
+  margin-bottom: 4px;
+  letter-spacing: 2px;
+}
+
+.physics-btn {
+  background: rgba(255, 170, 0, 0.06);
+  border: 1px solid rgba(255, 170, 0, 0.35);
+  color: #ffaa00;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  transition: background 0.2s, box-shadow 0.2s, border-color 0.2s;
+  pointer-events: auto;
+  margin: 2px 0;
+}
+
+.physics-btn:hover:not(.disabled) {
+  background: rgba(255, 170, 0, 0.2);
+  box-shadow: 0 0 14px rgba(255, 170, 0, 0.3);
+  border-color: #ffaa00;
+}
+
+.physics-btn.active {
+  background: rgba(255, 170, 0, 0.2);
+  box-shadow: 0 0 14px rgba(255, 170, 0, 0.3), 0 0 4px rgba(255, 170, 0, 0.5) inset;
+  border-color: #ffaa00;
+  color: #fff;
+}
+
+.physics-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: #ffaa0055;
+  color: #ffaa0088;
+}

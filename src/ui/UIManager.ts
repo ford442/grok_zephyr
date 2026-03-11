@@ -5,7 +5,6 @@
  */
 
 import type { PerformanceStats } from '@/types/index.js';
-import { VIEW_MODES } from '@/types/constants.js';
 
 /** UI element references */
 export interface UIElements {

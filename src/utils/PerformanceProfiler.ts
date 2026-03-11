@@ -243,7 +243,11 @@ export class PerformanceProfiler {
     if (!this.timingQuery || !this.supportsGPUTiming) return;
     
     const index = passType === 'compute' ? 0 : 2;
-    encoder.writeTimestamp(this.timingQuery.querySet, index);
+    // writeTimestamp is available when timestamp-query feature is enabled
+    (encoder as unknown as { writeTimestamp(set: GPUQuerySet, index: number): void }).writeTimestamp(
+      this.timingQuery.querySet,
+      index
+    );
   }
 
   /**
@@ -253,7 +257,11 @@ export class PerformanceProfiler {
     if (!this.timingQuery || !this.supportsGPUTiming) return;
     
     const index = passType === 'compute' ? 1 : 3;
-    encoder.writeTimestamp(this.timingQuery.querySet, index);
+    // writeTimestamp is available when timestamp-query feature is enabled
+    (encoder as unknown as { writeTimestamp(set: GPUQuerySet, index: number): void }).writeTimestamp(
+      this.timingQuery.querySet,
+      index
+    );
   }
 
   /**

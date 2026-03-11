@@ -11,7 +11,7 @@ import { CameraController } from '@/camera/CameraController.js';
 import { UIManager } from '@/ui/UIManager.js';
 import { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
 import { genSphere, extractFrustum } from '@/utils/math.js';
-import { CONSTANTS, RENDER, CAMERA, BUFFER_SIZES } from '@/types/constants.js';
+import { CONSTANTS, BUFFER_SIZES } from '@/types/constants.js';
 import { TLELoader } from '@/data/TLELoader.js';
 
 import './styles.css';
@@ -71,6 +71,9 @@ class GrokZephyrApp {
   /** Current beam pattern mode (0=chaos, 1=GROK, 2=X) */
   private currentPatternMode = 1;
 
+  /** Current physics mode (0=simple, 1=keplerian, 2=J2) */
+  private currentPhysicsMode = 0;
+
   /**
    * Setup UI and camera callbacks
    */
@@ -93,6 +96,9 @@ class GrokZephyrApp {
 
     // Pattern button setup
     this.setupPatternButtons();
+    
+    // Physics mode button setup
+    this.setupPhysicsButtons();
     
     // Camera angle change updates UI
     this.camera.onAngleChange((yaw, pitch) => {
@@ -188,6 +194,48 @@ class GrokZephyrApp {
     
     const modeNames = ['CHAOS', 'GROK', '𝕏 LOGO'];
     console.log(`🔄 Beam pattern switched to: ${modeNames[mode]}`);
+  }
+
+  /**
+   * Setup physics mode switcher buttons
+   */
+  private setupPhysicsButtons(): void {
+    const physicsButtons = document.querySelectorAll('.physics-btn:not(.disabled)');
+    physicsButtons.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const target = e.target as HTMLButtonElement;
+        const mode = parseInt(target.dataset.physics || '0');
+        this.setPhysicsMode(mode);
+        
+        // Update active state
+        physicsButtons.forEach(b => b.classList.remove('active'));
+        target.classList.add('active');
+      });
+    });
+  }
+
+  /**
+   * Set physics propagation mode (0=simple, 1=keplerian, 2=J2)
+   */
+  setPhysicsMode(mode: number): void {
+    if (mode < 0 || mode > 2) {
+      console.warn(`Invalid physics mode: ${mode}`);
+      return;
+    }
+    
+    this.currentPhysicsMode = mode;
+    
+    const modeNames = ['Simple (Circular)', 'Keplerian', 'J2 Perturbed'];
+    const implemented = [true, true, false];
+    
+    console.log(`⚛️ Physics mode switched to: ${modeNames[mode]} ${implemented[mode] ? '' : '(placeholder)'}`);
+    
+    // TODO: Update GPU uniform or reinitialize orbital elements based on mode
+    // For now, this is a UI-only change that affects future calculations
+    // Full implementation would require:
+    // 1. Updating the compute shader to use different propagation math
+    // 2. Recomputing orbital elements with J2 perturbations if needed
+    // 3. Updating CPU-side position calculations for camera tracking
   }
 
   /**
@@ -390,8 +438,10 @@ class GrokZephyrApp {
     // Screen size (224-231)
     f32[56] = width;
     f32[57] = height;
-    f32[58] = 0.0;
-    f32[59] = 0.0;
+    // Physics mode (232-235)
+    u32[58] = this.currentPhysicsMode;
+    // Padding (236-239)
+    u32[59] = 0;
     
     // Write to GPU
     this.context.writeBuffer(this.buffers.getBuffers().uniforms, uniformData);

@@ -12,11 +12,9 @@ import {
   TLE,
   SatelliteState,
   KeplerianElements,
-  STARLINK_SHELLS,
   PHYSICAL_CONSTANTS,
   SGP4Propagator,
   J2Perturbation,
-  defaultPropagator,
 } from '../physics/Propagator';
 
 // Simulation constants
@@ -206,7 +204,7 @@ export class TLELoader {
   /**
    * Load TLE data from file (Node.js environment)
    */
-  async loadFromFile(filePath: string): Promise<TLE[]> {
+  async loadFromFile(_filePath: string): Promise<TLE[]> {
     // In browser environment, this would use File API
     // For now, assume the file content is provided as string
     throw new Error('File loading not implemented in browser environment');
@@ -703,5 +701,5 @@ export function updateGPUBuffer(
   data: Float32Array,
   offset: number = 0
 ): void {
-  device.queue.writeBuffer(buffer, offset, data);
+  device.queue.writeBuffer(buffer, offset, data as GPUAllowSharedBufferSource);
 }

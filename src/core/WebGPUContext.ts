@@ -293,10 +293,10 @@ export class WebGPUContext {
    */
   writeBuffer(
     buffer: GPUBuffer,
-    data: BufferSource,
+    data: BufferSource | Float32Array | Uint32Array | Int32Array | Uint16Array | Int16Array | Uint8Array | Int8Array,
     offset = 0
   ): void {
-    this.getDevice().queue.writeBuffer(buffer, offset, data);
+    this.getDevice().queue.writeBuffer(buffer, offset, data as BufferSource);
   }
 
   /**

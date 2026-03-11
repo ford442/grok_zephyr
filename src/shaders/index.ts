@@ -23,7 +23,8 @@ struct Uni {
   is_ground_view : u32,
   frustum        : array<vec4f,6>,
   screen_size    : vec2f,
-  pad1           : vec2f,
+  physics_mode   : u32,
+  pad1           : u32,
 };
 @group(0) @binding(0) var<uniform> uni : Uni;
 `;
@@ -153,17 +154,25 @@ struct VOut { @builtin(position) cp:vec4f, @location(0) wp:vec3f, @location(1) n
   let ambient   = 0.04;
   let lit       = surf * (diff*0.92 + ambient);
 
-  // Enhanced night side with brighter city lights and ocean specular
-  let night = smoothstep(0.08,-0.08,dot(N,sun_dir));
-  let cityNoise = 0.5+0.5*sin(lon*18.0+lat*14.0);
-  let cityNoise2 = 0.5+0.5*sin(lon*42.0+lat*30.0);
-  let cityMask = smoothstep(0.4,0.6,land) * cityNoise * (0.5 + 0.5*cityNoise2);
-  let city  = night * 0.045 * vec3f(1.0,0.82,0.35) * cityMask;
+  // Enhanced city light clusters (population-weighted noise approximation)
+  let night = smoothstep(0.12, -0.04, dot(N, sun_dir));
   
-  // Ocean specular on night side (moonlight/starlight reflection)
-  let oceanSpec = night * (1.0 - land) * 0.008 * vec3f(0.15,0.2,0.35);
-
-  return vec4f(lit+city+oceanSpec,1.0);
+  // Multi-octave city cluster noise
+  let cityA = 0.5 + 0.5 * sin(lon * 22.0 + lat * 18.0);
+  let cityB = 0.5 + 0.5 * sin(lon * 61.0 + lat * 47.0);
+  let cityC = 0.5 + 0.5 * sin(lon * 113.0 + lat * 89.0);
+  // Weight toward land, toward equatorial regions
+  let latWeight = 1.0 - abs(lat) * 0.7;
+  let cityMask = smoothstep(0.35, 0.6, land) * cityA * (0.4 + 0.3*cityB + 0.3*cityC) * latWeight;
+  
+  // Warm sodium lamp orange for main grids, cooler LED white for dense cores
+  let cityWarm = vec3f(1.0, 0.78, 0.28) * cityMask * night * 0.12;
+  let cityCore = vec3f(0.9, 0.95, 1.0) * pow(cityMask, 3.0) * night * 0.18;
+  
+  // Ocean bioluminescence + moonlight specular shimmer
+  let moonSpec = night * (1.0 - land) * 0.012 * vec3f(0.18, 0.24, 0.42);
+  
+  return vec4f(lit + cityWarm + cityCore + moonSpec, 1.0);
 }
 `;
 
@@ -292,14 +301,15 @@ fn shell_pulse(colorIdx:u32, phase:f32, time:f32) -> f32 {
     return o;
   }
 
-  // Distance-adaptive billboard sizing with sqrt falloff
-  // Tuned for multiple scales: God View (60k km), Horizon (few k), Fleet POV (close)
-  var bsize = 900.0 / sqrt(max(dist, 60.0));
-  bsize = clamp(bsize, 0.5, 90.0);
-  
-  // Fleet POV (view_mode 2): enlarge nearby satellites for cinematic feel
-  if (uni.view_mode == 2u && dist < 500.0) {
-    bsize = bsize * (1.0 + smoothstep(500.0, 50.0, dist) * 1.5);
+  // Physically correct: satellites are unresolvable point sources.
+  // Billboard size is set to trigger bloom only — ~2 pixels wide at any distance.
+  // Angular size: 0.08° half-angle (tuned to bloom kernel radius)
+  var bsize = dist * 0.0014;          // 0.08° in radians ≈ 0.0014 rad
+  bsize = clamp(bsize, 0.15, 5.0);   // floor: visible at extreme close range
+
+  // Fleet POV enhancement (cinematic only, not physically accurate)
+  if (uni.view_mode == 2u && dist < 200.0) {
+    bsize = bsize * (1.0 + smoothstep(200.0, 20.0, dist) * 3.0);
   }
 
   const quad = array<vec2f,6>(
@@ -316,7 +326,9 @@ fn shell_pulse(colorIdx:u32, phase:f32, time:f32) -> f32 {
   var col     = shell_color(cidx);
   let pattern = shell_pulse(cidx, cdat*0.15 + f32(ii)*0.000613, uni.time);
 
-  let atten   = 1.0/(1.0 + dist*0.0006);
+  // Inverse-square falloff like real stellar magnitudes
+  // Satellites at 200km should be ~4x brighter than at 400km
+  let atten = clamp(40000.0 / (dist * dist + 100.0), 0.0, 1.0);
   var bright  = pattern * atten;
 
   // RGB blinking test pattern for ground view
@@ -341,13 +353,26 @@ fn shell_pulse(colorIdx:u32, phase:f32, time:f32) -> f32 {
 }
 
 @fragment fn fs(in:VOut) -> @location(0) vec4f {
-  let d     = length(in.uv - 0.5)*2.0;
+  let d = length(in.uv - 0.5) * 2.0;  // 0 at center, 1 at edge
   if (d > 1.0) { discard; }
-  let ring  = 1.0 - smoothstep(0.5,1.0,d);
-  let core  = 1.0 - smoothstep(0.0,0.18,d);
-  let alpha = ring * in.bright;
-  let hdr   = in.color * (ring + core*2.8) * in.bright * 3.0;
-  return vec4f(hdr, alpha);
+
+  // Airy-disk-like PSF: very bright core, exponential falloff
+  // core: Gaussian tight spike
+  let core  = exp(-d * d * 28.0);
+  // halo: broader exponential — the bloom picks this up
+  let halo  = exp(-d * d * 6.0) * 0.35;
+  // faint first diffraction ring
+  let ring  = exp(-pow(d - 0.72, 2.0) * 80.0) * 0.08;
+
+  let psf   = core + halo + ring;
+  let alpha = psf * in.bright;
+
+  // HDR: core is white-hot, halo picks up satellite color
+  let whiteCore = vec3f(1.0, 0.97, 0.92) * core * in.bright * 8.0;
+  let colorHalo = in.color * halo * in.bright * 4.0;
+  let colorRing = in.color * ring * in.bright * 2.0;
+
+  return vec4f(whiteCore + colorHalo + colorRing, alpha);
 }
 `;
 
@@ -366,9 +391,13 @@ struct VSOut { @builtin(position) pos:vec4f, @location(0) uv:vec2f }
 @fragment fn fs(in:VSOut) -> @location(0) vec4f {
   var uv = in.uv; uv.y = 1.0-uv.y;
   let c   = textureSample(tex,smp,uv).rgb;
-  let lum = dot(c,vec3f(0.2126,0.7152,0.0722));
-  let t   = smoothstep(0.75,1.4,lum);
-  return vec4f(c*t,1.0);
+  let lum = dot(c, vec3f(0.2126, 0.7152, 0.0722));
+  // Softer threshold: start at 0.28 luminance, full at 1.0
+  // This captures dim satellite halos while still suppressing background
+  let t   = smoothstep(0.28, 1.0, lum);
+  // Knee: highlights bloom harder than midtones
+  let knee = t * t * (3.0 - 2.0 * t);
+  return vec4f(c * knee, 1.0);
 }
 `;
 
@@ -680,10 +709,11 @@ struct VSOut { @builtin(position) pos:vec4f, @location(0) uv:vec2f }
 @fragment fn fs(in:VSOut) -> @location(0) vec4f {
   var uv = in.uv; uv.y = 1.0-uv.y;
   let d  = select(vec2f(0,buni.texel.y), vec2f(buni.texel.x,0), buni.horizontal != 0u);
-  const W = array<f32,5>(0.2270,0.1945,0.1216,0.0540,0.0162);
+  // 9-tap Gaussian weights (sigma ≈ 3.0)
+  const W = array<f32,5>(0.1945, 0.1678, 0.1210, 0.0730, 0.0366);
   var c   = textureSample(tex,smp,uv).rgb * W[0];
   for (var i=1; i<5; i++) {
-    let off = f32(i)*d;
+    let off = f32(i) * d * 2.0;  // stride 2 = wider spread, same cost
     c += textureSample(tex,smp,uv+off).rgb * W[i];
     c += textureSample(tex,smp,uv-off).rgb * W[i];
   }
@@ -917,7 +947,12 @@ fn aces(x:vec3f)->vec3f {
   var uv = in.uv; uv.y = 1.0-uv.y;
   let scene = textureSample(scene_tex,smp,uv).rgb;
   let bloom = textureSample(bloom_tex,smp,uv).rgb;
-  let hdr   = scene + bloom*2.0;
+  
+  // Tonemap bloom separately before mixing — prevents bloom washing out scene color
+  let bloomHdr  = bloom * 2.8;
+  let bloomTonemapped = aces(bloomHdr * 0.6);
+  let hdr   = scene + bloomTonemapped * 1.4;
+  
   var col   = aces(hdr);
   
   // Cinematic teal-orange color grading (xAI / SpaceX palette)

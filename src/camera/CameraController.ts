@@ -10,7 +10,7 @@
 
 import type { Vec3, ViewMode } from '@/types/index.js';
 import { CONSTANTS, CAMERA, MATH, VIEW_MODES } from '@/types/constants.js';
-import { v3, v3add, v3sub, v3scale, v3norm, v3cross, v3dot, mat4lookAt, mat4persp } from '@/utils/math.js';
+import { v3add, v3scale, v3norm, v3cross, v3dot, mat4lookAt, mat4persp } from '@/utils/math.js';
 
 /** Camera state for each view mode */
 export interface CameraState {

@@ -85,8 +85,10 @@ export interface UniformData {
   frustum: Float32Array;
   /** Screen size in pixels (offset 224, 8 bytes) */
   screenSize: [number, number];
-  /** Padding (offset 232, 8 bytes) */
-  pad1: [number, number];
+  /** Physics mode (offset 232, 4 bytes) */
+  physicsMode: number;
+  /** Padding (offset 236, 4 bytes) */
+  pad1: number;
 }
 
 /** Bloom uniform data for blur passes */
@@ -176,4 +178,12 @@ export interface ViewModeConfig {
   name: string;
   altitude: string;
   default: boolean;
+}
+
+/** Physics mode configuration */
+export interface PhysicsModeConfig {
+  id: number;
+  name: string;
+  description: string;
+  implemented: boolean;
 }
