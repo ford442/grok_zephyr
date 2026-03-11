@@ -261,9 +261,74 @@ Target configuration:
 - **HDR Rendering**: Uses `rgba16float` format for intermediate buffers
 - **Texture Views**: Cached to avoid `createView()` calls every frame
 
+## TLE Mode (Real Satellite Data)
+
+The simulation supports loading real Two-Line Element (TLE) data as an alternative
+to the default procedural Walker constellation.
+
+### Activation
+
+Add a `?tle=` query parameter to the URL:
+
+```
+# CelesTrak shorthand names:
+https://your-host/?tle=starlink     # ~6,000 Starlink satellites
+https://your-host/?tle=oneweb       # OneWeb constellation
+https://your-host/?tle=gps          # GPS operational satellites
+https://your-host/?tle=active       # All active satellites (~8,000+)
+
+# Direct URL to any 3-line TLE text file:
+https://your-host/?tle=https://example.com/my-satellites.tle
+```
+
+Without `?tle=`, the default procedural Walker constellation is used.
+
+### Supported CelesTrak Shorthands
+
+`starlink`, `oneweb`, `iridium`, `iridium-next`, `gps`, `galileo`, `stations`, `active`
+
+### Data Flow: TLE Input → GPU Orbital Elements
+
+```
+URL ?tle=starlink
+  → TLELoader.fromCelesTrak('starlink')        [src/data/TLELoader.ts]
+    → fetch() 3-line TLE text from CelesTrak
+    → TLELoader.parse() → TLEData[]
+  → SatelliteGPUBuffer.loadFromTLEData(tles)   [src/core/SatelliteGPUBuffer.ts]
+    → For each TLE: parse line2 fixed-width columns
+      → Extract: inclination, RAAN, mean anomaly (deg → rad)
+      → Derive altitude from mean motion: a = (μ/n²)^(1/3)
+      → Classify into shell 0/1/2 by altitude bracket
+      → Pack into vec4f: [raan, inc, M, (shell<<8)|colorIdx]
+    → Fill remaining slots (up to 1,048,576) with procedural Walker data
+  → uploadOrbitalElements() → GPU read-only storage buffer
+  → Compute shader propagates all 1M positions per frame (same as procedural)
+```
+
+### Padding Behavior
+
+Real TLE counts (~6K) are much smaller than the 1,048,576 buffer. Remaining
+slots are filled deterministically with Walker satellites. The HUD displays
+the data source, e.g. "Source: TLE (6,142 real)".
+
+### Fallback
+
+If TLE fetch/parse fails (network error, CORS, invalid format), the app logs
+a warning and falls back to procedural generation. Startup is never blocked.
+
+### Caveats
+
+- **Scale**: Real constellations have ~6K sats vs 1M procedural. Padded sats
+  use the standard Walker pattern.
+- **Accuracy**: TLEs are propagated with the same simplified circular Keplerian
+  model. Full SGP4 would require compute shader changes.
+- **Epoch**: Simulation uses wall-clock elapsed time, not UTC. Positions drift
+  from reality over time.
+- **CORS**: CelesTrak allows cross-origin. Custom URLs need CORS headers.
+
 ## Known Limitations and TODOs
 
-1. **TLE Loading**: The TLE parser exists but is not wired into the main simulation
+1. ~~**TLE Loading**: The TLE parser exists but is not wired into the main simulation~~ *(Done: use `?tle=` query param)*
 2. **SGP4 Propagation**: Currently using simplified Keplerian mechanics; full SGP4 implementation is stubbed
 3. **J2 Perturbations**: Not yet implemented in the compute shader
 4. **GPU Timing**: Only works if the browser supports `timestamp-query` feature
