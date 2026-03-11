@@ -169,9 +169,6 @@ export class SatelliteGPUBuffer {
     
     // Multi-shell configuration
     const SHELL_DISTRIBUTION = [0.3, 0.5, 0.2];  // 30%, 50%, 20%
-    const SHELL_ALTITUDES_KM = [340.0, 550.0, 1150.0];
-    // const SHELL_RADII_KM = SHELL_ALTITUDES_KM.map(alt => 6371.0 + alt); // Available if needed
-    
     console.log(`[SatelliteGPUBuffer] Generating multi-shell orbital elements...`);
     console.log(`[SatelliteGPUBuffer] Shells: 340km (${(SHELL_DISTRIBUTION[0]*100).toFixed(0)}%), 550km (${(SHELL_DISTRIBUTION[1]*100).toFixed(0)}%), 1150km (${(SHELL_DISTRIBUTION[2]*100).toFixed(0)}%)`);
     const startTime = performance.now();

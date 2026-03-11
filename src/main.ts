@@ -79,7 +79,7 @@ class GrokZephyrApp {
    */
   private setupCallbacks(): void {
     // Camera mode change updates UI
-    this.camera.onModeChange((mode, name, altitude) => {
+    this.camera.onModeChange((_mode, name, altitude) => {
       this.ui.setViewMode(name, altitude);
       this.ui.setActiveButton(this.camera.getViewModeIndex());
     });
