@@ -46,6 +46,8 @@ export interface SatelliteBufferSet {
   beams: GPUBuffer;
   /** Beam params uniform (time, patternMode, density, padding) */
   beamParams: GPUBuffer;
+  /** Per-satellite RGBA color (packed rgba8unorm u32, 4 MB for 1M sats) */
+  colors: GPUBuffer;
 }
 
 /**
@@ -143,6 +145,18 @@ export class SatelliteGPUBuffer {
     beamParamsData[3] = 0;      // padding
     this.context.writeBuffer(beamParams, beamParamsData);
 
+    // Create per-satellite RGBA color buffer (rgba8unorm packed as u32, 4 MB)
+    const colorBufferSize = this.numSatellites * 4;
+    const colors = this.context.createBuffer(
+      colorBufferSize,
+      GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+    );
+    // Initialize to white, full brightness — shader multiplies shell color by this
+    const colorData = new Uint32Array(this.numSatellites);
+    colorData.fill(0xFFFFFFFF);
+    this.context.writeBuffer(colors, colorData);
+    console.log(`[SatelliteGPUBuffer] Color buffer: ${(colorBufferSize / 1024 / 1024).toFixed(2)} MB (rgba8unorm)`);
+
     this.buffers = {
       orbitalElements,
       positions,
@@ -150,6 +164,7 @@ export class SatelliteGPUBuffer {
       bloomUniforms,
       beams,
       beamParams,
+      colors,
     };
 
     return this.buffers;
