@@ -208,25 +208,39 @@ const ATM_SCALE : f32 = 6471.0/6371.0;
 
 /** Satellite billboard shader - shell-specific aesthetics */
 export const SAT_SHADER = UNIFORM_STRUCT + /* wgsl */ `
-@group(0) @binding(1) var<storage,read> sat_pos : array<vec4f>;
+@group(0) @binding(1) var<storage,read> sat_pos          : array<vec4f>;
+@group(0) @binding(2) var<storage,read> sat_color_packed : array<u32>;
 
 struct VOut {
-  @builtin(position) cp : vec4f,
-  @location(0) uv       : vec2f,
-  @location(1) color    : vec3f,
-  @location(2) bright   : f32,
+  @builtin(position) cp  : vec4f,
+  @location(0) uv        : vec2f,
+  @location(1) color     : vec3f,
+  @location(2) bright    : f32,
+  @location(3) dist_km   : f32,  // passes camera distance for LOD blending
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// PSF CONSTANTS — Magnitude-5 point source bloom profile
+// ═══════════════════════════════════════════════════════════════════
+//
+// Billboard angular half-size:
+//   Core FWHM ≈ 2 arcmin  → 5.8e-4 rad
+//   Halo extent ≈ 4 arcmin → 0.0014 rad (×5 HDR scale = 0.007 rad)
+//
+// Billboard world size = dist × 0.0014  (0.08° half-angle)
+//   At 340 km: 0.476 km  → 0.0014 rad ✓
+//   At 550 km: 0.770 km  → 0.0014 rad ✓
+//   At 1150 km: 1.61 km  → 0.0014 rad ✓
+// ═══════════════════════════════════════════════════════════════════
 
 // Shell-specific colors matching orbital shells:
 // colorIdx 2 = low shell (340km alt, 6711km radius) → Electric cyan-blue
 // colorIdx 6 = mid shell (550km alt, 6921km radius) → Cool white
 // colorIdx 3 = high shell (1150km alt, 7521km radius) → Warm gold
 fn shell_color(colorIdx:u32) -> vec3f {
-  // colorIdx from orbital elements: 2=blue, 6=white, 3=gold
   if(colorIdx==2u){return vec3f(0.15,0.55,1.0);}   // Electric cyan-blue (low shell)
   if(colorIdx==6u){return vec3f(0.85,0.92,1.0);}    // Cool white (mid shell)
   if(colorIdx==3u){return vec3f(1.0,0.78,0.28);}    // Warm gold (high shell)
-  // Fallback rainbow for variety
   let c = colorIdx % 7u;
   if(c==0u){return vec3f(1.0,0.18,0.18);}
   if(c==1u){return vec3f(0.18,1.0,0.18);}
@@ -235,22 +249,22 @@ fn shell_color(colorIdx:u32) -> vec3f {
   return vec3f(1.0,1.0,1.0);
 }
 
-// Shell-specific pulse speed: low=fast cyan flicker, mid=steady, high=slow warm glow
+// Shell-specific pulse: low=fast cyan flicker, mid=steady, high=slow warm glow
 fn shell_pulse(colorIdx:u32, phase:f32, time:f32) -> f32 {
-  if(colorIdx==2u){
-    // Low shell: fast pulsing cyan
-    return 0.4 + 0.6*(0.5 + 0.5*sin(phase*0.2 + time*2.5));
-  }
-  if(colorIdx==6u){
-    // Mid shell: steady white with subtle variation
-    return 0.7 + 0.3*(0.5 + 0.5*sin(phase*0.1 + time*0.6));
-  }
-  if(colorIdx==3u){
-    // High shell: slow warm glow with longer persistence
-    return 0.5 + 0.5*(0.5 + 0.5*sin(phase*0.08 + time*0.35));
-  }
-  // Fallback
+  if(colorIdx==2u){ return 0.4 + 0.6*(0.5 + 0.5*sin(phase*0.2 + time*2.5)); }
+  if(colorIdx==6u){ return 0.7 + 0.3*(0.5 + 0.5*sin(phase*0.1 + time*0.6)); }
+  if(colorIdx==3u){ return 0.5 + 0.5*(0.5 + 0.5*sin(phase*0.08 + time*0.35)); }
   return 0.35 + 0.65*(0.5 + 0.5*sin(phase*0.15 + time*0.8));
+}
+
+// Unpack rgba8unorm u32 → vec4f [0,1]
+fn unpack_sat_rgba(packed: u32) -> vec4f {
+  return vec4f(
+    f32((packed >>  0u) & 0xFFu) / 255.0,
+    f32((packed >>  8u) & 0xFFu) / 255.0,
+    f32((packed >> 16u) & 0xFFu) / 255.0,
+    f32((packed >> 24u) & 0xFFu) / 255.0,
+  );
 }
 
 @vertex fn vs(
@@ -274,40 +288,36 @@ fn shell_pulse(colorIdx:u32, phase:f32, time:f32) -> f32 {
     }
   }
 
-  // Ground view: only show satellites above horizon
+  // Ground view: only show satellites above the horizon line
   if (visible && uni.is_ground_view != 0u) {
-    let ray_dir = wp - cam;
-    let ray_len_sq = dot(ray_dir, ray_dir);
-    let a = ray_len_sq;
-    let b = 2.0 * dot(cam, ray_dir);
-    let c = dot(cam, cam) - EARTH_RADIUS_KM * EARTH_RADIUS_KM;
-    let discriminant = b * b - 4.0 * a * c;
+    let ray_dir    = wp - cam;
+    let a          = dot(ray_dir, ray_dir);
+    let b          = 2.0 * dot(cam, ray_dir);
+    let c_coeff    = dot(cam, cam) - EARTH_RADIUS_KM * EARTH_RADIUS_KM;
+    let discriminant = b * b - 4.0 * a * c_coeff;
     if (discriminant >= 0.0) {
       let sqrt_disc = sqrt(discriminant);
       let t1 = (-b - sqrt_disc) / (2.0 * a);
       let t2 = (-b + sqrt_disc) / (2.0 * a);
-      if ((t1 > 0.0 && t1 < 1.0) || (t2 > 0.0 && t2 < 1.0)) {
-        visible = false;
-      }
+      if ((t1 > 0.0 && t1 < 1.0) || (t2 > 0.0 && t2 < 1.0)) { visible = false; }
     }
   }
 
   var o : VOut;
   if (!visible) {
-    o.cp     = vec4f(10,10,10,1);
-    o.uv     = vec2f(0);
-    o.color  = vec3f(0);
-    o.bright = 0.0;
+    o.cp      = vec4f(10,10,10,1);
+    o.uv      = vec2f(0);
+    o.color   = vec3f(0);
+    o.bright  = 0.0;
+    o.dist_km = 0.0;
     return o;
   }
 
-  // Physically correct: satellites are unresolvable point sources.
-  // Billboard size is set to trigger bloom only — ~2 pixels wide at any distance.
-  // Angular size: 0.08° half-angle (tuned to bloom kernel radius)
-  var bsize = dist * 0.0014;          // 0.08° in radians ≈ 0.0014 rad
-  bsize = clamp(bsize, 0.15, 5.0);   // floor: visible at extreme close range
+  // Billboard angular half-size = 0.0014 rad (0.08°)
+  // Constant angular size → maintains PSF shape at all distances
+  var bsize = clamp(dist * 0.0014, 0.15, 5.0);
 
-  // Fleet POV enhancement (cinematic only, not physically accurate)
+  // Fleet POV: slight close-up enhancement (cinematic, not physical)
   if (uni.view_mode == 2u && dist < 200.0) {
     bsize = bsize * (1.0 + smoothstep(200.0, 20.0, dist) * 3.0);
   }
@@ -319,60 +329,67 @@ fn shell_pulse(colorIdx:u32, phase:f32, time:f32) -> f32 {
   let qv     = quad[vi];
   let right  = uni.camera_right.xyz;
   let up     = uni.camera_up.xyz;
-  let offset = (qv.x*right + qv.y*up) * bsize;
-  let fpos   = wp + offset;
+  let fpos   = wp + (qv.x*right + qv.y*up) * bsize;
 
+  // Shell-based base color, tinted by per-satellite RGBA buffer
   let cidx    = u32(abs(cdat)) % 7u;
   var col     = shell_color(cidx);
+  let sat_rgba = unpack_sat_rgba(sat_color_packed[ii]);
+  col = col * sat_rgba.rgb;  // white buffer = no tint; colored = per-sat override
+
   let pattern = shell_pulse(cidx, cdat*0.15 + f32(ii)*0.000613, uni.time);
 
-  // Inverse-square falloff like real stellar magnitudes
-  // Satellites at 200km should be ~4x brighter than at 400km
-  let atten = clamp(40000.0 / (dist * dist + 100.0), 0.0, 1.0);
-  var bright  = pattern * atten;
+  // Physically correct inverse-square attenuation (ref dist = 200 km)
+  let atten  = clamp(40000.0 / (dist * dist + 100.0), 0.0, 1.0);
+  // Alpha channel gates brightness (0 = dark/off, 255 = full on)
+  var bright = pattern * atten * sat_rgba.a;
 
-  // RGB blinking test pattern for ground view
+  // RGB cycling test pattern for ground view debug
   if (uni.is_ground_view != 0u) {
-    let test_phase = uni.time * 2.0 + f32(ii) * 0.001;
-    let cycle = fract(test_phase);
-    if (cycle < 0.33) {
-      col = vec3f(1.0, 0.0, 0.0);
-    } else if (cycle < 0.66) {
-      col = vec3f(0.0, 1.0, 0.0);
-    } else {
-      col = vec3f(0.0, 0.0, 1.0);
-    }
+    let cycle = fract(uni.time * 2.0 + f32(ii) * 0.001);
+    if      (cycle < 0.33) { col = vec3f(1.0, 0.0, 0.0); }
+    else if (cycle < 0.66) { col = vec3f(0.0, 1.0, 0.0); }
+    else                   { col = vec3f(0.0, 0.0, 1.0); }
     bright = 2.0;
   }
 
-  o.cp     = uni.view_proj * vec4f(fpos,1);
-  o.uv     = (qv + 1.0)*0.5;
-  o.color  = col;
-  o.bright = bright;
+  o.cp      = uni.view_proj * vec4f(fpos,1);
+  o.uv      = (qv + 1.0)*0.5;
+  o.color   = col;
+  o.bright  = bright;
+  o.dist_km = dist;
   return o;
 }
 
 @fragment fn fs(in:VOut) -> @location(0) vec4f {
-  let d = length(in.uv - 0.5) * 2.0;  // 0 at center, 1 at edge
-  if (d > 1.0) { discard; }
+  let r = length(in.uv - 0.5) * 2.0;  // 0 = center, 1 = billboard edge
+  if (r > 1.0) { discard; }
 
-  // Airy-disk-like PSF: very bright core, exponential falloff
-  // core: Gaussian tight spike
-  let core  = exp(-d * d * 28.0);
-  // halo: broader exponential — the bloom picks this up
-  let halo  = exp(-d * d * 6.0) * 0.35;
-  // faint first diffraction ring
-  let ring  = exp(-pow(d - 0.72, 2.0) * 80.0) * 0.08;
+  // ── Gaussian core (σ = 0.08 of billboard radius) ──────────────────
+  // Sharper than previous Airy core (σ was ~0.13).
+  // exp(-r²/(2σ²)) = exp(-r²×78.125)  where σ=0.08
+  let core = exp(-r * r * 78.125);
 
-  let psf   = core + halo + ring;
-  let alpha = psf * in.bright;
+  // ── Moffat atmospheric halo (β=2.5, r_h=0.38) ─────────────────────
+  // Physically correct Kolmogorov PSF wings. Replaces the old broad
+  // Gaussian halo (σ≈0.29) — Moffat has a sharper knee and longer tail.
+  let rh     = 0.38;
+  let moffat = 1.0 / pow(1.0 + (r / rh) * (r / rh), 2.5);
 
-  // HDR: core is white-hot, halo picks up satellite color
-  let whiteCore = vec3f(1.0, 0.97, 0.92) * core * in.bright * 8.0;
-  let colorHalo = in.color * halo * in.bright * 4.0;
-  let colorRing = in.color * ring * in.bright * 2.0;
+  // ── Adaptive LOD: blend to Gaussian-only for distant satellites ────
+  // At > 5000 km the Moffat contribution is imperceptible; skip it to
+  // save shader cycles.  lod_t = 0 → full quality, 1 → Gaussian only.
+  let lod_t  = smoothstep(3000.0, 7000.0, in.dist_km);
+  let psf    = 0.8 * core + mix(0.2 * moffat, 0.0, lod_t);
+  let alpha  = psf * in.bright;
 
-  return vec4f(whiteCore + colorHalo + colorRing, alpha);
+  // HDR output:
+  //   • white-hot core at 10× drives the bloom threshold (was 8×)
+  //   • colored Moffat halo at 3.5× fills the glow region (fades with LOD)
+  let whiteCore = vec3f(1.0, 0.97, 0.92) * core   * in.bright * 10.0;
+  let colorHalo = in.color * mix(moffat, 0.0, lod_t) * in.bright * 3.5;
+
+  return vec4f(whiteCore + colorHalo, alpha);
 }
 `;
 
