@@ -348,3 +348,125 @@ html, body {
   border-color: #ffaa0055;
   color: #ffaa0088;
 }
+
+/* Animation Pattern Controls */
+#animation-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-left: 20px;
+  padding-left: 20px;
+  border-left: 1px solid #ff00ff55;
+}
+
+.anim-label {
+  font-size: 10px;
+  color: #ff66ff;
+  margin-bottom: 4px;
+  letter-spacing: 2px;
+}
+
+.anim-btn {
+  background: rgba(255, 102, 255, 0.06);
+  border: 1px solid rgba(255, 102, 255, 0.35);
+  color: #ff66ff;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  transition: background 0.2s, box-shadow 0.2s, border-color 0.2s;
+  pointer-events: auto;
+  margin: 2px 0;
+}
+
+.anim-btn:hover {
+  background: rgba(255, 102, 255, 0.2);
+  box-shadow: 0 0 14px rgba(255, 102, 255, 0.3);
+  border-color: #ff66ff;
+}
+
+.anim-btn.active {
+  background: rgba(255, 102, 255, 0.2);
+  box-shadow: 0 0 14px rgba(255, 102, 255, 0.3), 0 0 4px rgba(255, 102, 255, 0.5) inset;
+  border-color: #ff66ff;
+  color: #fff;
+}
+
+/* Animation Extended Controls (Speed/Loop) */
+.animation-controls-extended {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 102, 255, 0.2);
+}
+
+.anim-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  font-size: 10px;
+  color: #ff66ff;
+}
+
+.anim-controls-row label {
+  min-width: 40px;
+}
+
+.anim-controls-row input[type="range"] {
+  width: 60px;
+  height: 4px;
+  background: rgba(255, 102, 255, 0.2);
+  border-radius: 2px;
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.anim-controls-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  background: #ff66ff;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.anim-controls-row input[type="range"]::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  background: #ff66ff;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+.anim-controls-row input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #ff66ff;
+  cursor: pointer;
+}
+
+.anim-controls-row span {
+  min-width: 30px;
+  text-align: right;
+}
+
+/* Scrollbar styling for any overflow content */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 136, 0.3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 136, 0.5);
+}

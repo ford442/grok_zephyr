@@ -46,6 +46,8 @@ export interface SatelliteBufferSet {
   beams: GPUBuffer;
   /** Beam params uniform (time, patternMode, density, padding) */
   beamParams: GPUBuffer;
+  /** Pattern params uniform for animation patterns (time, mode, seed, pad) */
+  patternParams: GPUBuffer;
   /** Per-satellite RGBA color (packed rgba8unorm u32, 4 MB for 1M sats) */
   colors: GPUBuffer;
 }
@@ -145,6 +147,15 @@ export class SatelliteGPUBuffer {
     beamParamsData[3] = 0;      // padding
     this.context.writeBuffer(beamParams, beamParamsData);
 
+    // Create pattern params uniform buffer for animation patterns
+    const patternParams = this.context.createUniformBuffer(16);
+    const patternParamsData = new Float32Array(4);
+    patternParamsData[0] = 0;   // animation_time
+    patternParamsData[1] = 0;   // pattern_mode (0 = chaos default)
+    patternParamsData[2] = 0;   // seed
+    patternParamsData[3] = 0;   // padding
+    this.context.writeBuffer(patternParams, patternParamsData);
+
     // Create per-satellite RGBA color buffer (rgba8unorm packed as u32, 4 MB)
     const colorBufferSize = this.numSatellites * 4;
     const colors = this.context.createBuffer(
@@ -164,6 +175,7 @@ export class SatelliteGPUBuffer {
       bloomUniforms,
       beams,
       beamParams,
+      patternParams,
       colors,
     };
 
@@ -568,6 +580,8 @@ export class SatelliteGPUBuffer {
       this.buffers.bloomUniforms.vertical.destroy();
       this.buffers.beams.destroy();
       this.buffers.beamParams.destroy();
+      this.buffers.patternParams.destroy();
+      this.buffers.colors.destroy();
       
       if (this.isBufferPair(this.buffers.positions)) {
         this.buffers.positions.read.destroy();

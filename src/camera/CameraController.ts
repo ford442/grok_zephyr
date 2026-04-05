@@ -238,6 +238,9 @@ export class CameraController {
       case 3:
         this.currentMode = 'ground';
         break;
+      case 4:
+        this.currentMode = 'moon';
+        break;
       default:
         this.currentMode = 'horizon-720';
     }
@@ -280,6 +283,8 @@ export class CameraController {
         return this.calculateFleetPOV(satellitePosition, satelliteVelocity, time);
       case 'ground':
         return this.calculateGroundView();
+      case 'moon':
+        return this.calculateMoonView();
       default:
         return this.calculateHorizonView();
     }
@@ -457,6 +462,66 @@ export class CameraController {
       up: viewUp,
       fov: CAMERA.DEFAULT_FOV,
       near: 1.0,
+      far: CAMERA.FAR_PLANE,
+    };
+  }
+
+  /**
+   * Moon View
+   *
+   * View from the Moon's surface looking back at Earth with satellites visible.
+   * Camera positioned at lunar distance with Earth as the primary target.
+   * Shows the satellite constellation as a shimmering swarm around Earth.
+   */
+  private calculateMoonView(): CameraState {
+    const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
+    const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
+    
+    // Moon distance from Earth center (Moon radius ~1737km + distance)
+    const moonRadius = CONSTANTS.MOON_DISTANCE_KM;
+    
+    // Position: on the Moon's surface, rotated by yaw around Z axis
+    // Base position: Moon on +X axis relative to Earth
+    const position: Vec3 = [
+      moonRadius * Math.cos(yaw),
+      moonRadius * Math.sin(yaw),
+      0
+    ];
+    
+    // Look direction: pitch affects how high/low we look at Earth
+    // By default, look directly at Earth center (0,0,0)
+    const lookPitch = pitch * 0.5; // Reduced sensitivity for moon view
+    
+    // Calculate look direction from Moon to Earth
+    // The vector from Moon to Earth is -position normalized
+    const toEarth: Vec3 = [
+      -position[0] / moonRadius,
+      -position[1] / moonRadius,
+      -position[2] / moonRadius
+    ];
+    
+    // Apply pitch to look slightly above/below Earth
+    // When pitch is positive, look "up" relative to the orbital plane
+    const cosP = Math.cos(lookPitch);
+    const sinP = Math.sin(lookPitch);
+    
+    // Target: Earth center with pitch offset
+    // We create a target that's slightly offset by pitch
+    const target: Vec3 = [
+      position[0] + toEarth[0] * moonRadius * 0.5,
+      position[1] + toEarth[1] * moonRadius * 0.5,
+      position[2] + toEarth[2] * moonRadius * 0.5 + Math.sin(lookPitch) * 50000
+    ];
+    
+    // Up vector: radial outward from Earth center (zenith direction from Moon)
+    const up: Vec3 = v3norm(position);
+    
+    return {
+      position,
+      target,
+      up,
+      fov: CAMERA.DEFAULT_FOV * 0.8, // Slightly zoomed in for better Earth view
+      near: 1000,
       far: CAMERA.FAR_PLANE,
     };
   }

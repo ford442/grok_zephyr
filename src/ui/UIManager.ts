@@ -1,10 +1,11 @@
 /**
  * Grok Zephyr - UI Manager
  * 
- * Handles HUD updates, stats display, and control buttons.
+ * Handles HUD updates, stats display, control buttons, and animation controls.
  */
 
 import type { PerformanceStats } from '@/types/index.js';
+import type { AnimationPattern } from '@/types/animation.js';
 
 /** UI element references */
 export interface UIElements {
@@ -16,21 +17,53 @@ export interface UIElements {
   error: HTMLElement;
   controls: HTMLElement;
   buttons: HTMLButtonElement[];
+  patternButtons: HTMLButtonElement[];
+  animationButtons: HTMLButtonElement[];
+  physicsButtons: HTMLButtonElement[];
   horizonIndicator: HTMLElement;
+  angleInfo: HTMLElement;
+  resetAngleBtn: HTMLElement;
+  animationControls: HTMLElement;
+}
+
+/** Animation control options */
+export interface AnimationUIState {
+  currentPattern: AnimationPattern;
+  speed: number;
+  isPlaying: boolean;
+  loop: boolean;
 }
 
 /**
  * UI Manager
  * 
- * Manages all UI updates and interactions.
+ * Manages all UI updates and interactions including:
+ * - View mode buttons
+ * - Beam pattern buttons
+ * - Animation pattern buttons with speed/loop controls
+ * - Physics mode buttons
+ * - Stats display
  */
 export class UIManager {
   private elements: UIElements;
-  private onViewChange: ((index: number) => void) | null = null;
+  private onViewChangeCallback: ((index: number) => void) | null = null;
+  private onPatternChangeCallback: ((mode: number) => void) | null = null;
+  private onAnimationChangeCallback: ((pattern: AnimationPattern) => void) | null = null;
+  private onPhysicsChangeCallback: ((mode: number) => void) | null = null;
+  private onSpeedChangeCallback: ((speed: number) => void) | null = null;
+  private onLoopToggleCallback: ((loop: boolean) => void) | null = null;
+  
+  private animationState: AnimationUIState = {
+    currentPattern: 'grok',
+    speed: 1.0,
+    isPlaying: false,
+    loop: true,
+  };
 
   constructor() {
     this.elements = this.getElements();
     this.setupEventListeners();
+    this.createAnimationControls();
   }
 
   /**
@@ -52,8 +85,27 @@ export class UIManager {
         document.getElementById('btn1') as HTMLButtonElement,
         document.getElementById('btn2') as HTMLButtonElement,
         document.getElementById('btn3') as HTMLButtonElement,
+        document.getElementById('btn4') as HTMLButtonElement,
+      ],
+      patternButtons: [
+        document.getElementById('pbtn0') as HTMLButtonElement,
+        document.getElementById('pbtn1') as HTMLButtonElement,
+        document.getElementById('pbtn2') as HTMLButtonElement,
+      ],
+      animationButtons: [
+        document.getElementById('anim3') as HTMLButtonElement,
+        document.getElementById('anim4') as HTMLButtonElement,
+        document.getElementById('anim5') as HTMLButtonElement,
+      ],
+      physicsButtons: [
+        document.getElementById('phys0') as HTMLButtonElement,
+        document.getElementById('phys1') as HTMLButtonElement,
+        document.getElementById('phys2') as HTMLButtonElement,
       ],
       horizonIndicator: getEl('horizon-indicator'),
+      angleInfo: getEl('angleInfo'),
+      resetAngleBtn: getEl('resetAngle'),
+      animationControls: getEl('animation-controls'),
     };
   }
 
@@ -61,13 +113,105 @@ export class UIManager {
    * Setup event listeners for controls
    */
   private setupEventListeners(): void {
+    // View mode buttons
     this.elements.buttons.forEach((btn, index) => {
-      btn.addEventListener('click', () => {
+      btn?.addEventListener('click', () => {
         this.setActiveButton(index);
-        if (this.onViewChange) {
-          this.onViewChange(index);
+        if (this.onViewChangeCallback) {
+          this.onViewChangeCallback(index);
         }
       });
+    });
+
+    // Pattern buttons (Chaos/Grok/X)
+    this.elements.patternButtons.forEach((btn) => {
+      btn?.addEventListener('click', (e) => {
+        const target = e.target as HTMLButtonElement;
+        const mode = parseInt(target.dataset.pattern || '1');
+        this.setActivePatternButton(mode);
+        if (this.onPatternChangeCallback) {
+          this.onPatternChangeCallback(mode);
+        }
+      });
+    });
+
+    // Animation buttons (Smile/Matrix/Heartbeat)
+    this.elements.animationButtons.forEach((btn) => {
+      btn?.addEventListener('click', (e) => {
+        const target = e.target as HTMLButtonElement;
+        const patternIdx = parseInt(target.dataset.pattern || '3');
+        const patternMap: Record<number, AnimationPattern> = {
+          3: 'smile',
+          4: 'rain',
+          5: 'heartbeat',
+        };
+        const pattern = patternMap[patternIdx] || 'grok';
+        
+        this.setActiveAnimationButton(patternIdx);
+        this.animationState.currentPattern = pattern;
+        this.animationState.isPlaying = true;
+        
+        if (this.onAnimationChangeCallback) {
+          this.onAnimationChangeCallback(pattern);
+        }
+      });
+    });
+
+    // Physics buttons
+    this.elements.physicsButtons.forEach((btn) => {
+      btn?.addEventListener('click', (e) => {
+        const target = e.target as HTMLButtonElement;
+        if (target.classList.contains('disabled')) return;
+        
+        const mode = parseInt(target.dataset.physics || '0');
+        this.setActivePhysicsButton(mode);
+        if (this.onPhysicsChangeCallback) {
+          this.onPhysicsChangeCallback(mode);
+        }
+      });
+    });
+  }
+
+  /**
+   * Create additional animation controls (speed slider, loop toggle)
+   */
+  private createAnimationControls(): void {
+    const container = document.createElement('div');
+    container.className = 'animation-controls-extended';
+    container.innerHTML = `
+      <div class="anim-controls-row">
+        <label>Speed:</label>
+        <input type="range" id="animSpeed" min="0.25" max="4.0" step="0.25" value="1.0">
+        <span id="animSpeedValue">1.0x</span>
+      </div>
+      <div class="anim-controls-row">
+        <label>Loop:</label>
+        <input type="checkbox" id="animLoop" checked>
+      </div>
+    `;
+    
+    this.elements.animationControls?.appendChild(container);
+    
+    // Setup controls
+    const speedSlider = document.getElementById('animSpeed') as HTMLInputElement;
+    const speedValue = document.getElementById('animSpeedValue');
+    const loopCheckbox = document.getElementById('animLoop') as HTMLInputElement;
+    
+    speedSlider?.addEventListener('input', (e) => {
+      const value = parseFloat((e.target as HTMLInputElement).value);
+      this.animationState.speed = value;
+      if (speedValue) speedValue.textContent = value.toFixed(2) + 'x';
+      if (this.onSpeedChangeCallback) {
+        this.onSpeedChangeCallback(value);
+      }
+    });
+    
+    loopCheckbox?.addEventListener('change', (e) => {
+      const checked = (e.target as HTMLInputElement).checked;
+      this.animationState.loop = checked;
+      if (this.onLoopToggleCallback) {
+        this.onLoopToggleCallback(checked);
+      }
     });
   }
 
@@ -76,7 +220,37 @@ export class UIManager {
    */
   setActiveButton(index: number): void {
     this.elements.buttons.forEach((btn, i) => {
-      btn.classList.toggle('active', i === index);
+      btn?.classList.toggle('active', i === index);
+    });
+  }
+
+  /**
+   * Set the active pattern button
+   */
+  setActivePatternButton(mode: number): void {
+    this.elements.patternButtons.forEach((btn) => {
+      const btnMode = parseInt(btn?.dataset.pattern || '-1');
+      btn?.classList.toggle('active', btnMode === mode);
+    });
+  }
+
+  /**
+   * Set the active animation button
+   */
+  setActiveAnimationButton(patternIdx: number): void {
+    this.elements.animationButtons.forEach((btn) => {
+      const btnPattern = parseInt(btn?.dataset.pattern || '-1');
+      btn?.classList.toggle('active', btnPattern === patternIdx);
+    });
+  }
+
+  /**
+   * Set the active physics button
+   */
+  setActivePhysicsButton(mode: number): void {
+    this.elements.physicsButtons.forEach((btn) => {
+      const btnMode = parseInt(btn?.dataset.physics || '-1');
+      btn?.classList.toggle('active', btnMode === mode);
     });
   }
 
@@ -103,6 +277,14 @@ export class UIManager {
         <div>Orbit Altitude: 550 km</div>
         <div>Camera Altitude: 0 km (Surface)</div>
         <div>Zenith View: Starlink Constellation</div>
+      `;
+    } else if (modeName === 'Moon View') {
+      this.elements.horizonIndicator.style.display = 'block';
+      this.elements.horizonIndicator.innerHTML = `
+        <div>Earth-Moon Distance: 384,400 km</div>
+        <div>Earth Radius: 6,371 km</div>
+        <div>Orbit Altitude: 550 km</div>
+        <div>View: Earth with Satellite Swarm</div>
       `;
     } else {
       this.elements.horizonIndicator.style.display = 'none';
@@ -131,8 +313,7 @@ export class UIManager {
   }
 
   /**
-   * Display the orbital data source (procedural or TLE).
-   * Shown below the fleet count in the HUD.
+   * Display the orbital data source (procedural or TLE)
    */
   setDataSource(label: string): void {
     let el = document.getElementById('s-datasrc');
@@ -143,6 +324,27 @@ export class UIManager {
       this.elements.fleet.parentElement?.insertBefore(el, this.elements.fleet.nextSibling);
     }
     el.textContent = `Source   : ${label}`;
+  }
+
+  /**
+   * Update animation UI state
+   */
+  setAnimationState(state: Partial<AnimationUIState>): void {
+    this.animationState = { ...this.animationState, ...state };
+    
+    // Update UI elements
+    const speedSlider = document.getElementById('animSpeed') as HTMLInputElement;
+    const speedValue = document.getElementById('animSpeedValue');
+    const loopCheckbox = document.getElementById('animLoop') as HTMLInputElement;
+    
+    if (speedSlider && state.speed !== undefined) {
+      speedSlider.value = state.speed.toString();
+      if (speedValue) speedValue.textContent = state.speed.toFixed(2) + 'x';
+    }
+    
+    if (loopCheckbox && state.loop !== undefined) {
+      loopCheckbox.checked = state.loop;
+    }
   }
 
   /**
@@ -172,7 +374,42 @@ export class UIManager {
    * Register view change callback
    */
   onViewModeChange(callback: (index: number) => void): void {
-    this.onViewChange = callback;
+    this.onViewChangeCallback = callback;
+  }
+
+  /**
+   * Register pattern change callback
+   */
+  onPatternChange(callback: (mode: number) => void): void {
+    this.onPatternChangeCallback = callback;
+  }
+
+  /**
+   * Register animation pattern change callback
+   */
+  onAnimationChange(callback: (pattern: AnimationPattern) => void): void {
+    this.onAnimationChangeCallback = callback;
+  }
+
+  /**
+   * Register physics mode change callback
+   */
+  onPhysicsChange(callback: (mode: number) => void): void {
+    this.onPhysicsChangeCallback = callback;
+  }
+
+  /**
+   * Register animation speed change callback
+   */
+  onSpeedChange(callback: (speed: number) => void): void {
+    this.onSpeedChangeCallback = callback;
+  }
+
+  /**
+   * Register loop toggle callback
+   */
+  onLoopToggle(callback: (loop: boolean) => void): void {
+    this.onLoopToggleCallback = callback;
   }
 
   /**
@@ -201,6 +438,7 @@ export class UIManager {
         <button class="vbtn" id="btn1">GOD VIEW</button>
         <button class="vbtn" id="btn2">FLEET POV</button>
         <button class="vbtn" id="btn3">GROUND VIEW</button>
+        <button class="vbtn" id="btn4">MOON VIEW</button>
       </div>
       <div id="horizon-indicator">
         <div>Earth Radius: 6,371 km</div>

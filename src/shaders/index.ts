@@ -989,6 +989,237 @@ fn aces(x:vec3f)->vec3f {
 }
 `;
 
+/** Constellation patterns shader for smile and other animations */
+export const CONSTELLATION_PATTERNS_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+@group(0) @binding(1) var<storage, read> sat_pos : array<vec4f>;
+
+// Pattern mode constants
+const PATTERN_CHAOS: u32 = 0u;
+const PATTERN_GROK: u32 = 1u;
+const PATTERN_X: u32 = 2u;
+const PATTERN_SMILE: u32 = 3u;
+const PATTERN_DIGITAL_RAIN: u32 = 4u;
+const PATTERN_HEARTBEAT: u32 = 5u;
+const PATTERN_FIREWORKS: u32 = 6u;
+
+// Smile animation phases
+const SMILE_PHASE_EMERGE: i32 = 0;
+const SMILE_PHASE_GLOW: i32 = 1;
+const SMILE_PHASE_TWINKLE: i32 = 2;
+const SMILE_PHASE_FADE: i32 = 3;
+const SMILE_PHASE_DURATION: f32 = 8.0;
+
+struct PatternParams {
+  pattern_mode: u32,
+  animation_time: f32,
+  seed: f32,
+  padding: f32,
+}
+
+@group(0) @binding(2) var<uniform> params : PatternParams;
+
+struct VOut {
+  @builtin(position) cp : vec4f,
+  @location(0) uv       : vec2f,
+  @location(1) color    : vec3f,
+  @location(2) bright   : f32,
+}
+
+fn hash(n: u32) -> f32 {
+  return fract(sin(f32(n) * 43758.5453) * 43758.5453);
+}
+
+fn hash2(n: u32, seed: f32) -> f32 {
+  return fract(sin(f32(n) * 12.9898 + seed * 78.233) * 43758.5453);
+}
+
+fn sat_color(idx: u32) -> vec3f {
+  let c = idx % 7u;
+  switch c {
+    case 0u: { return vec3f(1.0, 0.18, 0.18); }
+    case 1u: { return vec3f(0.18, 1.0, 0.18); }
+    case 2u: { return vec3f(0.25, 0.45, 1.0); }
+    case 3u: { return vec3f(1.0, 1.0, 0.1); }
+    case 4u: { return vec3f(0.1, 1.0, 1.0); }
+    case 5u: { return vec3f(1.0, 0.1, 1.0); }
+    default: { return vec3f(1.0, 1.0, 1.0); }
+  }
+}
+
+fn classify_smile_feature(sat_pos: vec3f, earth_dir: vec3f) -> u32 {
+  let facing_earth = dot(normalize(sat_pos), -earth_dir) > 0.7;
+  if (!facing_earth) { return 0u; }
+  
+  let scale = 1.0 / 6921.0;
+  let x = sat_pos.x * scale;
+  let y = sat_pos.y * scale;
+  
+  let left_eye_dist = length(vec2f(x - (-0.3), y - 0.3));
+  let right_eye_dist = length(vec2f(x - 0.3, y - 0.3));
+  let smile_y = -0.5 * x * x - 0.2;
+  let smile_curve = abs(y - smile_y);
+  
+  if (left_eye_dist < 0.08) { return 1u; }
+  if (right_eye_dist < 0.08) { return 2u; }
+  if (smile_curve < 0.05 && y < -0.1) { return 3u; }
+  return 0u;
+}
+
+fn smile_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, earth_dir: vec3f) -> vec4f {
+  let cycle_time = f32(4) * SMILE_PHASE_DURATION;
+  let phase = i32(time % cycle_time / SMILE_PHASE_DURATION);
+  let t = fract(time % cycle_time / SMILE_PHASE_DURATION);
+  
+  let feature = classify_smile_feature(sat_pos, earth_dir);
+  
+  let eye_color = vec3f(1.0, 0.7, 0.28);
+  let smile_color = vec3f(1.0, 0.84, 0.0);
+  let bg_color = sat_color(sat_idx) * 0.2;
+  
+  if (feature == 0u) {
+    var bg_alpha = 0.2;
+    switch phase {
+      case SMILE_PHASE_EMERGE: { bg_alpha = mix(1.0, 0.2, t); }
+      case SMILE_PHASE_GLOW: { bg_alpha = 0.2; }
+      case SMILE_PHASE_TWINKLE: { bg_alpha = 0.2 + 0.1 * sin(t * 10.0); }
+      case SMILE_PHASE_FADE: { bg_alpha = mix(0.2, 1.0, t); }
+      default: {}
+    }
+    return vec4f(bg_color * bg_alpha, bg_alpha);
+  }
+  
+  var col: vec3f;
+  var alpha: f32 = 1.0;
+  
+  if (feature == 1u || feature == 2u) {
+    col = eye_color;
+    let blink_period = select(3.0, 3.2, feature == 2u);
+    let blink = smoothstep(0.0, 0.1, abs(sin(time * 3.14159 / blink_period)));
+    col *= blink;
+  } else {
+    col = smile_color;
+    let wave = sin(sat_pos.x * 0.001 + time * 2.0);
+    col *= 0.8 + 0.2 * wave;
+  }
+  
+  switch phase {
+    case SMILE_PHASE_EMERGE: { col *= smoothstep(0.0, 0.3, t); }
+    case SMILE_PHASE_GLOW: { col *= 0.9 + 0.1 * sin(t * 3.14159); }
+    case SMILE_PHASE_TWINKLE: { col *= 0.7 + 0.6 * hash2(sat_idx, time * 10.0); }
+    case SMILE_PHASE_FADE: { col *= 1.0 - smoothstep(0.7, 1.0, t); }
+    default: {}
+  }
+  
+  return vec4f(col, alpha);
+}
+
+fn digital_rain_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, earth_dir: vec3f) -> vec4f {
+  let facing = dot(normalize(sat_pos), -earth_dir) > 0.5;
+  if (!facing) { return vec4f(0.0); }
+  
+  let column = floor(sat_pos.x / 50.0);
+  let drop_speed = 2.0 + fract(f32(column) * 0.37) * 3.0;
+  let drop_pos = fract(time * drop_speed + f32(column) * 0.1);
+  let normalized_height = (sat_pos.y + 1000.0) / 2000.0;
+  let dist_to_drop = abs(normalized_height - drop_pos);
+  let intensity = 1.0 - smoothstep(0.0, 0.15, dist_to_drop);
+  let trail = smoothstep(0.15, 0.3, dist_to_drop) * 0.3;
+  let final_intensity = max(intensity, trail);
+  let green = 0.5 + 0.5 * hash(sat_idx);
+  return vec4f(0.0, green * final_intensity, 0.0, final_intensity);
+}
+
+fn heartbeat_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> vec4f {
+  let beat = time % 0.8;
+  let first_beat = smoothstep(0.0, 0.1, beat) * (1.0 - smoothstep(0.1, 0.2, beat));
+  let second_beat = smoothstep(0.3, 0.35, beat) * (1.0 - smoothstep(0.35, 0.45, beat));
+  let pulse = max(first_beat, second_beat * 0.6);
+  let dist_from_center = length(sat_pos.xy);
+  let wave_delay = dist_from_center * 0.0001;
+  let wave_pulse = smoothstep(0.0, 0.1, fract((time - wave_delay) * 1.25));
+  let total_pulse = max(pulse, wave_pulse * 0.3);
+  let pinkness = 0.3 + 0.4 * total_pulse;
+  let col = vec3f(1.0, pinkness, pinkness);
+  return vec4f(col * total_pulse, total_pulse);
+}
+
+@vertex
+fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) ii: u32) -> VOut {
+  let pd = sat_pos[ii];
+  let wp = pd.xyz;
+  let cam = uni.camera_pos.xyz;
+  let dist = length(wp - cam);
+  
+  var visible = dist <= 500000.0;
+  if (visible) {
+    for (var p = 0u; p < 6u; p++) {
+      let pl = uni.frustum[p];
+      if (dot(pl.xyz, wp) + pl.w < -200.0) { visible = false; break; }
+    }
+  }
+  
+  var out: VOut;
+  if (!visible) {
+    out.cp = vec4f(10.0, 10.0, 10.0, 1.0);
+    out.uv = vec2f(0.0);
+    out.color = vec3f(0.0);
+    out.bright = 0.0;
+    return out;
+  }
+  
+  var bsize: f32;
+  if (dist < 500.0) { bsize = clamp(1200.0 / max(dist, 50.0), 0.8, 80.0); }
+  else if (dist < 2000.0) { bsize = clamp(1200.0 / max(dist, 50.0), 0.5, 40.0); }
+  else if (dist < 8000.0) { bsize = clamp(800.0 / max(dist, 100.0), 0.3, 20.0); }
+  else { bsize = max(2.0, 20000.0 / max(dist, 1000.0)); }
+  
+  const quad = array<vec2f, 6>(
+    vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0),
+    vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0)
+  );
+  
+  let qv = quad[vi];
+  let right = uni.camera_right.xyz;
+  let up = uni.camera_up.xyz;
+  let offset = (qv.x * right + qv.y * up) * bsize;
+  let fpos = wp + offset;
+  
+  let earth_dir = normalize(-wp);
+  var pattern_color: vec4f;
+  
+  switch params.pattern_mode {
+    case PATTERN_SMILE: { pattern_color = smile_pattern(ii, wp, params.animation_time, earth_dir); }
+    case PATTERN_DIGITAL_RAIN: { pattern_color = digital_rain_pattern(ii, wp, params.animation_time, earth_dir); }
+    case PATTERN_HEARTBEAT: { pattern_color = heartbeat_pattern(ii, wp, params.animation_time); }
+    default: {
+      let col = sat_color(ii);
+      let phase = f32(ii) * 0.0001 + params.animation_time * 0.5;
+      let pat = 0.35 + 0.65 * (0.5 + 0.5 * sin(phase));
+      pattern_color = vec4f(col * pat, pat);
+    }
+  }
+  
+  let atten = 1.0 / (1.0 + dist * 0.00075);
+  let bright = pattern_color.a * atten;
+  
+  out.cp = uni.view_proj * vec4f(fpos, 1.0);
+  out.uv = (qv + 1.0) * 0.5;
+  out.color = pattern_color.rgb;
+  out.bright = bright;
+  return out;
+}
+
+@fragment
+fn fs(in: VOut) -> @location(0) vec4f {
+  let d = length(in.uv - 0.5) * 2.0;
+  if (d > 1.0) { discard; }
+  let fade = 1.0 - d * d;
+  let alpha = fade * in.bright;
+  let hdr = in.color * fade * in.bright * 3.0;
+  return vec4f(hdr, alpha);
+}
+`;
+
 /** Export all shaders as a collection */
 export const SHADERS = {
   orbital: ORBITAL_CS,
@@ -996,6 +1227,7 @@ export const SHADERS = {
   earth: EARTH_SHADER,
   atmosphere: ATM_SHADER,
   satellites: SAT_SHADER,
+  constellationPatterns: CONSTELLATION_PATTERNS_SHADER,
   groundTerrain: GROUND_TERRAIN_SHADER,
   beamCompute: BEAM_COMPUTE_SHADER,
   beamRender: BEAM_RENDER_SHADER,

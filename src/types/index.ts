@@ -50,7 +50,7 @@ export interface SatelliteState {
 }
 
 /** Camera view modes */
-export type ViewMode = 'horizon-720' | 'god' | 'sat-pov' | 'ground';
+export type ViewMode = 'horizon-720' | 'god' | 'sat-pov' | 'ground' | 'moon';
 
 /** Camera pose configuration */
 export interface CameraPose {
@@ -170,6 +170,8 @@ export interface SimulationConstants {
   NUM_PLANES: number;
   /** Satellites per plane */
   SATELLITES_PER_PLANE: number;
+  /** Moon distance from Earth in km */
+  MOON_DISTANCE_KM: number;
 }
 
 /** View mode configuration */

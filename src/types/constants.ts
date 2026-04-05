@@ -10,6 +10,7 @@ export const CONSTANTS: SimulationConstants = {
   EARTH_RADIUS_KM: 6371.0,    // km - Earth radius
   ORBIT_RADIUS_KM: 6921.0,    // km - 550km altitude orbit
   CAMERA_RADIUS_KM: 7091.0,   // km - 720km altitude camera
+  MOON_DISTANCE_KM: 384400.0, // km - average Earth-Moon distance
   MEAN_MOTION: 0.001097,      // rad/s - orbital angular velocity
   NUM_PLANES: 1024,           // orbital planes
   SATELLITES_PER_PLANE: 1024, // satellites per plane
@@ -37,13 +38,14 @@ export const VIEW_MODES: ViewModeConfig[] = [
   { id: 1, name: 'God View', altitude: '---', default: false },
   { id: 2, name: 'Fleet POV', altitude: '550', default: false },
   { id: 3, name: 'Ground View', altitude: '0', default: false },
+  { id: 4, name: 'Moon View', altitude: '384400', default: false },
 ] as const;
 
 /** Camera settings */
 export const CAMERA = {
   DEFAULT_FOV: 60 * MATH.DEG_TO_RAD,
   NEAR_PLANE: 10,
-  FAR_PLANE: 50000,
+  FAR_PLANE: 500000,
   GOD_VIEW_DISTANCE: 25000,
   GOD_VIEW_MIN_DISTANCE: 8000,
   GOD_VIEW_MAX_DISTANCE: 60000,

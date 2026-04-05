@@ -68,8 +68,11 @@ class GrokZephyrApp {
     this.setupCallbacks();
   }
 
-  /** Current beam pattern mode (0=chaos, 1=GROK, 2=X) */
+  /** Current pattern mode (0=chaos, 1=GROK, 2=X, 3=smile, 4=digital_rain, 5=heartbeat) */
   private currentPatternMode = 1;
+  
+  /** Pattern animation time */
+  private patternAnimationTime = 0;
 
   /** Current physics mode (0=simple, 1=keplerian, 2=J2) */
   private currentPhysicsMode = 0;
@@ -96,6 +99,9 @@ class GrokZephyrApp {
 
     // Pattern button setup
     this.setupPatternButtons();
+    
+    // Animation pattern button setup
+    this.setupAnimationPatternButtons();
     
     // Physics mode button setup
     this.setupPhysicsButtons();
@@ -194,6 +200,46 @@ class GrokZephyrApp {
     
     const modeNames = ['CHAOS', 'GROK', '𝕏 LOGO'];
     console.log(`🔄 Beam pattern switched to: ${modeNames[mode]}`);
+  }
+  
+  /**
+   * Set animation pattern mode (3=smile, 4=digital_rain, 5=heartbeat)
+   */
+  setAnimationPattern(mode: number): void {
+    if (!this.context || !this.buffers) return;
+    
+    // Update pattern params uniform buffer
+    const patternParamsData = new ArrayBuffer(16);
+    const f32 = new Float32Array(patternParamsData);
+    const u32 = new Uint32Array(patternParamsData);
+    
+    f32[0] = performance.now() / 1000;  // animation time
+    u32[1] = mode;                       // pattern mode
+    u32[2] = 0;                          // seed
+    u32[3] = 0;                          // padding
+    
+    this.context.writeBuffer(this.buffers.getBuffers().patternParams, patternParamsData);
+    
+    const modeNames = ['', '', '', '😊 SMILE', '💧 DIGITAL RAIN', '💓 HEARTBEAT'];
+    console.log(`🎭 Animation pattern: ${modeNames[mode]}`);
+  }
+  
+  /**
+   * Setup animation pattern buttons
+   */
+  private setupAnimationPatternButtons(): void {
+    const animButtons = document.querySelectorAll('.anim-btn');
+    animButtons.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const target = e.target as HTMLButtonElement;
+        const mode = parseInt(target.dataset.pattern || '3');
+        this.setAnimationPattern(mode);
+        
+        // Update active state
+        animButtons.forEach(b => b.classList.remove('active'));
+        target.classList.add('active');
+      });
+    });
   }
 
   /**
@@ -555,6 +601,9 @@ class GrokZephyrApp {
     } else if (mode === 3) {
       // Ground view - can see satellites above horizon
       return Math.floor(CONSTANTS.NUM_SATELLITES * 0.15);
+    } else if (mode === 4) {
+      // Moon view - can see most of the near-side constellation
+      return Math.floor(CONSTANTS.NUM_SATELLITES * 0.45);
     } else {
       // God view - depends on distance
       return Math.floor(CONSTANTS.NUM_SATELLITES * 0.25);
