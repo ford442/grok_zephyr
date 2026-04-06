@@ -65,8 +65,9 @@ struct SmileV2Params {
 
 @group(0) @binding(0) var<uniform> params: SmileV2Params;
 @group(0) @binding(1) var<storage, read> sat_positions: array<vec4f>;
-@group(0) @binding(2) var<storage, read_write> sat_output: array<vec4f>;
-@group(0) @binding(3) var<storage, read_write> feature_cache: array<u32>;
+@group(0) @binding(2) var<storage, read> orb_elements: array<vec4f>;
+@group(0) @binding(3) var<storage, read_write> sat_output: array<vec4f>;
+@group(0) @binding(4) var<storage, read_write> trail_buffer: array<vec4f>;
 
 fn gnomonic_project_satellite(sat_pos: vec3f, earth_dir: vec3f) -> vec2f {
   let sat_dir = normalize(sat_pos);
