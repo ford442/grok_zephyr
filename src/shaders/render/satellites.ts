@@ -46,7 +46,9 @@ fn vs(
   let qv = quad[vi];
   let right = uni.camera_right.xyz;
   let up = uni.camera_up.xyz;
-  let bsize = clamp(1200.0 / max(dist, 50.0), 0.4, 60.0);
+  // Increased max distance from 14000 to 150000 to support ground/Moon views
+  let bsize = clamp(1200.0 / max(dist, 50.0), 0.4, 60.0) * 
+              select(0.0, 1.0, dist < 150000.0);  // Cull if beyond 150000km
   let offset = (qv.x * right + qv.y * up) * bsize;
   let fpos = wp + offset;
 

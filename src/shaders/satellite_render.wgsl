@@ -37,7 +37,10 @@ struct VertexOutput {
 //==============================================================================
 
 // Maximum distance for rendering
-const MAX_RENDER_DIST : f32 = 14000.0;
+// Increased to 150000km to support ground view where camera is at Earth's surface (6371km)
+// and satellites orbit at up to ~7000-8000km radius (e.g., GPS satellites at 20,200km altitude)
+// Also supports Moon view at 384,400km distance
+const MAX_RENDER_DIST : f32 = 150000.0;
 
 // Billboard size multipliers
 const BILLBOARD_BASE_SIZE   : f32 = 1200.0;

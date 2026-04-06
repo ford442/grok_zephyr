@@ -63,8 +63,8 @@ export const RENDER = {
 
 /** Culling distances */
 export const CULLING = {
-  /** Max distance for satellite rendering (km) */
-  MAX_DISTANCE: 14000.0,
+  /** Max distance for satellite rendering (km) - increased for ground/Moon views */
+  MAX_DISTANCE: 150000.0,
   /** Frustum culling margin (km) */
   FRUSTUM_MARGIN: 200.0,
 } as const;

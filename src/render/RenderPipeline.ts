@@ -550,6 +550,8 @@ export class RenderPipeline {
     this.width = width;
     this.height = height;
     
+    console.log(`[RenderPipeline] Resized to ${width}x${height}`);
+    
     // Destroy old textures
     this.renderTargets?.hdr.destroy();
     this.renderTargets?.depth.destroy();
@@ -632,6 +634,9 @@ export class RenderPipeline {
       },
     });
 
+    // Set full canvas viewport to ensure entire framebuffer is rendered
+    pass.setViewport(0, 0, this.width, this.height, 0, 1);
+
     // Stars
     pass.setPipeline(this.pipelines.stars);
     pass.setBindGroup(0, this.bindGroups.stars);
@@ -685,6 +690,9 @@ export class RenderPipeline {
       },
     });
 
+    // Set full canvas viewport to ensure entire framebuffer is rendered
+    pass.setViewport(0, 0, this.width, this.height, 0, 1);
+
     // Satellites first (in the sky)
     pass.setPipeline(this.pipelines.satellites);
     pass.setBindGroup(0, this.bindGroups.satellites);
@@ -695,10 +703,10 @@ export class RenderPipeline {
     pass.setBindGroup(0, this.bindGroups.beam);
     pass.draw(4, MAX_BEAMS);
 
-    // Ground terrain (mountains + lake) rendered on top to occlude foreground
+    // Ground terrain (fullscreen quad) rendered on top to occlude foreground
     pass.setPipeline(this.pipelines.groundTerrain);
     pass.setBindGroup(0, this.bindGroups.groundTerrain);
-    pass.draw(3);
+    pass.draw(6);  // Draw full quad (6 vertices), not just 3
 
     pass.end();
   }
@@ -718,6 +726,7 @@ export class RenderPipeline {
         storeOp: 'store',
       }],
     });
+    thrPass.setViewport(0, 0, this.width, this.height, 0, 1);
     thrPass.setPipeline(this.pipelines.bloomThreshold);
     thrPass.setBindGroup(0, this.bindGroups.bloomThreshold);
     thrPass.draw(3);
@@ -732,6 +741,7 @@ export class RenderPipeline {
         storeOp: 'store',
       }],
     });
+    hBlurPass.setViewport(0, 0, this.width, this.height, 0, 1);
     hBlurPass.setPipeline(this.pipelines.bloomBlur);
     hBlurPass.setBindGroup(0, this.bindGroups.bloomHorizontal);
     hBlurPass.draw(3);
@@ -746,6 +756,7 @@ export class RenderPipeline {
         storeOp: 'store',
       }],
     });
+    vBlurPass.setViewport(0, 0, this.width, this.height, 0, 1);
     vBlurPass.setPipeline(this.pipelines.bloomBlur);
     vBlurPass.setBindGroup(0, this.bindGroups.bloomVertical);
     vBlurPass.draw(3);
@@ -755,7 +766,7 @@ export class RenderPipeline {
   /**
    * Execute composite pass
    */
-  encodeCompositePass(encoder: GPUCommandEncoder, outputView: GPUTextureView): void {
+  encodeCompositePass(encoder: GPUCommandEncoder, outputView: GPUTextureView, outputWidth?: number, outputHeight?: number): void {
     if (!this.pipelines || !this.bindGroups) return;
 
     const pass = encoder.beginRenderPass({
@@ -766,6 +777,12 @@ export class RenderPipeline {
         storeOp: 'store',
       }],
     });
+
+    // Use provided dimensions or fall back to stored dimensions
+    const width = outputWidth || this.width;
+    const height = outputHeight || this.height;
+    pass.setViewport(0, 0, width, height, 0, 1);
+
     pass.setPipeline(this.pipelines.composite);
     pass.setBindGroup(0, this.bindGroups.composite);
     pass.draw(3);
