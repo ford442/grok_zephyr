@@ -1,4 +1,4 @@
-//**
+/**
  * Satellite Billboard Shader
  */
 
