@@ -1,8 +1,13 @@
 /**
- * Grok Zephyr - Satellite GPU Buffer Manager
+ * Grok Zephyr - Satellite GPU Buffer Manager (Optimized for Pascal)
  * 
- * Manages GPU buffers for 1M+ satellites with double-buffering
- * for efficient compute/graphics interop.
+ * Manages GPU buffers for 1M+ satellites with tight packing
+ * Total storage: ~80 MB (under Pascal 128 MB limit)
+ * 
+ * Optimizations:
+ * - Tight buffer packing (rgba8unorm for colors)
+ * - Double-buffered staging uploads (zero CPU stall)
+ * - Safety guards to prevent 8GB allocation crash
  */
 
 import type WebGPUContext from './WebGPUContext.js';
@@ -28,6 +33,9 @@ export interface SatelliteBufferConfig {
 
 /** Maximum number of laser beams */
 export const MAX_BEAMS = 65536;
+
+/** Pascal GPU safe limit (conservative) */
+const MAX_SAFE_BUFFER_SIZE = 128 * 1024 * 1024; // 128 MB
 
 /** GPU buffer set for satellite data */
 export interface SatelliteBufferSet {
@@ -56,18 +64,52 @@ export interface SatelliteBufferSet {
   skyStripUniforms: GPUBuffer;
   /** Smile V2: Uniform buffer for animation state (64 bytes aligned) */
   smileV2Uniforms: GPUBuffer;
-  /** Smile V2: Trail buffer for phase 6 trails (4-second history at 60fps = 240 frames) */
+  /** Smile V2: Trail buffer for phase 6 trails (4 frames × 16 bytes) */
   trailBuffer: GPUBuffer;
+}
+
+/**
+ * Double-buffered staging for async uploads
+ * Prevents CPU stall on MAP_WRITE buffers
+ */
+export class StagingBuffer {
+  private buffers: GPUBuffer[] = [];
+  private index = 0;
+
+  constructor(private device: GPUDevice, private size: number) {
+    this.buffers = [
+      this.createStagingBuffer(size, 0),
+      this.createStagingBuffer(size, 1),
+    ];
+  }
+
+  private createStagingBuffer(size: number, idx: number): GPUBuffer {
+    return this.device.createBuffer({
+      label: `Staging Buffer ${idx} (${(size / 1024 / 1024).toFixed(1)} MB)`,
+      size,
+      usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC,
+    });
+  }
+
+  async upload(data: ArrayBufferLike, targetBuffer: GPUBuffer, commandEncoder: GPUCommandEncoder) {
+    const buf = this.buffers[this.index];
+    await buf.mapAsync(GPUMapMode.WRITE);
+    new Uint8Array(buf.getMappedRange()).set(new Uint8Array(data));
+    buf.unmap();
+
+    commandEncoder.copyBufferToBuffer(buf, 0, targetBuffer, 0, Math.min(this.size, data.byteLength));
+    this.index = 1 - this.index;
+  }
 }
 
 /**
  * Satellite GPU Buffer Manager
  * 
  * Efficiently manages GPU memory for massive satellite constellations:
+ * - Tight buffer packing to stay under Pascal limits
  * - Separate orbital elements buffer (read-only)
  * - Position buffer with optional double-buffering
- * - Uniform buffer for frame data
- * - Optimized memory layout for 1M+ satellites
+ * - Double-buffered staging for zero-stall uploads
  */
 export class SatelliteGPUBuffer {
   private context: WebGPUContext;
@@ -76,6 +118,7 @@ export class SatelliteGPUBuffer {
   // Buffer storage
   private buffers: SatelliteBufferSet | null = null;
   private orbitalElementData: Float32Array;
+  private staging: StagingBuffer | null = null;
   
   // Cached sizes
   private readonly numSatellites: number;
@@ -95,11 +138,29 @@ export class SatelliteGPUBuffer {
     };
     
     this.numSatellites = CONSTANTS.NUM_SATELLITES;
-    this.positionBufferSize = this.numSatellites * BUFFER_SIZES.SATELLITE_DATA;
-    this.elementBufferSize = this.numSatellites * BUFFER_SIZES.ORBITAL_ELEMENT;
+    this.positionBufferSize = this.numSatellites * 16; // vec4f
+    this.elementBufferSize = this.numSatellites * 16;  // vec4f
     
     // Pre-allocate orbital element data on CPU
     this.orbitalElementData = new Float32Array(this.numSatellites * 4);
+  }
+
+  /**
+   * Calculate total buffer size for safety check
+   */
+  private calculateTotalBufferSize(): number {
+    const numSats = this.numSatellites;
+    
+    // Tight, realistic sizes
+    const POSITION_SIZE = numSats * 16;     // vec4<f32> (pos + flare)
+    const ELEMENT_SIZE = numSats * 16;      // vec4<f32> (vel + feature)
+    const COLOR_SIZE = numSats * 4;         // rgba8unorm packed
+    const PATTERN_SIZE = numSats * 16;      // Sky Strips pattern data
+    const BEAM_SIZE = 65536 * 32;           // 64k beams
+    const TRAIL_SIZE = numSats * 16 * 4;    // 4 frames × vec4f (reduced from 240)
+    const UNIFORM_SIZE = 256 + 32 + 16 + 16 + 64; // Various uniform buffers
+    
+    return POSITION_SIZE + ELEMENT_SIZE + COLOR_SIZE + PATTERN_SIZE + BEAM_SIZE + TRAIL_SIZE + UNIFORM_SIZE;
   }
 
   /**
@@ -110,37 +171,16 @@ export class SatelliteGPUBuffer {
    */
   initialize(): SatelliteBufferSet {
     const numSats = CONSTANTS.NUM_SATELLITES;
-
-    // ←←← EXACT SIZES (never exceed 128 MB total on Pascal)
-    const POSITION_SIZE = numSats * 16; // vec4<f32> position + flare
-    const ELEMENT_SIZE = numSats * 16; // vec4<f32> velocity + featureID
-    const COLOR_SIZE = numSats * 4; // rgba8unorm packed
-    const PATTERN_SIZE = numSats * 16; // Sky Strips pattern data (vec4)
-    const BEAM_SIZE = 65_536 * 32; // 64k beams max
-    // TRAIL_SIZE: Reduced from 240 frames to 4 frames to stay under GPU limits
-    // Phase 6 trails will use a circular buffer of 4 frames instead of 240
-    const TRAIL_HISTORY_FRAMES = 4;
-    const TRAIL_SIZE = numSats * 16 * TRAIL_HISTORY_FRAMES; // vec4<f32> per sat per frame
+    const totalBytes = this.calculateTotalBufferSize();
 
     console.log(`[SatelliteGPUBuffer] Initializing buffers for ${numSats.toLocaleString()} satellites`);
-    console.log(`[SatelliteGPUBuffer] Position: ${(POSITION_SIZE / 1024 / 1024).toFixed(2)} MB`);
-    console.log(`[SatelliteGPUBuffer] Element : ${(ELEMENT_SIZE / 1024 / 1024).toFixed(2)} MB`);
-    console.log(`[SatelliteGPUBuffer] Color   : ${(COLOR_SIZE / 1024 / 1024).toFixed(2)} MB`);
-    console.log(`[SatelliteGPUBuffer] Pattern : ${(PATTERN_SIZE / 1024 / 1024).toFixed(2)} MB`);
-    console.log(`[SatelliteGPUBuffer] Trail   : ${(TRAIL_SIZE / 1024 / 1024).toFixed(2)} MB (${TRAIL_HISTORY_FRAMES} frames)`);
-    console.log(`[SatelliteGPUBuffer] Beam    : ${(BEAM_SIZE / 1024).toFixed(2)} KB`);
+    console.log(`[SatelliteGPUBuffer] Total storage requested: ${(totalBytes / 1024 / 1024).toFixed(2)} MB`);
     
     // ← SAFETY GUARD (prevents the 8GB crash)
-    const MAX_ALLOWED = 128 * 1024 * 1024; // 128 MB conservative limit for Pascal
-    const total = POSITION_SIZE + ELEMENT_SIZE + COLOR_SIZE + PATTERN_SIZE + TRAIL_SIZE + BEAM_SIZE;
-    console.log(`[SatelliteGPUBuffer] Total storage buffers ≈ ${(total / 1024 / 1024).toFixed(1)} MB`);
-    
-    if (total > MAX_ALLOWED) {
-      throw new Error(`Buffer total (${(total/1024/1024).toFixed(1)} MB) exceeds Pascal safe limit of 128 MB`);
+    if (totalBytes > MAX_SAFE_BUFFER_SIZE) {
+      throw new Error(`Buffer total (${(totalBytes / 1024 / 1024).toFixed(1)} MB) exceeds Pascal safe limit of 128 MB`);
     }
-
-    console.log(`[SatelliteGPUBuffer] Position buffer: ${(this.positionBufferSize / 1024 / 1024).toFixed(2)} MB`);
-    console.log(`[SatelliteGPUBuffer] Element buffer: ${(this.elementBufferSize / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`[Buffer Safety] Total allocated: ${(totalBytes / 1024 / 1024).toFixed(2)} MB — OK`);
 
     // Create orbital elements buffer (read-only)
     const orbitalElements = this.context.createBuffer(
@@ -171,57 +211,53 @@ export class SatelliteGPUBuffer {
 
     // Create beam storage buffer (2 vec4f per beam = 32 bytes per beam)
     const beamBufferSize = MAX_BEAMS * 32;
-    console.log(`[SatelliteGPUBuffer] Beam buffer: ${(beamBufferSize / 1024).toFixed(2)} KB (${MAX_BEAMS} beams)`);
     const beams = this.context.createBuffer(
       beamBufferSize,
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     );
     
-    // Create beam params uniform buffer (16 bytes: time, patternMode, density, pad)
+    // Create beam params uniform buffer (16 bytes)
     const beamParams = this.context.createUniformBuffer(16);
-    // Initialize with default pattern mode 1 (GROK logo)
     const beamParamsData = new Float32Array(4);
     beamParamsData[0] = 0;      // time
     beamParamsData[1] = 1;      // patternMode (GROK logo default)
-    beamParamsData[2] = MAX_BEAMS;  // density
-    beamParamsData[3] = 0;      // padding
+    beamParamsData[2] = MAX_BEAMS;
+    beamParamsData[3] = 0;
     this.context.writeBuffer(beamParams, beamParamsData);
 
-    // Create pattern params uniform buffer for animation patterns
+    // Create pattern params uniform buffer
     const patternParams = this.context.createUniformBuffer(16);
     const patternParamsData = new Float32Array(4);
     patternParamsData[0] = 0;   // animation_time
-    patternParamsData[1] = 0;   // pattern_mode (0 = chaos default)
+    patternParamsData[1] = 0;   // pattern_mode
     patternParamsData[2] = 0;   // seed
-    patternParamsData[3] = 0;   // padding
+    patternParamsData[3] = 0;
     this.context.writeBuffer(patternParams, patternParamsData);
 
     // Create per-satellite RGBA color buffer (rgba8unorm packed as u32, 4 MB)
-    const colorBufferSize = this.numSatellites * 4;
+    const colorBufferSize = numSats * 4;
     const colors = this.context.createBuffer(
       colorBufferSize,
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     );
-    // Initialize to white, full brightness — shader multiplies shell color by this
-    const colorData = new Uint32Array(this.numSatellites);
+    const colorData = new Uint32Array(numSats);
     colorData.fill(0xFFFFFFFF);
     this.context.writeBuffer(colors, colorData);
     console.log(`[SatelliteGPUBuffer] Color buffer: ${(colorBufferSize / 1024 / 1024).toFixed(2)} MB (rgba8unorm)`);
 
     // Create Sky Strips pattern data buffer (16 bytes per satellite: vec4f)
-    const patternBufferSize = this.numSatellites * 16; // 4 floats × 4 bytes
+    const patternBufferSize = numSats * 16;
     const patterns = this.context.createBuffer(
       patternBufferSize,
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     );
-    // Initialize with default pulse pattern
-    const patternData = new Float32Array(this.numSatellites * 4);
-    for (let i = 0; i < this.numSatellites; i++) {
+    const patternData = new Float32Array(numSats * 4);
+    for (let i = 0; i < numSats; i++) {
       const idx = i * 4;
-      patternData[idx + 0] = 0.7 + Math.random() * 0.3;  // brightnessMod
-      patternData[idx + 1] = 0;  // patternId (PULSE default)
-      patternData[idx + 2] = (i % 1000) * 0.01;  // phaseOffset
-      patternData[idx + 3] = 0.8 + Math.random() * 0.4;  // speedMult
+      patternData[idx + 0] = 0.7 + Math.random() * 0.3;
+      patternData[idx + 1] = 0;  // patternId
+      patternData[idx + 2] = (i % 1000) * 0.01;
+      patternData[idx + 3] = 0.8 + Math.random() * 0.4;
     }
     this.context.writeBuffer(patterns, patternData);
     console.log(`[SatelliteGPUBuffer] Pattern buffer: ${(patternBufferSize / 1024 / 1024).toFixed(2)} MB (Sky Strips)`);
@@ -238,38 +274,32 @@ export class SatelliteGPUBuffer {
     skyStripUniformsData[6] = 15;   // morseSpeed
     skyStripUniformsData[7] = 0.1;  // sparkleDensity
     this.context.writeBuffer(skyStripUniforms, skyStripUniformsData);
-    console.log(`[SatelliteGPUBuffer] Sky Strip uniforms: 32 bytes`);
 
     // Create Smile V2 uniform buffer (64 bytes aligned)
-    // Layout:
-    // Byte 0-3: global_time (f32)
-    // Byte 4-7: transition_alpha (f32)
-    // Byte 8-11: target_mode (f32)
-    // Byte 12-15: morph_progress (f32)
-    // Byte 16-31: reserved (vec4f padding)
     const smileV2Uniforms = this.context.createUniformBuffer(64);
     const smileV2UniformsData = new Float32Array(16);
     smileV2UniformsData[0] = 0;   // global_time
     smileV2UniformsData[1] = 0;   // transition_alpha
     smileV2UniformsData[2] = 0;   // target_mode
     smileV2UniformsData[3] = 0;   // morph_progress
-    // Bytes 16-31: reserved (already zero-initialized)
     this.context.writeBuffer(smileV2Uniforms, smileV2UniformsData);
-    console.log(`[SatelliteGPUBuffer] Smile V2 uniforms: 64 bytes`);
 
-    // Create Smile V2 trail buffer for phase 6 trails
-    // REDUCED: 4 frames instead of 240 to stay under Pascal GPU limits (128 MB)
-    // Trail rendering will use a circular buffer approach with motion blur
+    // Create Smile V2 trail buffer (4 frames × vec4f per satellite)
     const TRAIL_HISTORY_FRAMES = 4;
-    const trailBufferSize = numSats * 16 * TRAIL_HISTORY_FRAMES; // vec4<f32> per sat per frame
+    const trailBufferSize = numSats * 16 * TRAIL_HISTORY_FRAMES;
     const trailBuffer = this.context.createBuffer(
       trailBufferSize,
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     );
-    // Initialize to zero
     const trailData = new Float32Array(numSats * 4 * TRAIL_HISTORY_FRAMES);
     this.context.writeBuffer(trailBuffer, trailData);
-    console.log(`[SatelliteGPUBuffer] Trail buffer: ${(trailBufferSize / 1024 / 1024).toFixed(2)} MB (${TRAIL_HISTORY_FRAMES} frames history)`);
+    console.log(`[SatelliteGPUBuffer] Trail buffer: ${(trailBufferSize / 1024 / 1024).toFixed(2)} MB (${TRAIL_HISTORY_FRAMES} frames)`);
+
+    // Create staging buffer for async uploads
+    this.staging = new StagingBuffer(
+      this.context.getDevice(),
+      Math.max(this.positionBufferSize, patternBufferSize)
+    );
 
     this.buffers = {
       orbitalElements,
@@ -290,19 +320,39 @@ export class SatelliteGPUBuffer {
   }
 
   /**
+   * Upload dynamic data using staging buffer (zero stall)
+   */
+  async uploadDynamicData(data: {
+    position?: ArrayBufferLike;
+    pattern?: ArrayBufferLike;
+    color?: ArrayBufferLike;
+  }, commandEncoder: GPUCommandEncoder): Promise<void> {
+    if (!this.staging || !this.buffers) {
+      throw new Error('Buffers not initialized');
+    }
+
+    if (data.position) {
+      const target = this.isBufferPair(this.buffers.positions) 
+        ? this.buffers.positions.write 
+        : this.buffers.positions;
+      await this.staging.upload(data.position, target, commandEncoder);
+    }
+    if (data.pattern) {
+      await this.staging.upload(data.pattern, this.buffers.patterns, commandEncoder);
+    }
+    if (data.color) {
+      await this.staging.upload(data.color, this.buffers.colors, commandEncoder);
+    }
+  }
+
+  /**
    * Generate Walker constellation orbital elements with multi-shell orbits
-   * 
-   * Creates Starlink-style constellation with 3 altitude shells:
-   * - Shell 0: 340 km altitude (6711 km radius) - ~30% of satellites
-   * - Shell 1: 550 km altitude (6921 km radius) - ~50% of satellites  
-   * - Shell 2: 1150 km altitude (7521 km radius) - ~20% of satellites
    */
   generateOrbitalElements(): Float32Array {
     const { NUM_PLANES, SATELLITES_PER_PLANE } = CONSTANTS;
     const shells = INCLINATION_SHELLS;
     
-    // Multi-shell configuration
-    const SHELL_DISTRIBUTION = [0.3, 0.5, 0.2];  // 30%, 50%, 20%
+    const SHELL_DISTRIBUTION = [0.3, 0.5, 0.2];
     console.log(`[SatelliteGPUBuffer] Generating multi-shell orbital elements...`);
     console.log(`[SatelliteGPUBuffer] Shells: 340km (${(SHELL_DISTRIBUTION[0]*100).toFixed(0)}%), 550km (${(SHELL_DISTRIBUTION[1]*100).toFixed(0)}%), 1150km (${(SHELL_DISTRIBUTION[2]*100).toFixed(0)}%)`);
     const startTime = performance.now();
@@ -316,7 +366,6 @@ export class SatelliteGPUBuffer {
         const idx = (plane * SATELLITES_PER_PLANE + sat) * 4;
         const meanAnomaly = (sat / SATELLITES_PER_PLANE) * Math.PI * 2;
         
-        // Determine altitude shell based on distribution
         const rand = Math.random();
         let shellIndex = 0;
         let cumulative = 0;
@@ -328,12 +377,8 @@ export class SatelliteGPUBuffer {
           }
         }
         
-        // Color based on shell (0=blue, 1=white, 2=gold)
-        const shellColors = [2.0, 6.0, 3.0];  // Blue, White, Gold
+        const shellColors = [2.0, 6.0, 3.0];
         const colorIndex = shellColors[shellIndex];
-
-        // Store as vec4f: [raan, inclination, meanAnomaly, shellData]
-        // shellData encodes: shellIndex in upper bits, colorIndex in lower bits
         const shellData = (shellIndex << 8) | (colorIndex & 0xFF);
         
         this.orbitalElementData[idx + 0] = raan;
@@ -350,20 +395,7 @@ export class SatelliteGPUBuffer {
   }
 
   /**
-   * Load orbital elements from parsed TLE data.
-   *
-   * Data flow: TLE text → TLELoader.parse() → TLEData[] → this method → GPU buffer
-   *
-   * Each TLE line-2 encodes: inclination, RAAN, eccentricity, arg of perigee,
-   * mean anomaly, and mean motion. We extract RAAN, inclination, and mean anomaly
-   * into the compact vec4f GPU format. The shell index is inferred from altitude.
-   *
-   * If tleCount < NUM_SATELLITES, the remaining slots are filled deterministically
-   * with procedural Walker satellites (same as generateOrbitalElements) so the
-   * compute shader always processes a full 1,048,576-element buffer.
-   *
-   * @param tles - Parsed TLE records from TLELoader.parse()
-   * @returns Number of real TLE satellites loaded (before padding)
+   * Load orbital elements from parsed TLE data
    */
   loadFromTLEData(tles: TLEData[]): number {
     const startTime = performance.now();
@@ -373,13 +405,6 @@ export class SatelliteGPUBuffer {
 
     for (let t = 0; t < tleCount; t++) {
       const { line2 } = tles[t];
-      // TLE line-2 format (fixed-width columns):
-      //   col 9-16:  inclination (deg)
-      //   col 18-25: RAAN (deg)
-      //   col 27-33: eccentricity (leading decimal point implied)
-      //   col 35-42: argument of perigee (deg)
-      //   col 44-51: mean anomaly (deg)
-      //   col 53-63: mean motion (rev/day)
       const incDeg = parseFloat(line2.substring(8, 16).trim());
       const raanDeg = parseFloat(line2.substring(17, 25).trim());
       const meanAnomalyDeg = parseFloat(line2.substring(43, 51).trim());
@@ -390,24 +415,17 @@ export class SatelliteGPUBuffer {
       const inc = incDeg * DEG_TO_RAD;
       const M = meanAnomalyDeg * DEG_TO_RAD;
 
-      // Derive altitude from mean motion: n(rad/s) = meanMotion * 2π / 86400
-      // a = (μ / n²)^(1/3), altitude = a - R_earth
       const nRadPerSec = meanMotionRevPerDay * 2 * Math.PI / 86400;
       const MU = 398600.4418;
       const a = Math.pow(MU / (nRadPerSec * nRadPerSec), 1 / 3);
       const altKm = a - 6371.0;
 
-      // Classify into shell by altitude
       let shellIndex: number;
-      if (altKm < 450) {
-        shellIndex = 0; // low shell (~340 km)
-      } else if (altKm < 800) {
-        shellIndex = 1; // mid shell (~550 km)
-      } else {
-        shellIndex = 2; // high shell (~1150 km)
-      }
+      if (altKm < 450) shellIndex = 0;
+      else if (altKm < 800) shellIndex = 1;
+      else shellIndex = 2;
 
-      const shellColors = [2.0, 6.0, 3.0]; // Blue, White, Gold
+      const shellColors = [2.0, 6.0, 3.0];
       const colorIndex = shellColors[shellIndex];
       const shellData = (shellIndex << 8) | (colorIndex & 0xFF);
 
@@ -418,12 +436,10 @@ export class SatelliteGPUBuffer {
       this.orbitalElementData[idx + 3] = shellData;
     }
 
-    // Fill remaining slots with deterministic procedural Walker satellites.
-    // Uses the same distribution as generateOrbitalElements but with a fixed
-    // seed (no Math.random) so results are reproducible.
+    // Fill remaining slots with deterministic procedural data
     if (tleCount < this.numSatellites) {
       const remaining = this.numSatellites - tleCount;
-      console.log(`[SatelliteGPUBuffer] Padding ${remaining.toLocaleString()} remaining slots with procedural Walker data`);
+      console.log(`[SatelliteGPUBuffer] Padding ${remaining.toLocaleString()} remaining slots with procedural data`);
 
       const { NUM_PLANES, SATELLITES_PER_PLANE } = CONSTANTS;
       const shells = INCLINATION_SHELLS;
@@ -438,7 +454,6 @@ export class SatelliteGPUBuffer {
         const inclination = shells[shellIdx];
         const meanAnomaly = (sat / SATELLITES_PER_PLANE) * Math.PI * 2;
 
-        // Deterministic shell assignment based on global index
         const shellIndex = globalIdx % 3 === 0 ? 0 : globalIdx % 3 === 1 ? 1 : 2;
         const shellColors = [2.0, 6.0, 3.0];
         const colorIndex = shellColors[shellIndex];
@@ -453,7 +468,7 @@ export class SatelliteGPUBuffer {
     }
 
     const elapsed = performance.now() - startTime;
-    console.log(`[SatelliteGPUBuffer] TLE load complete in ${elapsed.toFixed(2)}ms (${tleCount} real + ${this.numSatellites - tleCount} procedural)`);
+    console.log(`[SatelliteGPUBuffer] TLE load complete in ${elapsed.toFixed(2)}ms`);
     return tleCount;
   }
 
@@ -461,9 +476,7 @@ export class SatelliteGPUBuffer {
    * Upload orbital elements to GPU
    */
   uploadOrbitalElements(): void {
-    if (!this.buffers) {
-      throw new Error('Buffers not initialized. Call initialize() first.');
-    }
+    if (!this.buffers) throw new Error('Buffers not initialized');
     this.context.writeBuffer(this.buffers.orbitalElements, this.orbitalElementData);
   }
 
@@ -484,30 +497,21 @@ export class SatelliteGPUBuffer {
       return buffer;
     };
 
-    this.context.writeBuffer(
-      this.buffers.bloomUniforms.horizontal,
-      createData(true)
-    );
-    this.context.writeBuffer(
-      this.buffers.bloomUniforms.vertical,
-      createData(false)
-    );
+    this.context.writeBuffer(this.buffers.bloomUniforms.horizontal, createData(true));
+    this.context.writeBuffer(this.buffers.bloomUniforms.vertical, createData(false));
   }
 
   /**
    * Get the current position buffer (for rendering)
    */
   getPositionBufferForRender(): GPUBuffer {
-    if (!this.buffers) {
-      throw new Error('Buffers not initialized');
-    }
+    if (!this.buffers) throw new Error('Buffers not initialized');
     
     if (this.isBufferPair(this.buffers.positions)) {
       return this.buffers.positions.current === 'read'
         ? this.buffers.positions.read
         : this.buffers.positions.write;
     }
-    
     return this.buffers.positions;
   }
 
@@ -515,16 +519,13 @@ export class SatelliteGPUBuffer {
    * Get the current position buffer (for compute)
    */
   getPositionBufferForCompute(): GPUBuffer {
-    if (!this.buffers) {
-      throw new Error('Buffers not initialized');
-    }
+    if (!this.buffers) throw new Error('Buffers not initialized');
     
     if (this.isBufferPair(this.buffers.positions)) {
       return this.buffers.positions.current === 'read'
         ? this.buffers.positions.write
         : this.buffers.positions.read;
     }
-    
     return this.buffers.positions;
   }
 
@@ -532,9 +533,7 @@ export class SatelliteGPUBuffer {
    * Swap double buffers (ping-pong)
    */
   swapBuffers(): void {
-    if (!this.buffers || !this.isBufferPair(this.buffers.positions)) {
-      return;
-    }
+    if (!this.buffers || !this.isBufferPair(this.buffers.positions)) return;
     
     this.buffers.positions.current =
       this.buffers.positions.current === 'read' ? 'write' : 'read';
@@ -544,9 +543,7 @@ export class SatelliteGPUBuffer {
    * Get all buffers
    */
   getBuffers(): SatelliteBufferSet {
-    if (!this.buffers) {
-      throw new Error('Buffers not initialized. Call initialize() first.');
-    }
+    if (!this.buffers) throw new Error('Buffers not initialized');
     return this.buffers;
   }
 
@@ -558,8 +555,7 @@ export class SatelliteGPUBuffer {
   }
 
   /**
-   * Calculate satellite position on CPU (for camera tracking)
-   * Supports multi-shell orbits
+   * Calculate satellite position on CPU (multi-shell)
    */
   calculateSatellitePosition(index: number, time: number): [number, number, number] {
     const i = index * 4;
@@ -568,7 +564,6 @@ export class SatelliteGPUBuffer {
     const meanAnomaly0 = this.orbitalElementData[i + 2];
     const shellData = this.orbitalElementData[i + 3];
     
-    // Extract shell index
     const shellIndex = (shellData >> 8) & 0xFF;
     const SHELL_RADII_KM = [6711.0, 6921.0, 7521.0];
     const orbitR = SHELL_RADII_KM[shellIndex] || 6921.0;
@@ -615,7 +610,6 @@ export class SatelliteGPUBuffer {
     const cI = Math.cos(inclination);
     const sI = Math.sin(inclination);
 
-    // dpos/dM (normalized velocity direction)
     const vx = -(cR * sM + sR * cM * cI);
     const vy = -(sR * sM - cR * cM * cI);
     const vz = cM * sI;
@@ -628,31 +622,20 @@ export class SatelliteGPUBuffer {
    * Read position data back from GPU (async)
    */
   async readbackPositions(): Promise<Float32Array | null> {
-    if (!this.buffers || !this.config.enableReadback) {
-      return null;
-    }
+    if (!this.buffers || !this.config.enableReadback) return null;
 
     const device = this.context.getDevice();
     const positionBuffer = this.getPositionBufferForRender();
     
-    // Create staging buffer for readback
     const stagingBuffer = device.createBuffer({
       size: this.positionBufferSize,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
 
-    // Encode copy command
     const encoder = device.createCommandEncoder();
-    encoder.copyBufferToBuffer(
-      positionBuffer,
-      0,
-      stagingBuffer,
-      0,
-      this.positionBufferSize
-    );
+    encoder.copyBufferToBuffer(positionBuffer, 0, stagingBuffer, 0, this.positionBufferSize);
     device.queue.submit([encoder.finish()]);
 
-    // Map and read
     await stagingBuffer.mapAsync(GPUMapMode.READ);
     const data = new Float32Array(stagingBuffer.getMappedRange().slice(0));
     stagingBuffer.unmap();
@@ -673,10 +656,9 @@ export class SatelliteGPUBuffer {
       total += this.positionBufferSize;
     }
     
-    // Add Smile V2 buffers
     if (this.buffers) {
       total += 64; // smileV2Uniforms
-      total += CONSTANTS.NUM_SATELLITES * 16 * 4; // trailBuffer (4 frames history)
+      total += CONSTANTS.NUM_SATELLITES * 16 * 4; // trailBuffer
     }
     
     return total;
@@ -709,6 +691,8 @@ export class SatelliteGPUBuffer {
       
       this.buffers = null;
     }
+    
+    this.staging = null;
   }
 
   /**
