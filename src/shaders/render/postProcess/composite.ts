@@ -21,9 +21,9 @@ fn vs(@builtin(vertex_index) vid: u32) -> VSOut {
   return out;
 }
 
-@group(1) @binding(0) var sceneTex: texture_2d<f32>;
-@group(1) @binding(1) var bloomTex: texture_2d<f32>;
-@group(1) @binding(2) var linearSamp: sampler;
+@group(0) @binding(0) var sceneTex: texture_2d<f32>;
+@group(0) @binding(1) var bloomTex: texture_2d<f32>;
+@group(0) @binding(2) var linearSamp: sampler;
 
 const EXPOSURE: f32 = 1.0;
 const GAMMA: f32 = 2.2;

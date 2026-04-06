@@ -21,8 +21,8 @@ fn vs(@builtin(vertex_index) vid: u32) -> VSOut {
   return out;
 }
 
-@group(1) @binding(0) var hdrTex: texture_2d<f32>;
-@group(1) @binding(1) var hdrSamp: sampler;
+@group(0) @binding(0) var hdrTex: texture_2d<f32>;
+@group(0) @binding(1) var hdrSamp: sampler;
 
 const BLOOM_THRESHOLD_VAL: f32 = 1.0;
 
