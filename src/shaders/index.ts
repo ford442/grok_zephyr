@@ -52,13 +52,13 @@ export const GROUND_TERRAIN = Render.ground;
 export const BEAM_COMPUTE = Compute.beam;
 
 /** @deprecated Use SHADERS.render.postProcess.bloomThreshold instead */
-export const BLOOM_THRESHOLD = Render.postProcess.BLOOM_THRESHOLD;
+export const BLOOM_THRESHOLD = Render.postProcess.bloomThreshold;
 
 /** @deprecated Use SHADERS.render.postProcess.bloomBlur instead */
-export const BLOOM_BLUR = Render.postProcess.BLOOM_BLUR;
+export const BLOOM_BLUR = Render.postProcess.bloomBlur;
 
 /** @deprecated Use SHADERS.render.postProcess.composite instead */
-export const COMPOSITE = Render.postProcess.COMPOSITE;
+export const COMPOSITE = Render.postProcess.composite;
 
 /** @deprecated Use SHADERS.animations.smileV2 instead */
 export const SMILE_V2_SHADER = Animations.smileV2;
