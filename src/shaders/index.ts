@@ -28,7 +28,7 @@ export const SHADERS = {
 };
 
 /** @deprecated Use SHADERS.compute.orbital instead */
-export const ORBITAL_CS = Compute.ORBITAL_CS;
+export const ORBITAL_CS = Compute.orbital;
 
 /** @deprecated Use SHADERS.render.stars instead */
 export const STARS_SHADER = Render.STARS_SHADER;
@@ -49,16 +49,16 @@ export const BEAM_SHADER = Render.BEAM_SHADER;
 export const GROUND_TERRAIN = Render.GROUND_TERRAIN;
 
 /** @deprecated Use SHADERS.compute.beam instead */
-export const BEAM_COMPUTE = Compute.BEAM_COMPUTE;
+export const BEAM_COMPUTE = Compute.beam;
 
 /** @deprecated Use SHADERS.render.postProcess.bloomThreshold instead */
-export const BLOOM_THRESHOLD = Render.BLOOM_THRESHOLD;
+export const BLOOM_THRESHOLD = Render.postProcess.BLOOM_THRESHOLD;
 
 /** @deprecated Use SHADERS.render.postProcess.bloomBlur instead */
-export const BLOOM_BLUR = Render.BLOOM_BLUR;
+export const BLOOM_BLUR = Render.postProcess.BLOOM_BLUR;
 
 /** @deprecated Use SHADERS.render.postProcess.composite instead */
-export const COMPOSITE = Render.COMPOSITE;
+export const COMPOSITE = Render.postProcess.COMPOSITE;
 
 /** @deprecated Use SHADERS.animations.smileV2 instead */
 export const SMILE_V2_SHADER = Animations.SMILE_V2_SHADER;

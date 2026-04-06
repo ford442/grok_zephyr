@@ -8,3 +8,4 @@ export { ATM_SHADER } from './atmosphere.js';
 export { SATELLITE_SHADER } from './satellites.js';
 export { BEAM_SHADER } from './beam.js';
 export { GROUND_TERRAIN } from './ground.js';
+export * as postProcess from './postProcess/index.js';

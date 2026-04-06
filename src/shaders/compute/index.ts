@@ -2,5 +2,5 @@
  * Compute Shaders
  */
 
-export { ORBITAL_CS } from './orbital.js';
-export { BEAM_COMPUTE } from './beam.js';
+export { ORBITAL_CS as orbital } from './orbital.js';
+export { BEAM_COMPUTE as beam } from './beam.js';
