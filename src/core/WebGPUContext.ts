@@ -206,6 +206,14 @@ export class WebGPUContext {
    */
   createShaderModule(code: string, label?: string): GPUShaderModule {
     const device = this.getDevice();
+    
+    // Debug: Check if code is defined
+    if (!code || code.trim() === '') {
+      console.error(`❌ SHADER LOAD FAILED: ${label || 'unknown'} — code is undefined or empty!`);
+      throw new Error(`Shader "${label || 'unknown'}" has no code`);
+    }
+    console.log(`✅ Loading shader: ${label || 'unknown'} (${code.length} chars)`);
+    
     const module = device.createShaderModule({
       code,
       label,
