@@ -1220,6 +1220,296 @@ fn fs(in: VOut) -> @location(0) vec4f {
 }
 `;
 
+/** Smile V2 compute shader for "Smile from the Moon v2" animation */
+export const SMILE_V2_SHADER = /* wgsl */ `
+/**
+ * Smile from the Moon V2 - Compute Shader
+ * 
+ * 7-phase animation cycle (48 seconds total):
+ * 0. IDLE:        Default constellation display
+ * 1. EMERGE:      Satellites fade from constellation to smile colors (3s)
+ * 2. GLOW:        Warm pulse with eye blinking (8s)
+ * 3. TWINKLE:     Traveling sparkle wave on smile curve (8s)
+ * 4. FADE:        Dissolve back to constellation (2s)
+ * 5. MORPH:       Transition between patterns (8s)
+ * 6. TRAILS:      Phase 6 with 4-second trail history (21s)
+ */
+
+// Animation phase timings (seconds)
+const PHASE_EMERGE_DURATION: f32 = 3.0;
+const PHASE_GLOW_DURATION: f32 = 8.0;
+const PHASE_TWINKLE_DURATION: f32 = 8.0;
+const PHASE_FADE_DURATION: f32 = 2.0;
+const PHASE_MORPH_DURATION: f32 = 8.0;
+const PHASE_TRAILS_DURATION: f32 = 21.0;
+
+// Feature IDs
+const FEATURE_NONE: u32 = 0u;
+const FEATURE_EYE_LEFT: u32 = 1u;
+const FEATURE_EYE_RIGHT: u32 = 2u;
+const FEATURE_SMILE_CURVE: u32 = 3u;
+
+// Colors
+const COLOR_AMBER: vec3f = vec3f(1.0, 0.702, 0.278);
+const COLOR_GOLDEN: vec3f = vec3f(1.0, 0.843, 0.0);
+const COLOR_WARM_WHITE: vec3f = vec3f(1.0, 0.95, 0.85);
+
+// Smile geometry constants
+const SMILE_RADIUS: f32 = 1000.0;
+const EYE_OFFSET_X: f32 = 300.0;
+const EYE_OFFSET_Y: f32 = 300.0;
+const EYE_RADIUS: f32 = 120.0;
+
+// Uniform buffer (64 bytes aligned)
+struct SmileV2Uniforms {
+  global_time: f32,       // Animation time in seconds
+  transition_alpha: f32,  // Blend factor (0-1)
+  target_mode: f32,       // Target animation mode
+  morph_progress: f32,    // Morph transition progress (0-1)
+  reserved: vec4f,        // Padding to 32 bytes
+};
+
+@group(0) @binding(0) var<uniform> params: SmileV2Uniforms;
+@group(0) @binding(1) var<storage, read> sat_positions: array<vec4f>;
+@group(0) @binding(2) var<storage, read> orb_elements: array<vec4f>;
+@group(0) @binding(3) var<storage, read_write> sat_colors: array<u32>;
+@group(0) @binding(4) var<storage, read_write> trail_buffer: array<vec4f>;
+
+// Trail history parameters
+const TRAIL_HISTORY_FRAMES: u32 = 240u; // 4 seconds at 60fps
+const TRAIL_FRAME_SIZE: u32 = 1048576u; // NUM_SATELLITES
+
+// Helper: hash function for random values
+fn hash(n: u32) -> f32 {
+  return fract(sin(f32(n) * 12.9898) * 43758.5453);
+}
+
+fn hash2(n: u32, seed: f32) -> f32 {
+  return fract(sin(f32(n) * 12.9898 + seed * 78.233) * 43758.5453);
+}
+
+// Gnomonic projection to tangent plane
+fn gnomonic_project(sat_pos: vec3f, earth_dir: vec3f) -> vec2f {
+  let up = normalize(-earth_dir);
+  var tangent: vec3f;
+  if (abs(up.z) < 0.999) {
+    tangent = normalize(cross(up, vec3f(0.0, 0.0, 1.0)));
+  } else {
+    tangent = normalize(cross(up, vec3f(0.0, 1.0, 0.0)));
+  }
+  let bitangent = cross(up, tangent);
+  
+  let earth_radius = 6371.0;
+  let sat_dist = length(sat_pos);
+  let t = earth_radius / sat_dist;
+  let projected = sat_pos * t;
+  
+  return vec2f(dot(projected, tangent), dot(projected, bitangent));
+}
+
+// Classify satellite into smile feature
+fn classify_feature(sat_pos: vec3f, earth_dir: vec3f) -> u32 {
+  let facing = dot(normalize(sat_pos), -normalize(earth_dir));
+  if (facing < 0.7) { return FEATURE_NONE; }
+  
+  let uv = gnomonic_project(sat_pos, earth_dir);
+  if (length(uv) > SMILE_RADIUS * 1.2) { return FEATURE_NONE; }
+  
+  // Left eye
+  let left_eye_center = vec2f(-EYE_OFFSET_X, EYE_OFFSET_Y);
+  if (length(uv - left_eye_center) < EYE_RADIUS) { return FEATURE_EYE_LEFT; }
+  
+  // Right eye
+  let right_eye_center = vec2f(EYE_OFFSET_X, EYE_OFFSET_Y);
+  if (length(uv - right_eye_center) < EYE_RADIUS) { return FEATURE_EYE_RIGHT; }
+  
+  // Smile curve (parabolic)
+  let a = 0.0015;
+  let h = 350.0;
+  let half_width = 500.0;
+  if (abs(uv.x) > half_width) { return FEATURE_NONE; }
+  let curve_y = a * uv.x * uv.x - h;
+  if (abs(uv.y - curve_y) < 80.0) { return FEATURE_SMILE_CURVE; }
+  
+  return FEATURE_NONE;
+}
+
+// Calculate shell color from orbital element data
+fn get_shell_color(shell_data: f32) -> vec3f {
+  let shell_data_u = u32(shell_data);
+  let color_idx = shell_data_u & 255u;
+  
+  switch color_idx {
+    case 2u: { return vec3f(0.15, 0.55, 1.0); }   // Low shell - cyan-blue
+    case 6u: { return vec3f(0.85, 0.92, 1.0); }   // Mid shell - cool white
+    case 3u: { return vec3f(1.0, 0.78, 0.28); }   // High shell - warm gold
+    default: { return vec3f(1.0, 1.0, 1.0); }
+  }
+}
+
+// Unpack rgba8unorm u32 to vec4f
+fn unpack_color(packed: u32) -> vec4f {
+  return vec4f(
+    f32((packed >> 0u) & 0xFFu) / 255.0,
+    f32((packed >> 8u) & 0xFFu) / 255.0,
+    f32((packed >> 16u) & 0xFFu) / 255.0,
+    f32((packed >> 24u) & 0xFFu) / 255.0,
+  );
+}
+
+// Pack vec4f to rgba8unorm u32
+fn pack_color(color: vec4f) -> u32 {
+  return 
+    (u32(color.r * 255.0) << 0u) |
+    (u32(color.g * 255.0) << 8u) |
+    (u32(color.b * 255.0) << 16u) |
+    (u32(color.a * 255.0) << 24u);
+}
+
+// Update trail buffer for phase 6
+fn update_trail(sat_idx: u32, position: vec3f, color: vec3f, intensity: f32) {
+  // Calculate current frame index based on global time
+  let current_frame = u32(params.global_time * 60.0) % TRAIL_HISTORY_FRAMES;
+  let trail_idx = current_frame * TRAIL_FRAME_SIZE + sat_idx;
+  
+  // Store position and color in trail buffer
+  trail_buffer[trail_idx * 2u] = vec4f(position, intensity);
+  trail_buffer[trail_idx * 2u + 1u] = vec4f(color, 1.0);
+}
+
+// Calculate animation based on phase
+fn calculate_animation(
+  sat_idx: u32,
+  sat_pos: vec3f,
+  earth_dir: vec3f,
+  base_color: vec3f,
+  base_alpha: f32,
+  time: f32
+) -> vec4f {
+  let feature = classify_feature(sat_pos, earth_dir);
+  
+  // Determine total duration and current phase
+  let total_duration = PHASE_EMERGE_DURATION + PHASE_GLOW_DURATION + 
+                       PHASE_TWINKLE_DURATION + PHASE_FADE_DURATION;
+  let cycle_time = time % total_duration;
+  
+  var result_color: vec3f;
+  var result_alpha: f32 = base_alpha;
+  
+  if (feature == FEATURE_NONE) {
+    // Non-feature satellites dim slightly during animation
+    result_color = base_color;
+    result_alpha = base_alpha * (1.0 - params.transition_alpha * 0.3);
+    return vec4f(result_color, result_alpha);
+  }
+  
+  // Determine target color based on feature
+  var target_color: vec3f;
+  switch feature {
+    case FEATURE_EYE_LEFT: { target_color = COLOR_AMBER; }
+    case FEATURE_EYE_RIGHT: { target_color = COLOR_AMBER; }
+    case FEATURE_SMILE_CURVE: { target_color = COLOR_GOLDEN; }
+    default: { target_color = base_color; }
+  }
+  
+  // Phase calculations
+  if (cycle_time < PHASE_EMERGE_DURATION) {
+    // PHASE 1: EMERGE
+    let phase_t = cycle_time / PHASE_EMERGE_DURATION;
+    let blend = 1.0 - pow(1.0 - phase_t, 3.0);
+    result_color = mix(base_color, target_color, blend);
+    result_alpha = mix(base_alpha, base_alpha * 1.2, blend);
+    
+  } else if (cycle_time < PHASE_EMERGE_DURATION + PHASE_GLOW_DURATION) {
+    // PHASE 2: GLOW
+    let phase_t = (cycle_time - PHASE_EMERGE_DURATION) / PHASE_GLOW_DURATION;
+    result_color = target_color;
+    
+    // Warm pulse
+    let pulse = 1.0 + sin(phase_t * 6.28318) * 0.2;
+    
+    // Eye blinking
+    var blink = 1.0;
+    if (feature == FEATURE_EYE_LEFT) {
+      let blink_phase = fract(phase_t * 2.0);
+      blink = 1.0 - smoothstep(0.45, 0.5, blink_phase) * smoothstep(0.55, 0.5, blink_phase);
+    } else if (feature == FEATURE_EYE_RIGHT) {
+      let blink_phase = fract(phase_t * 2.0 + 0.5);
+      blink = 1.0 - smoothstep(0.45, 0.5, blink_phase) * smoothstep(0.55, 0.5, blink_phase);
+    }
+    
+    result_alpha = base_alpha * pulse * blink;
+    
+  } else if (cycle_time < PHASE_EMERGE_DURATION + PHASE_GLOW_DURATION + PHASE_TWINKLE_DURATION) {
+    // PHASE 3: TWINKLE
+    let phase_t = (cycle_time - PHASE_EMERGE_DURATION - PHASE_GLOW_DURATION) / PHASE_TWINKLE_DURATION;
+    result_color = target_color;
+    
+    if (feature == FEATURE_SMILE_CURVE) {
+      // Traveling wave
+      let uv = gnomonic_project(sat_pos, earth_dir);
+      let normalized_x = (uv.x + 500.0) / 1000.0;
+      let wave_pos = fract(phase_t * 3.0);
+      let dist_to_wave = abs(normalized_x - wave_pos);
+      let sparkle = 1.0 + smoothstep(0.2, 0.0, dist_to_wave) * 0.5;
+      
+      // Individual twinkles
+      let random_offset = hash(sat_idx);
+      let individual = 1.0 + sin(random_offset * 100.0 + phase_t * 20.0) * 0.15;
+      
+      result_alpha = base_alpha * sparkle * individual;
+    } else {
+      // Eyes maintain steady glow
+      result_alpha = base_alpha * (1.0 + sin(phase_t * 4.0) * 0.1);
+    }
+    
+  } else {
+    // PHASE 4: FADE
+    let phase_t = (cycle_time - PHASE_EMERGE_DURATION - PHASE_GLOW_DURATION - PHASE_TWINKLE_DURATION) / PHASE_FADE_DURATION;
+    let blend = phase_t * phase_t * (3.0 - 2.0 * phase_t);
+    result_color = mix(target_color, base_color, blend);
+    result_alpha = mix(base_alpha * 1.2, base_alpha, blend);
+  }
+  
+  return vec4f(result_color, result_alpha);
+}
+
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) gid: vec3u) {
+  let sat_idx = gid.x;
+  if (sat_idx >= 1048576u) { return; }
+  
+  let sat_pos = sat_positions[sat_idx].xyz;
+  let earth_dir = normalize(-sat_pos);
+  let orb_elem = orb_elements[sat_idx];
+  
+  // Get current color from buffer
+  let current_packed = sat_colors[sat_idx];
+  let current_color = unpack_color(current_packed);
+  
+  // Get base shell color
+  let shell_color = get_shell_color(orb_elem.w);
+  
+  // Calculate animation
+  let anim = calculate_animation(
+    sat_idx,
+    sat_pos,
+    earth_dir,
+    shell_color,
+    current_color.a,
+    params.global_time
+  );
+  
+  // Update trail buffer if in trail phase
+  if (params.target_mode >= 6.0) {
+    update_trail(sat_idx, sat_pos, anim.rgb, anim.a);
+  }
+  
+  // Pack and write result
+  sat_colors[sat_idx] = pack_color(anim);
+}
+`;
+
 /** Export all shaders as a collection */
 export const SHADERS = {
   orbital: ORBITAL_CS,
@@ -1234,6 +1524,7 @@ export const SHADERS = {
   bloomThreshold: BLOOM_THRESHOLD_SHADER,
   bloomBlur: BLOOM_BLUR_SHADER,
   composite: COMPOSITE_SHADER,
+  smileV2: SMILE_V2_SHADER,
 } as const;
 
 export default SHADERS;

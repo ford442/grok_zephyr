@@ -50,6 +50,14 @@ export interface SatelliteBufferSet {
   patternParams: GPUBuffer;
   /** Per-satellite RGBA color (packed rgba8unorm u32, 4 MB for 1M sats) */
   colors: GPUBuffer;
+  /** Sky Strips: Per-satellite pattern data (16 bytes per sat: brightness, patternId, phase, speed) */
+  patterns: GPUBuffer;
+  /** Sky Strips: Uniform buffer for pattern compute shader */
+  skyStripUniforms: GPUBuffer;
+  /** Smile V2: Uniform buffer for animation state (64 bytes aligned) */
+  smileV2Uniforms: GPUBuffer;
+  /** Smile V2: Trail buffer for phase 6 trails (4-second history at 60fps = 240 frames) */
+  trailBuffer: GPUBuffer;
 }
 
 /**
@@ -168,6 +176,69 @@ export class SatelliteGPUBuffer {
     this.context.writeBuffer(colors, colorData);
     console.log(`[SatelliteGPUBuffer] Color buffer: ${(colorBufferSize / 1024 / 1024).toFixed(2)} MB (rgba8unorm)`);
 
+    // Create Sky Strips pattern data buffer (16 bytes per satellite: vec4f)
+    const patternBufferSize = this.numSatellites * 16; // 4 floats × 4 bytes
+    const patterns = this.context.createBuffer(
+      patternBufferSize,
+      GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+    );
+    // Initialize with default pulse pattern
+    const patternData = new Float32Array(this.numSatellites * 4);
+    for (let i = 0; i < this.numSatellites; i++) {
+      const idx = i * 4;
+      patternData[idx + 0] = 0.7 + Math.random() * 0.3;  // brightnessMod
+      patternData[idx + 1] = 0;  // patternId (PULSE default)
+      patternData[idx + 2] = (i % 1000) * 0.01;  // phaseOffset
+      patternData[idx + 3] = 0.8 + Math.random() * 0.4;  // speedMult
+    }
+    this.context.writeBuffer(patterns, patternData);
+    console.log(`[SatelliteGPUBuffer] Pattern buffer: ${(patternBufferSize / 1024 / 1024).toFixed(2)} MB (Sky Strips)`);
+
+    // Create Sky Strips uniform buffer (32 bytes)
+    const skyStripUniforms = this.context.createUniformBuffer(32);
+    const skyStripUniformsData = new Float32Array(8);
+    skyStripUniformsData[0] = 0;    // time
+    skyStripUniformsData[1] = 0;    // beatIntensity
+    skyStripUniformsData[2] = 0;    // beatPulse
+    skyStripUniformsData[3] = 120;  // bpm
+    skyStripUniformsData[4] = 0.8;  // globalBrightness
+    skyStripUniformsData[5] = 1.0;  // patternBlend
+    skyStripUniformsData[6] = 15;   // morseSpeed
+    skyStripUniformsData[7] = 0.1;  // sparkleDensity
+    this.context.writeBuffer(skyStripUniforms, skyStripUniformsData);
+    console.log(`[SatelliteGPUBuffer] Sky Strip uniforms: 32 bytes`);
+
+    // Create Smile V2 uniform buffer (64 bytes aligned)
+    // Layout:
+    // Byte 0-3: global_time (f32)
+    // Byte 4-7: transition_alpha (f32)
+    // Byte 8-11: target_mode (f32)
+    // Byte 12-15: morph_progress (f32)
+    // Byte 16-31: reserved (vec4f padding)
+    const smileV2Uniforms = this.context.createUniformBuffer(64);
+    const smileV2UniformsData = new Float32Array(16);
+    smileV2UniformsData[0] = 0;   // global_time
+    smileV2UniformsData[1] = 0;   // transition_alpha
+    smileV2UniformsData[2] = 0;   // target_mode
+    smileV2UniformsData[3] = 0;   // morph_progress
+    // Bytes 16-31: reserved (already zero-initialized)
+    this.context.writeBuffer(smileV2Uniforms, smileV2UniformsData);
+    console.log(`[SatelliteGPUBuffer] Smile V2 uniforms: 64 bytes`);
+
+    // Create Smile V2 trail buffer for phase 6 trails
+    // 4-second history at 60fps = 240 frames
+    // Each frame stores: position (vec4f) + color (vec4f) = 32 bytes per satellite per frame
+    const TRAIL_HISTORY_FRAMES = 240;
+    const trailBufferSize = this.numSatellites * 32 * TRAIL_HISTORY_FRAMES;
+    const trailBuffer = this.context.createBuffer(
+      trailBufferSize,
+      GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+    );
+    // Initialize to zero
+    const trailData = new Float32Array(this.numSatellites * 8 * TRAIL_HISTORY_FRAMES);
+    this.context.writeBuffer(trailBuffer, trailData);
+    console.log(`[SatelliteGPUBuffer] Trail buffer: ${(trailBufferSize / 1024 / 1024).toFixed(2)} MB (${TRAIL_HISTORY_FRAMES} frames history)`);
+
     this.buffers = {
       orbitalElements,
       positions,
@@ -177,6 +248,10 @@ export class SatelliteGPUBuffer {
       beamParams,
       patternParams,
       colors,
+      patterns,
+      skyStripUniforms,
+      smileV2Uniforms,
+      trailBuffer,
     };
 
     return this.buffers;
@@ -566,6 +641,12 @@ export class SatelliteGPUBuffer {
       total += this.positionBufferSize;
     }
     
+    // Add Smile V2 buffers
+    if (this.buffers) {
+      total += 64; // smileV2Uniforms
+      total += this.numSatellites * 32 * 240; // trailBuffer (240 frames history)
+    }
+    
     return total;
   }
 
@@ -582,6 +663,10 @@ export class SatelliteGPUBuffer {
       this.buffers.beamParams.destroy();
       this.buffers.patternParams.destroy();
       this.buffers.colors.destroy();
+      this.buffers.patterns.destroy();
+      this.buffers.skyStripUniforms.destroy();
+      this.buffers.smileV2Uniforms.destroy();
+      this.buffers.trailBuffer.destroy();
       
       if (this.isBufferPair(this.buffers.positions)) {
         this.buffers.positions.read.destroy();
