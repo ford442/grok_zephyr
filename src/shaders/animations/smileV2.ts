@@ -244,8 +244,7 @@ fn phase_twinkle(base_color: vec3f, base_bright: f32, progress: f32, feature: u3
   var color: vec3f;
   var bright: f32;
   switch (feature) {
-    case FEATURE_LEFT_EYE:
-    case FEATURE_RIGHT_EYE: {
+    case FEATURE_LEFT_EYE, FEATURE_RIGHT_EYE: {
       color = COLOR_AMBER;
       bright = 1.1 + sin(progress * 4.0) * 0.1;
     }
@@ -272,8 +271,7 @@ fn phase_glow(base_color: vec3f, base_bright: f32, progress: f32, feature: u32, 
   var color: vec3f;
   var bright: f32;
   switch (feature) {
-    case FEATURE_LEFT_EYE:
-    case FEATURE_RIGHT_EYE: {
+    case FEATURE_LEFT_EYE, FEATURE_RIGHT_EYE: {
       let eye_color = mix(COLOR_AMBER, COLOR_WARM_WHITE, pulse - 1.0);
       color = eye_color;
       bright = 1.2 * pulse;
@@ -296,8 +294,7 @@ fn phase_morph(base_color: vec3f, base_bright: f32, progress: f32, feature: u32,
   var color: vec3f;
   var bright: f32;
   switch (feature) {
-    case FEATURE_LEFT_EYE:
-    case FEATURE_RIGHT_EYE: {
+    case FEATURE_LEFT_EYE, FEATURE_RIGHT_EYE: {
       let dim = 1.0 - morph_t * 0.7;
       color = COLOR_AMBER * dim;
       bright = 1.2 * dim;
