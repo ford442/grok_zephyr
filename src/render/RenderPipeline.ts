@@ -3,15 +3,17 @@
  * 
  * Manages the 6-pass rendering pipeline:
  * 1. Compute orbital positions
- * 2. Scene pass (stars, Earth, atmosphere, satellites)
- * 3. Bloom threshold
- * 4. Bloom horizontal blur
- * 5. Bloom vertical blur
- * 6. Composite + tonemapping
+ * 2. Smile V2 animation (optional, between compute and scene)
+ * 3. Scene pass (stars, Earth, atmosphere, satellites)
+ * 4. Bloom threshold
+ * 5. Bloom horizontal blur
+ * 6. Bloom vertical blur
+ * 7. Composite + tonemapping
  */
 
 import type WebGPUContext from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
+import { SmileV2Pipeline } from './SmileV2Pipeline.js';
 import { SHADERS } from '@/shaders/index.js';
 import { CONSTANTS, RENDER } from '@/types/constants.js';
 
@@ -76,6 +78,7 @@ export class RenderPipeline {
   private pipelines: Pipelines | null = null;
   private bindGroups: PipelineBindGroups | null = null;
   private renderTargets: RenderTargets | null = null;
+  private smileV2Pipeline: SmileV2Pipeline | null = null;
   
   private width = 0;
   private height = 0;
@@ -98,6 +101,10 @@ export class RenderPipeline {
     this.createPipelines();
     this.createRenderTargets(width, height);
     this.createBindGroups();
+    
+    // Initialize Smile V2 pipeline
+    this.smileV2Pipeline = new SmileV2Pipeline(this.context, this.buffers);
+    this.smileV2Pipeline.initialize();
     
     console.log('[RenderPipeline] Initialization complete');
   }
@@ -581,6 +588,25 @@ export class RenderPipeline {
   }
 
   /**
+   * Execute Smile V2 compute pass
+   * Inserted between compute and bloom passes
+   */
+  encodeSmileV2Pass(encoder: GPUCommandEncoder): void {
+    if (!this.smileV2Pipeline || !this.smileV2Pipeline.isActive()) {
+      return;
+    }
+    
+    this.smileV2Pipeline.encodeComputePass(encoder);
+  }
+
+  /**
+   * Get the Smile V2 pipeline for external control
+   */
+  getSmileV2Pipeline(): SmileV2Pipeline | null {
+    return this.smileV2Pipeline;
+  }
+
+  /**
    * Execute scene render pass
    */
   encodeScenePass(
@@ -764,6 +790,11 @@ export class RenderPipeline {
     this.renderTargets = null;
     this.pipelines = null;
     this.bindGroups = null;
+    
+    if (this.smileV2Pipeline) {
+      this.smileV2Pipeline.destroy();
+      this.smileV2Pipeline = null;
+    }
   }
 }
 

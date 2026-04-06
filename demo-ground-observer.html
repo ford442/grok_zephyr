@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grok-Zephyr Sky Strips - Ground Observer Demo</title>
+  <link rel="stylesheet" href="src/styles/ground-observer.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #0a0a0f;
+      color: #fff;
+      overflow: hidden;
+    }
+    
+    /* Simulated sky background */
+    .sky-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: 
+        radial-gradient(ellipse at 20% 30%, rgba(100, 80, 150, 0.3) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(80, 120, 180, 0.2) 0%, transparent 40%),
+        linear-gradient(to bottom, #0a0a1a 0%, #1a1020 50%, #0d0d15 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    /* Simulated satellite strip */
+    .satellite-strip {
+      position: absolute;
+      width: 80%;
+      height: 2px;
+      background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 200, 100, 0.8) 10%,
+        rgba(255, 255, 255, 0.9) 20%,
+        rgba(255, 200, 100, 0.8) 30%,
+        transparent 40%,
+        transparent 50%,
+        rgba(100, 200, 255, 0.8) 60%,
+        rgba(255, 255, 255, 0.9) 70%,
+        rgba(100, 200, 255, 0.8) 80%,
+        transparent 100%
+      );
+      animation: stripPulse 2s ease-in-out infinite;
+      filter: blur(1px);
+    }
+    
+    .satellite-strip:nth-child(1) { top: 25%; animation-delay: 0s; }
+    .satellite-strip:nth-child(2) { top: 35%; animation-delay: 0.3s; }
+    .satellite-strip:nth-child(3) { top: 45%; animation-delay: 0.6s; }
+    .satellite-strip:nth-child(4) { top: 55%; animation-delay: 0.9s; }
+    
+    @keyframes stripPulse {
+      0%, 100% { opacity: 0.3; transform: scaleX(0.9); }
+      50% { opacity: 1; transform: scaleX(1); }
+    }
+    
+    /* UI Controls */
+    .controls {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 15px;
+      z-index: 200;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(10px);
+      padding: 15px 25px;
+      border-radius: 30px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .preset-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 14px;
+    }
+    
+    .preset-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.4);
+    }
+    
+    .preset-btn.active {
+      background: rgba(100, 150, 255, 0.3);
+      border-color: rgba(100, 150, 255, 0.6);
+    }
+    
+    /* Info panel */
+    .info-panel {
+      position: fixed;
+      top: 30px;
+      left: 30px;
+      z-index: 200;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(10px);
+      padding: 20px;
+      border-radius: 15px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      max-width: 300px;
+    }
+    
+    .info-panel h1 {
+      font-size: 18px;
+      margin-bottom: 10px;
+      background: linear-gradient(90deg, #ff6b6b, #4ecdc4);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    .info-panel p {
+      font-size: 13px;
+      line-height: 1.6;
+      color: rgba(255, 255, 255, 0.7);
+    }
+    
+    .current-preset {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .current-preset h2 {
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.9);
+      margin-bottom: 5px;
+    }
+    
+    .current-preset span {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.5);
+    }
+    
+    /* Overlay elements */
+    .condensation, .light-leak, .water-reflection, .waves,
+    .beach-silhouette, .city-lights, .aircraft, .steering-wheel,
+    .speed-lines, .wing-lights, .contrail {
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Sky background with simulated strips -->
+  <div class="sky-container">
+    <div class="satellite-strip"></div>
+    <div class="satellite-strip"></div>
+    <div class="satellite-strip"></div>
+    <div class="satellite-strip"></div>
+  </div>
+  
+  <!-- Frame overlay -->
+  <div id="frame-overlay" class="ground-observer-frame frame-house">
+    <div class="condensation"></div>
+    <div class="light-leak"></div>
+    <div class="water-reflection"></div>
+    <div class="waves"></div>
+    <div class="beach-silhouette"></div>
+    <div class="city-lights"></div>
+    <div class="aircraft"></div>
+    <div class="steering-wheel"></div>
+    <div class="speed-lines"></div>
+    <div class="wing-lights"></div>
+    <div class="contrail"></div>
+  </div>
+  
+  <!-- Info panel -->
+  <div class="info-panel">
+    <h1>🚀 Sky Strips Demo</h1>
+    <p>Experience the night sky as a living LED billboard. Satellites become addressable pixels, creating patterns visible from the ground.</p>
+    <div class="current-preset">
+      <h2 id="preset-name">House Window</h2>
+      <span id="preset-desc">Cozy indoor view with warm interior lighting</span>
+    </div>
+  </div>
+  
+  <!-- Controls -->
+  <div class="controls">
+    <button class="preset-btn active" data-preset="frame-house">🏠 House</button>
+    <button class="preset-btn" data-preset="frame-car">🚗 Car</button>
+    <button class="preset-btn" data-preset="frame-beach">🏖️ Beach</button>
+    <button class="preset-btn" data-preset="frame-rooftop">🏢 Rooftop</button>
+    <button class="preset-btn" data-preset="frame-airplane">✈️ Airplane</button>
+  </div>
+  
+  <script>
+    const presets = {
+      'frame-house': { name: 'House Window', desc: 'Cozy indoor view with warm interior lighting' },
+      'frame-car': { name: 'Car Windshield', desc: 'Driving view with dashboard and motion parallax' },
+      'frame-beach': { name: 'Beach at Night', desc: 'Ocean horizon with water reflections' },
+      'frame-rooftop': { name: 'Rooftop View', desc: 'Urban overlook with city light pollution' },
+      'frame-airplane': { name: 'Airplane Window', desc: 'High altitude view at cruising height' }
+    };
+    
+    const overlay = document.getElementById('frame-overlay');
+    const presetName = document.getElementById('preset-name');
+    const presetDesc = document.getElementById('preset-desc');
+    const buttons = document.querySelectorAll('.preset-btn');
+    
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Update active button
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        
+        // Update overlay class
+        const presetClass = btn.dataset.preset;
+        overlay.className = `ground-observer-frame ${presetClass}`;
+        
+        // Update info panel
+        const info = presets[presetClass];
+        presetName.textContent = info.name;
+        presetDesc.textContent = info.desc;
+      });
+    });
+    
+    // Add subtle mouse parallax
+    document.addEventListener('mousemove', (e) => {
+      const x = (e.clientX / window.innerWidth - 0.5) * 10;
+      const y = (e.clientY / window.innerHeight - 0.5) * 10;
+      document.querySelector('.sky-container').style.transform = 
+        `translate(${-x}px, ${-y}px) scale(1.02)`;
+    });
+  </script>
+</body>
+</html>
