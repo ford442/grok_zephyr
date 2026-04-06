@@ -104,9 +104,41 @@ export class SatelliteGPUBuffer {
 
   /**
    * Initialize all GPU buffers
+   * 
+   * SAFETY: Total buffer size is capped to prevent exceeding Pascal GPU limits
+   * (maxStorageBufferBindingSize = 134 MB, we use conservative 128 MB limit)
    */
   initialize(): SatelliteBufferSet {
-    console.log(`[SatelliteGPUBuffer] Initializing buffers for ${this.numSatellites.toLocaleString()} satellites`);
+    const numSats = CONSTANTS.NUM_SATELLITES;
+
+    // ←←← EXACT SIZES (never exceed 128 MB total on Pascal)
+    const POSITION_SIZE = numSats * 16; // vec4<f32> position + flare
+    const ELEMENT_SIZE = numSats * 16; // vec4<f32> velocity + featureID
+    const COLOR_SIZE = numSats * 4; // rgba8unorm packed
+    const PATTERN_SIZE = numSats * 16; // Sky Strips pattern data (vec4)
+    const BEAM_SIZE = 65_536 * 32; // 64k beams max
+    // TRAIL_SIZE: Reduced from 240 frames to 4 frames to stay under GPU limits
+    // Phase 6 trails will use a circular buffer of 4 frames instead of 240
+    const TRAIL_HISTORY_FRAMES = 4;
+    const TRAIL_SIZE = numSats * 16 * TRAIL_HISTORY_FRAMES; // vec4<f32> per sat per frame
+
+    console.log(`[SatelliteGPUBuffer] Initializing buffers for ${numSats.toLocaleString()} satellites`);
+    console.log(`[SatelliteGPUBuffer] Position: ${(POSITION_SIZE / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`[SatelliteGPUBuffer] Element : ${(ELEMENT_SIZE / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`[SatelliteGPUBuffer] Color   : ${(COLOR_SIZE / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`[SatelliteGPUBuffer] Pattern : ${(PATTERN_SIZE / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`[SatelliteGPUBuffer] Trail   : ${(TRAIL_SIZE / 1024 / 1024).toFixed(2)} MB (${TRAIL_HISTORY_FRAMES} frames)`);
+    console.log(`[SatelliteGPUBuffer] Beam    : ${(BEAM_SIZE / 1024).toFixed(2)} KB`);
+    
+    // ← SAFETY GUARD (prevents the 8GB crash)
+    const MAX_ALLOWED = 128 * 1024 * 1024; // 128 MB conservative limit for Pascal
+    const total = POSITION_SIZE + ELEMENT_SIZE + COLOR_SIZE + PATTERN_SIZE + TRAIL_SIZE + BEAM_SIZE;
+    console.log(`[SatelliteGPUBuffer] Total storage buffers ≈ ${(total / 1024 / 1024).toFixed(1)} MB`);
+    
+    if (total > MAX_ALLOWED) {
+      throw new Error(`Buffer total (${(total/1024/1024).toFixed(1)} MB) exceeds Pascal safe limit of 128 MB`);
+    }
+
     console.log(`[SatelliteGPUBuffer] Position buffer: ${(this.positionBufferSize / 1024 / 1024).toFixed(2)} MB`);
     console.log(`[SatelliteGPUBuffer] Element buffer: ${(this.elementBufferSize / 1024 / 1024).toFixed(2)} MB`);
 
@@ -226,16 +258,16 @@ export class SatelliteGPUBuffer {
     console.log(`[SatelliteGPUBuffer] Smile V2 uniforms: 64 bytes`);
 
     // Create Smile V2 trail buffer for phase 6 trails
-    // 4-second history at 60fps = 240 frames
-    // Each frame stores: position (vec4f) + color (vec4f) = 32 bytes per satellite per frame
-    const TRAIL_HISTORY_FRAMES = 240;
-    const trailBufferSize = this.numSatellites * 32 * TRAIL_HISTORY_FRAMES;
+    // REDUCED: 4 frames instead of 240 to stay under Pascal GPU limits (128 MB)
+    // Trail rendering will use a circular buffer approach with motion blur
+    const TRAIL_HISTORY_FRAMES = 4;
+    const trailBufferSize = numSats * 16 * TRAIL_HISTORY_FRAMES; // vec4<f32> per sat per frame
     const trailBuffer = this.context.createBuffer(
       trailBufferSize,
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     );
     // Initialize to zero
-    const trailData = new Float32Array(this.numSatellites * 8 * TRAIL_HISTORY_FRAMES);
+    const trailData = new Float32Array(numSats * 4 * TRAIL_HISTORY_FRAMES);
     this.context.writeBuffer(trailBuffer, trailData);
     console.log(`[SatelliteGPUBuffer] Trail buffer: ${(trailBufferSize / 1024 / 1024).toFixed(2)} MB (${TRAIL_HISTORY_FRAMES} frames history)`);
 
@@ -644,7 +676,7 @@ export class SatelliteGPUBuffer {
     // Add Smile V2 buffers
     if (this.buffers) {
       total += 64; // smileV2Uniforms
-      total += this.numSatellites * 32 * 240; // trailBuffer (240 frames history)
+      total += CONSTANTS.NUM_SATELLITES * 16 * 4; // trailBuffer (4 frames history)
     }
     
     return total;
