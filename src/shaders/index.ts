@@ -31,22 +31,22 @@ export const SHADERS = {
 export const ORBITAL_CS = Compute.orbital;
 
 /** @deprecated Use SHADERS.render.stars instead */
-export const STARS_SHADER = Render.STARS_SHADER;
+export const STARS_SHADER = Render.stars;
 
 /** @deprecated Use SHADERS.render.earth instead */
-export const EARTH_SHADER = Render.EARTH_SHADER;
+export const EARTH_SHADER = Render.earth;
 
 /** @deprecated Use SHADERS.render.atmosphere instead */
-export const ATM_SHADER = Render.ATM_SHADER;
+export const ATM_SHADER = Render.atmosphere;
 
 /** @deprecated Use SHADERS.render.satellites instead */
-export const SATELLITE_SHADER = Render.SATELLITE_SHADER;
+export const SATELLITE_SHADER = Render.satellites;
 
 /** @deprecated Use SHADERS.render.beam instead */
-export const BEAM_SHADER = Render.BEAM_SHADER;
+export const BEAM_SHADER = Render.beam;
 
 /** @deprecated Use SHADERS.render.ground instead */
-export const GROUND_TERRAIN = Render.GROUND_TERRAIN;
+export const GROUND_TERRAIN = Render.ground;
 
 /** @deprecated Use SHADERS.compute.beam instead */
 export const BEAM_COMPUTE = Compute.beam;
@@ -61,10 +61,10 @@ export const BLOOM_BLUR = Render.postProcess.BLOOM_BLUR;
 export const COMPOSITE = Render.postProcess.COMPOSITE;
 
 /** @deprecated Use SHADERS.animations.smileV2 instead */
-export const SMILE_V2_SHADER = Animations.SMILE_V2_SHADER;
+export const SMILE_V2_SHADER = Animations.smileV2;
 
 /** @deprecated Use SHADERS.animations.skyStrips instead */
-export const SKY_STRIPS_SHADER = Animations.SKY_STRIPS_SHADER;
+export const SKY_STRIPS_SHADER = Animations.skyStrips;
 
 // Default export for convenience
 export default SHADERS;
