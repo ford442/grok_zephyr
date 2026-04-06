@@ -6,6 +6,21 @@
 import { UNIFORM_STRUCT } from '../../uniforms.js';
 
 export const COMPOSITE = UNIFORM_STRUCT + /* wgsl */ `
+struct VSOut {
+  @builtin(position) pos: vec4f,
+  @location(0) uv: vec2f,
+};
+
+@vertex
+fn vs(@builtin(vertex_index) vid: u32) -> VSOut {
+  var out: VSOut;
+  let x = f32(vid % 2u) * 2.0 - 1.0;
+  let y = f32(vid / 2u) * 2.0 - 1.0;
+  out.pos = vec4f(x, y, 0.0, 1.0);
+  out.uv = vec4f(x, y, 0.0, 1.0).xy * 0.5 + 0.5;
+  return out;
+}
+
 @group(1) @binding(0) var sceneTex: texture_2d<f32>;
 @group(1) @binding(1) var bloomTex: texture_2d<f32>;
 @group(1) @binding(2) var linearSamp: sampler;

@@ -9,6 +9,7 @@ import type WebGPUContext from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
 import { CONSTANTS } from '@/types/constants.js';
 import { SHADERS } from '@/shaders/index.js';
+const SMILE_V2_SHADER = SHADERS.animations.smileV2;
 
 /** Smile V2 animation phases */
 export enum SmileV2Phase {
@@ -163,7 +164,7 @@ export class SmileV2Pipeline {
       label: 'SmileV2ComputePipeline',
       layout: pipelineLayout,
       compute: {
-        module: this.context.createShaderModule(SHADERS.smileV2, 'smile-v2'),
+        module: this.context.createShaderModule(SMILE_V2_SHADER, 'smile-v2'),
         entryPoint: 'main',
       },
     });
