@@ -571,3 +571,60 @@
 .frame-car.changing {
   animation: screen-shake 0.1s ease-in-out;
 }
+
+/* ============================================================================
+   GROUND OBSERVER PRESET SELECTOR
+   ============================================================================ */
+
+#ground-preset-selector {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(0, 8, 16, 0.75);
+  padding: 10px 14px;
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  border-radius: 6px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 0 20px rgba(0, 170, 255, 0.1);
+}
+
+.preset-label {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: rgba(0, 255, 136, 0.7);
+  letter-spacing: 1px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(0, 255, 136, 0.15);
+  margin-bottom: 2px;
+}
+
+.preset-btn {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  padding: 5px 12px;
+  background: rgba(0, 20, 40, 0.6);
+  color: rgba(0, 255, 136, 0.7);
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.preset-btn:hover {
+  background: rgba(0, 170, 255, 0.15);
+  color: #fff;
+  border-color: rgba(0, 170, 255, 0.5);
+}
+
+.preset-btn.active {
+  background: rgba(0, 170, 255, 0.25);
+  color: #fff;
+  border-color: rgba(0, 170, 255, 0.7);
+  text-shadow: 0 0 8px rgba(0, 170, 255, 0.8);
+}

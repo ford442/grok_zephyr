@@ -8,6 +8,7 @@ import { WebGPUContext, WebGPUError } from '@/core/WebGPUContext.js';
 import { SatelliteGPUBuffer } from '@/core/SatelliteGPUBuffer.js';
 import { RenderPipeline } from '@/render/RenderPipeline.js';
 import { CameraController } from '@/camera/CameraController.js';
+import { GroundObserverCamera, GroundObserverPreset } from '@/camera/GroundObserverCamera.js';
 import { UIManager } from '@/ui/UIManager.js';
 import { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
 import { genSphere, extractFrustum } from '@/utils/math.js';
@@ -40,6 +41,7 @@ class GrokZephyrApp {
   private buffers: SatelliteGPUBuffer | null = null;
   private pipeline: RenderPipeline | null = null;
   private camera: CameraController;
+  private groundObserver: GroundObserverCamera;
   private ui: UIManager;
   private profiler: PerformanceProfiler;
   
@@ -61,6 +63,7 @@ class GrokZephyrApp {
     this.canvas = canvas;
     
     this.camera = new CameraController();
+    this.groundObserver = new GroundObserverCamera();
     this.ui = new UIManager();
     this.profiler = new PerformanceProfiler();
     
@@ -70,9 +73,6 @@ class GrokZephyrApp {
 
   /** Current pattern mode (0=chaos, 1=GROK, 2=X, 3=smile, 4=digital_rain, 5=heartbeat) */
   private currentPatternMode = 1;
-  
-  /** Pattern animation time */
-  private patternAnimationTime = 0;
 
   /** Current physics mode (0=simple, 1=keplerian, 2=J2) */
   private currentPhysicsMode = 0;
@@ -81,10 +81,11 @@ class GrokZephyrApp {
    * Setup UI and camera callbacks
    */
   private setupCallbacks(): void {
-    // Camera mode change updates UI
+    // Camera mode change updates UI + ground observer overlay
     this.camera.onModeChange((_mode, name, altitude) => {
       this.ui.setViewMode(name, altitude);
       this.ui.setActiveButton(this.camera.getViewModeIndex());
+      this.updateGroundObserverOverlay();
     });
 
     // UI view change updates camera
@@ -106,6 +107,9 @@ class GrokZephyrApp {
     // Physics mode button setup
     this.setupPhysicsButtons();
     
+    // Ground observer preset buttons
+    this.setupGroundPresetButtons();
+    
     // Camera angle change updates UI
     this.camera.onAngleChange((yaw, pitch) => {
       this.updateAngleDisplay(yaw, pitch);
@@ -119,6 +123,58 @@ class GrokZephyrApp {
         this.updateAngleDisplay(0, 0);
       });
     }
+  }
+
+  /**
+   * Setup ground observer preset selector buttons
+   */
+  private setupGroundPresetButtons(): void {
+    const presetButtons = document.querySelectorAll('.preset-btn');
+    presetButtons.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const target = e.target as HTMLButtonElement;
+        const preset = target.dataset.preset as GroundObserverPreset;
+        if (!preset) return;
+
+        this.groundObserver.setPreset(preset);
+
+        // Update overlay class
+        this.applyGroundOverlayClass(this.groundObserver.getOverlayClass());
+
+        // Update active button
+        presetButtons.forEach(b => b.classList.remove('active'));
+        target.classList.add('active');
+      });
+    });
+  }
+
+  /**
+   * Show or hide the ground observer overlay based on current camera mode
+   */
+  private updateGroundObserverOverlay(): void {
+    const overlay = document.getElementById('ground-observer-overlay');
+    const presetSelector = document.getElementById('ground-preset-selector');
+    const isGround = this.camera.getViewMode() === 'ground';
+
+    if (overlay) overlay.style.display = isGround ? 'block' : 'none';
+    if (presetSelector) presetSelector.style.display = isGround ? 'flex' : 'none';
+
+    if (isGround) {
+      this.applyGroundOverlayClass(this.groundObserver.getOverlayClass());
+    }
+  }
+
+  /**
+   * Apply a preset's frame class to the overlay element
+   */
+  private applyGroundOverlayClass(overlayClass: string): void {
+    const overlay = document.getElementById('ground-observer-overlay');
+    if (!overlay) return;
+    // Remove all frame-* classes then add the current one
+    for (const cls of Array.from(overlay.classList)) {
+      if (cls.startsWith('frame-')) overlay.classList.remove(cls);
+    }
+    overlay.classList.add(overlayClass);
   }
   
   /**
@@ -537,6 +593,11 @@ class GrokZephyrApp {
     
     // Update profiler
     this.profiler.beginFrame(timestamp);
+    
+    // Update ground observer parallax if in ground mode
+    if (this.camera.getViewMode() === 'ground') {
+      this.groundObserver.update();
+    }
     
     // Write uniforms
     this.writeUniforms(time, deltaTime);

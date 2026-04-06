@@ -5,9 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Grok Zephyr - WebGPU Orbital Simulation</title>
   <meta name="description" content="WebGPU-powered orbital simulation featuring 1,048,576 simulated satellites">
+  <link rel="stylesheet" href="/src/styles/ground-observer.css">
 </head>
 <body>
   <canvas id="gpu-canvas"></canvas>
+
+  <!-- Ground observer frame overlay (shown only in Ground View mode) -->
+  <div id="ground-observer-overlay" class="ground-observer-frame" style="display:none;">
+    <div class="condensation"></div>
+    <div class="light-leak"></div>
+    <div class="speed-lines"></div>
+    <div class="steering-wheel"></div>
+    <div class="water-reflection"></div>
+    <div class="waves"></div>
+    <div class="beach-silhouette"></div>
+    <div class="city-lights"></div>
+    <div class="aircraft"></div>
+    <div class="wing-lights"></div>
+    <div class="contrail"></div>
+  </div>
+
+  <!-- Ground observer preset selector (shown only in Ground View mode) -->
+  <div id="ground-preset-selector" style="display:none;">
+    <div class="preset-label">GROUND PRESET</div>
+    <button class="preset-btn active" data-preset="houseWindow">🏠 HOUSE</button>
+    <button class="preset-btn" data-preset="carWindshield">🚗 CAR</button>
+    <button class="preset-btn" data-preset="beachNight">🏖️ BEACH</button>
+    <button class="preset-btn" data-preset="rooftop">🏢 ROOFTOP</button>
+    <button class="preset-btn" data-preset="airplaneWindow">✈️ AIRPLANE</button>
+  </div>
   
   <div id="ui">
     <div class="title">◈ GROK ZEPHYR</div>
