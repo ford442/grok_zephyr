@@ -222,7 +222,7 @@ export class RenderPipeline {
       compute: device.createComputePipeline({
         layout: computeLayout,
         compute: {
-          module: this.context.createShaderModule(SHADERS.orbital, 'orbital'),
+          module: this.context.createShaderModule(SHADERS.compute.orbital, 'orbital'),
           entryPoint: 'main',
         },
       }),
@@ -230,7 +230,7 @@ export class RenderPipeline {
       beamCompute: device.createComputePipeline({
         layout: beamComputeLayout,
         compute: {
-          module: this.context.createShaderModule(SHADERS.beamCompute, 'beam-compute'),
+          module: this.context.createShaderModule(SHADERS.compute.beam, 'beam-compute'),
           entryPoint: 'main',
         },
       }),
@@ -238,11 +238,11 @@ export class RenderPipeline {
       stars: device.createRenderPipeline({
         layout: device.createPipelineLayout({ bindGroupLayouts: [uniformLayout] }),
         vertex: {
-          module: this.context.createShaderModule(SHADERS.stars, 'stars'),
+          module: this.context.createShaderModule(SHADERS.render.stars, 'stars'),
           entryPoint: 'vs',
         },
         fragment: {
-          module: this.context.createShaderModule(SHADERS.stars, 'stars'),
+          module: this.context.createShaderModule(SHADERS.render.stars, 'stars'),
           entryPoint: 'fs',
           targets: [{ format: RENDER.HDR_FORMAT }],
         },
@@ -257,12 +257,12 @@ export class RenderPipeline {
       earth: device.createRenderPipeline({
         layout: device.createPipelineLayout({ bindGroupLayouts: [uniformLayout] }),
         vertex: {
-          module: this.context.createShaderModule(SHADERS.earth, 'earth'),
+          module: this.context.createShaderModule(SHADERS.render.earth, 'earth'),
           entryPoint: 'vs',
           buffers: [earthVertexLayout],
         },
         fragment: {
-          module: this.context.createShaderModule(SHADERS.earth, 'earth'),
+          module: this.context.createShaderModule(SHADERS.render.earth, 'earth'),
           entryPoint: 'fs',
           targets: [{ format: RENDER.HDR_FORMAT }],
         },
@@ -277,12 +277,12 @@ export class RenderPipeline {
       atmosphere: device.createRenderPipeline({
         layout: device.createPipelineLayout({ bindGroupLayouts: [uniformLayout] }),
         vertex: {
-          module: this.context.createShaderModule(SHADERS.atmosphere, 'atmosphere'),
+          module: this.context.createShaderModule(SHADERS.render.atmosphere, 'atmosphere'),
           entryPoint: 'vs',
           buffers: [earthVertexLayout],
         },
         fragment: {
-          module: this.context.createShaderModule(SHADERS.atmosphere, 'atmosphere'),
+          module: this.context.createShaderModule(SHADERS.render.atmosphere, 'atmosphere'),
           entryPoint: 'fs',
           targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
         },
@@ -297,11 +297,11 @@ export class RenderPipeline {
       satellites: device.createRenderPipeline({
         layout: device.createPipelineLayout({ bindGroupLayouts: [satelliteLayout] }),
         vertex: {
-          module: this.context.createShaderModule(SHADERS.satellites, 'satellites'),
+          module: this.context.createShaderModule(SHADERS.render.satellites, 'satellites'),
           entryPoint: 'vs',
         },
         fragment: {
-          module: this.context.createShaderModule(SHADERS.satellites, 'satellites'),
+          module: this.context.createShaderModule(SHADERS.render.satellites, 'satellites'),
           entryPoint: 'fs',
           targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
         },
@@ -316,12 +316,12 @@ export class RenderPipeline {
       beam: device.createRenderPipeline({
         layout: beamRenderLayout,
         vertex: {
-          module: this.context.createShaderModule(SHADERS.beamRender, 'beam-render'),
-          entryPoint: 'vs_main',
+          module: this.context.createShaderModule(SHADERS.render.beam, 'beam-render'),
+          entryPoint: 'vs',
         },
         fragment: {
-          module: this.context.createShaderModule(SHADERS.beamRender, 'beam-render'),
-          entryPoint: 'fs_main',
+          module: this.context.createShaderModule(SHADERS.render.beam, 'beam-render'),
+          entryPoint: 'fs',
           targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
         },
         primitive: { 
@@ -337,11 +337,11 @@ export class RenderPipeline {
       groundTerrain: device.createRenderPipeline({
         layout: device.createPipelineLayout({ bindGroupLayouts: [uniformLayout] }),
         vertex: {
-          module: this.context.createShaderModule(SHADERS.groundTerrain, 'ground-terrain'),
+          module: this.context.createShaderModule(SHADERS.render.ground, 'ground-terrain'),
           entryPoint: 'vs',
         },
         fragment: {
-          module: this.context.createShaderModule(SHADERS.groundTerrain, 'ground-terrain'),
+          module: this.context.createShaderModule(SHADERS.render.ground, 'ground-terrain'),
           entryPoint: 'fs',
           targets: [{ 
             format: RENDER.HDR_FORMAT,
@@ -362,11 +362,11 @@ export class RenderPipeline {
       bloomThreshold: device.createRenderPipeline({
         layout: device.createPipelineLayout({ bindGroupLayouts: [thresholdLayout] }),
         vertex: {
-          module: this.context.createShaderModule(SHADERS.bloomThreshold, 'bloom-threshold'),
+          module: this.context.createShaderModule(SHADERS.render.postProcess.bloomThreshold, 'bloom-threshold'),
           entryPoint: 'vs',
         },
         fragment: {
-          module: this.context.createShaderModule(SHADERS.bloomThreshold, 'bloom-threshold'),
+          module: this.context.createShaderModule(SHADERS.render.postProcess.bloomThreshold, 'bloom-threshold'),
           entryPoint: 'fs',
           targets: [{ format: RENDER.HDR_FORMAT }],
         },
@@ -376,11 +376,11 @@ export class RenderPipeline {
       bloomBlur: device.createRenderPipeline({
         layout: device.createPipelineLayout({ bindGroupLayouts: [bloomLayout] }),
         vertex: {
-          module: this.context.createShaderModule(SHADERS.bloomBlur, 'bloom-blur'),
+          module: this.context.createShaderModule(SHADERS.render.postProcess.bloomBlur, 'bloom-blur'),
           entryPoint: 'vs',
         },
         fragment: {
-          module: this.context.createShaderModule(SHADERS.bloomBlur, 'bloom-blur'),
+          module: this.context.createShaderModule(SHADERS.render.postProcess.bloomBlur, 'bloom-blur'),
           entryPoint: 'fs',
           targets: [{ format: RENDER.HDR_FORMAT }],
         },
@@ -390,11 +390,11 @@ export class RenderPipeline {
       composite: device.createRenderPipeline({
         layout: device.createPipelineLayout({ bindGroupLayouts: [compositeLayout] }),
         vertex: {
-          module: this.context.createShaderModule(SHADERS.composite, 'composite'),
+          module: this.context.createShaderModule(SHADERS.render.postProcess.composite, 'composite'),
           entryPoint: 'vs',
         },
         fragment: {
-          module: this.context.createShaderModule(SHADERS.composite, 'composite'),
+          module: this.context.createShaderModule(SHADERS.render.postProcess.composite, 'composite'),
           entryPoint: 'fs',
           targets: [{ format: this.context.getFormat() }],
         },
