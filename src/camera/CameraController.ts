@@ -502,9 +502,7 @@ export class CameraController {
     
     // Apply pitch to look slightly above/below Earth
     // When pitch is positive, look "up" relative to the orbital plane
-    const cosP = Math.cos(lookPitch);
-    const sinP = Math.sin(lookPitch);
-    
+
     // Target: Earth center with pitch offset
     // We create a target that's slightly offset by pitch
     const target: Vec3 = [
@@ -551,16 +549,15 @@ export class CameraController {
     // pitch = -90 (look down at ground), 0 (look at horizon), +90 (look up/zenith)
     // Invert pitch because dragging up should look up
     const lookPitch = -pitch;
-    
+
     // Look direction: start at horizon, rotate by pitch
-    // Horizon direction is tangent to surface (perpendicular to radial)
     const cosP = Math.cos(lookPitch);
     const sinP = Math.sin(lookPitch);
-    
-    // Target: look out from surface
+
+    // Target: look out from surface applying pitch
     const target: Vec3 = [
-      position[0] + (Math.cos(yaw) * cosP - Math.sin(yaw) * 0) * 10000,
-      position[1] + (Math.sin(yaw) * cosP + Math.cos(yaw) * 0) * 10000,
+      position[0] + Math.cos(yaw) * cosP * 10000,
+      position[1] + Math.sin(yaw) * cosP * 10000,
       position[2] + sinP * 10000
     ];
     
