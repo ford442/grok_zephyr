@@ -1,0 +1,31 @@
+/**
+ * Bloom Blur Shader
+ * Gaussian blur for bloom effect
+ */
+
+import { UNIFORM_STRUCT } from '../../uniforms.js';
+
+export const BLOOM_BLUR = UNIFORM_STRUCT + /* wgsl */ `
+@group(1) @binding(0) var srcTex: texture_2d<f32>;
+@group(1) @binding(1) var srcSamp: sampler;
+@group(1) @binding(2) var<uniform> blurDir: vec2f; // (1,0) for horizontal, (0,1) for vertical
+
+const KERNEL_RADIUS: i32 = 4;
+const WEIGHTS: array<f32, 9> = array<f32, 9>(
+  0.0162, 0.0540, 0.1216, 0.1890, 0.2245, 0.1890, 0.1216, 0.0540, 0.0162
+);
+
+@fragment
+fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
+  let texelSize = 1.0 / vec2f(textureDimensions(srcTex, 0));
+  var result = vec3f(0.0);
+  
+  for (var i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; i++) {
+    let offset = vec2f(f32(i)) * blurDir * texelSize;
+    let weight = WEIGHTS[i + KERNEL_RADIUS];
+    result += textureSample(srcTex, srcSamp, uv + offset).rgb * weight;
+  }
+  
+  return vec4f(result, 1.0);
+}
+`;
