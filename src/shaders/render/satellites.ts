@@ -79,8 +79,8 @@ fn vs(
   let right = uni.camera_right.xyz;
   let up = uni.camera_up.xyz;
 
-  // Shell detection from instance index
-  let shellIdx = ii / 349525u;  // ~1M/3 per shell
+  // Shell detection from instance index (~1M satellites / 3 shells = 349525 per shell)
+  let shellIdx = ii / 349525u;
   let shellSize = shellSizeScale(shellIdx);
 
   // Increased max distance from 14000 to 150000 to support ground/Moon views
@@ -135,8 +135,8 @@ fn fs(in: VOut) -> @location(0) vec4f {
   // Outer glow falloff
   let outerGlow = exp(-d * 2.5) * 0.3;
 
-  // Shell-dependent glow width
-  let shellGlowMod = mix(1.2, 0.7, in.shell / 2.0);
+  // Shell-dependent glow width (shells clamped to [0,2] range)
+  let shellGlowMod = mix(1.2, 0.7, clamp(in.shell, 0.0, 2.0) / 2.0);
   let total = (core * 2.0 + halos * shellGlowMod + spike + outerGlow) * in.bright;
 
   // Color: core white-hot, edges colored

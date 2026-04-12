@@ -43,12 +43,14 @@ fn fbm(p:vec3f)->f32 {
   var value = 0.0;
   var amplitude = 0.5;
   var freq = 1.0;
+  var maxValue = 0.0;
   for (var i = 0; i < 4; i++) {
     value += amplitude * noise3d(p * freq);
+    maxValue += amplitude;
     amplitude *= 0.5;
     freq *= 2.0;
   }
-  return value;
+  return value / maxValue;
 }
 
 fn blackbodyColor(temp:f32)->vec3f {

@@ -43,6 +43,7 @@ fn acesToneMapping(hdr: vec3f) -> vec3f {
 }
 
 fn applyVignette(color: vec3f, uv: vec2f) -> vec3f {
+  // sqrt(2) ≈ 1.414 normalizes distance so corners = 1.0
   let dist = length((uv - 0.5) * 1.414);
   let vignette = 1.0 - smoothstep(VIGNETTE_INNER, VIGNETTE_OUTER, dist);
   let naturalVignette = pow(vignette, 4.0);

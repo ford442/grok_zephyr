@@ -183,8 +183,8 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
     let terrainNormal = normalize(vec3f(-gradient.x, -gradient.y, 1.0));
     let modN = normalize(N + terrainNormal * 0.3);
 
-    // Slope for biome classification
-    let slope = length(N - normalize(in.wp));
+    // Slope from terrain gradient magnitude (angle between terrain normal and geometric normal)
+    let slope = 1.0 - abs(dot(normalize(vec3f(-gradient.x, -gradient.y, 1.0)), vec3f(0.0, 0.0, 1.0)));
 
     // Get biome color
     surf = biomeColor(height, lat, slope);
