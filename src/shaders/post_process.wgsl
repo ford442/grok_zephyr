@@ -46,9 +46,7 @@ fn vs_bloom_threshold(@builtin(vertex_index) vi: u32) -> BloomThresholdVertexOut
 // Fragment shader: extract bright pixels
 @fragment
 fn fs_bloom_threshold(in: BloomThresholdVertexOutput) -> @location(0) vec4f {
-  // Flip Y for texture coordinates
-  var uv = in.uv;
-  uv.y = 1.0 - uv.y;
+  let uv = in.uv;
   
   // Sample scene
   let color = textureSample(scene_tex, scene_sampler, uv).rgb;
@@ -126,9 +124,7 @@ fn vs_blur(@builtin(vertex_index) vi: u32) -> BlurVertexOutput {
 // Fragment shader
 @fragment
 fn fs_blur(in: BlurVertexOutput) -> @location(0) vec4f {
-  // Flip Y
-  var uv = in.uv;
-  uv.y = 1.0 - uv.y;
+  let uv = in.uv;
   
   // Determine blur direction
   let is_horizontal = blur_uni.horizontal != 0u;
@@ -213,9 +209,7 @@ fn vs_composite(@builtin(vertex_index) vi: u32) -> CompositeVertexOutput {
 // Fragment shader
 @fragment
 fn fs_composite(in: CompositeVertexOutput) -> @location(0) vec4f {
-  // Flip Y
-  var uv = in.uv;
-  uv.y = 1.0 - uv.y;
+  let uv = in.uv;
   
   // Sample scene and bloom
   let scene = textureSample(comp_scene_tex, comp_sampler, uv).rgb;
@@ -238,8 +232,7 @@ fn fs_composite(in: CompositeVertexOutput) -> @location(0) vec4f {
 // Composite with Reinhard tone mapping
 @fragment
 fn fs_composite_reinhard(in: CompositeVertexOutput) -> @location(0) vec4f {
-  var uv = in.uv;
-  uv.y = 1.0 - uv.y;
+  let uv = in.uv;
   
   let scene = textureSample(comp_scene_tex, comp_sampler, uv).rgb;
   let bloom = textureSample(comp_bloom_tex, comp_sampler, uv).rgb;
@@ -253,8 +246,7 @@ fn fs_composite_reinhard(in: CompositeVertexOutput) -> @location(0) vec4f {
 // Composite with filmic tone mapping
 @fragment
 fn fs_composite_filmic(in: CompositeVertexOutput) -> @location(0) vec4f {
-  var uv = in.uv;
-  uv.y = 1.0 - uv.y;
+  let uv = in.uv;
   
   let scene = textureSample(comp_scene_tex, comp_sampler, uv).rgb;
   let bloom = textureSample(comp_bloom_tex, comp_sampler, uv).rgb;
@@ -271,8 +263,7 @@ fn fs_composite_filmic(in: CompositeVertexOutput) -> @location(0) vec4f {
 // Composite with exposure adjustment
 @fragment
 fn fs_composite_exposure(in: CompositeVertexOutput, @builtin(position) pos: vec4f) -> @location(0) vec4f {
-  var uv = in.uv;
-  uv.y = 1.0 - uv.y;
+  let uv = in.uv;
   
   let scene = textureSample(comp_scene_tex, comp_sampler, uv).rgb;
   let bloom = textureSample(comp_bloom_tex, comp_sampler, uv).rgb;

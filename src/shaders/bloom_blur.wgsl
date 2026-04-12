@@ -35,8 +35,7 @@ fn vs(@builtin(vertex_index) vi: u32) -> VSOut {
 
 @fragment
 fn fs(in: VSOut) -> @location(0) vec4f {
-  var uv = in.uv;
-  uv.y = 1.0 - uv.y;
+  let uv = in.uv;
   
   // Choose direction based on uniform
   let d = select(vec2f(0.0, buni.texel.y), vec2f(buni.texel.x, 0.0), buni.horizontal != 0u);

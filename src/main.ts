@@ -397,6 +397,11 @@ class GrokZephyrApp {
       const dpr = window.devicePixelRatio || 1;
       const width = Math.floor(this.canvas.clientWidth * dpr);
       const height = Math.floor(this.canvas.clientHeight * dpr);
+      
+      // Explicitly set canvas dimensions
+      this.canvas.width = width;
+      this.canvas.height = height;
+      
       this.pipeline.initialize(width, height);
       this.buffers.updateBloomUniforms(width, height);
       
@@ -461,6 +466,10 @@ class GrokZephyrApp {
     const dpr = window.devicePixelRatio || 1;
     const width = Math.floor(this.canvas.clientWidth * dpr);
     const height = Math.floor(this.canvas.clientHeight * dpr);
+    
+    // Explicitly set canvas dimensions
+    this.canvas.width = width;
+    this.canvas.height = height;
     
     this.context.resize(width, height);
     this.pipeline.resize(width, height);
@@ -628,7 +637,8 @@ class GrokZephyrApp {
     
     // Pass 6: Composite to screen
     const outputView = this.context.getContext().getCurrentTexture().createView();
-    this.pipeline.encodeCompositePass(encoder, outputView);
+    const { width: canvasWidth, height: canvasHeight } = this.context.getCanvasSize();
+    this.pipeline.encodeCompositePass(encoder, outputView, canvasWidth, canvasHeight);
     
     // Submit
     this.context.submit([encoder.finish()]);

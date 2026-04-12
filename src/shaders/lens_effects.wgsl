@@ -230,8 +230,7 @@ fn findBrightSpots(uv: vec2f) -> vec3f {
 
 @fragment
 fn fs_main(in: VSOut) -> @location(0) vec4f {
-  var uv = in.uv;
-  uv.y = 1.0 - uv.y;
+  let uv = in.uv;
   
   var color: vec3f;
   
@@ -311,8 +310,7 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
 
 @fragment
 fn fs_simple(in: VSOut) -> @location(0) vec4f {
-  var uv = in.uv;
-  uv.y = 1.0 - uv.y;
+  let uv = in.uv;
   
   var color = textureSample(sourceTexture, linearSampler, uv).rgb;
   

@@ -107,8 +107,7 @@ fn sharpen(uv: vec2f, center: vec3f) -> vec3f {
 
 @fragment
 fn fs(in: VSOut) -> @location(0) vec4f {
-  var uv = in.uv;
-  uv.y = 1.0 - uv.y;
+  let uv = in.uv;
   
   // Sample current frame with anti-flicker filtering
   let currentColor = textureSample(currentFrame, linearSampler, uv).rgb;

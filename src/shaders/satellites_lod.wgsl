@@ -448,8 +448,7 @@ fn motionBlurVs(@builtin(vertex_index) vi: u32) -> MotionBlurOut {
 
 @fragment
 fn motionBlurFs(in: MotionBlurOut) -> @location(0) vec4f {
-  var uv = in.uv;
-  uv.y = 1.0 - uv.y;
+  let uv = in.uv;
   
   let velocity = textureSample(velocityTexture, linearSampler, uv).rg * motionBlurStrength;
   

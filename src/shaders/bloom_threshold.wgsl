@@ -27,8 +27,7 @@ fn vs(@builtin(vertex_index) vi: u32) -> VSOut {
 
 @fragment
 fn fs(in: VSOut) -> @location(0) vec4f {
-  var uv = in.uv;
-  uv.y = 1.0 - uv.y;  // Flip Y for proper texture sampling
+  let uv = in.uv;
   
   let c = textureSample(tex, smp, uv).rgb;
   let lum = dot(c, vec3f(0.2126, 0.7152, 0.0722));

@@ -334,7 +334,6 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VSOut {
 
 @fragment
 fn fs_main(in: VSOut) -> @location(0) vec4f {
-  var uv = in.uv;
-  uv.y = 1.0 - uv.y;
+  let uv = in.uv;
   return textureSample(volumetricTexture, linearSampler, uv);
 }

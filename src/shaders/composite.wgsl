@@ -43,8 +43,7 @@ fn aces(x: vec3f) -> vec3f {
 
 @fragment
 fn fs(in: VSOut) -> @location(0) vec4f {
-  var uv = in.uv;
-  uv.y = 1.0 - uv.y;
+  let uv = in.uv;
   
   let scene = textureSample(scene_tex, smp, uv).rgb;
   let bloom = textureSample(bloom_tex, smp, uv).rgb;
