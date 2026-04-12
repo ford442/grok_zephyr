@@ -37,11 +37,14 @@ export const MAX_BEAMS = 65536;
 /** Pascal GPU safe limit (conservative) */
 const MAX_SAFE_BUFFER_SIZE = 128 * 1024 * 1024; // 128 MB
 
+/** Warning threshold - log warning if buffer size exceeds this (for safety margin) */
+const WARNING_BUFFER_THRESHOLD = 120 * 1024 * 1024; // 120 MB
+
 /** GPU buffer set for satellite data */
 export interface SatelliteBufferSet {
   /** Orbital elements (read-only storage) */
   orbitalElements: GPUBuffer;
-  /** Extended orbital elements for J2 propagation (64 bytes/sat: 16 floats) */
+  /** Extended orbital elements for J2 propagation (32 bytes/sat: 8 floats, compact) */
   extendedElements: GPUBuffer;
   /** Satellite positions (read-write storage) */
   positions: GPUBuffer | BufferPair;
@@ -66,7 +69,7 @@ export interface SatelliteBufferSet {
   skyStripUniforms: GPUBuffer;
   /** Smile V2: Uniform buffer for animation state (64 bytes aligned) */
   smileV2Uniforms: GPUBuffer;
-  /** Smile V2: Trail buffer for phase 6 trails (4 frames × 16 bytes) */
+  /** Smile V2: Trail buffer for phase 6 trails (2 frames × 16 bytes) */
   trailBuffer: GPUBuffer;
 }
 
@@ -143,7 +146,7 @@ export class SatelliteGPUBuffer {
     this.numSatellites = CONSTANTS.NUM_SATELLITES;
     this.positionBufferSize = this.numSatellites * 16; // vec4f
     this.elementBufferSize = this.numSatellites * 16;  // vec4f
-    this.extendedElementBufferSize = this.numSatellites * 64; // 16 floats for J2 propagation
+    this.extendedElementBufferSize = this.numSatellites * 32; // 8 floats for J2 propagation (compact)
     
     // Pre-allocate orbital element data on CPU
     this.orbitalElementData = new Float32Array(this.numSatellites * 4);
@@ -151,21 +154,49 @@ export class SatelliteGPUBuffer {
 
   /**
    * Calculate total buffer size for safety check
+   * 
+   * Buffer breakdown for 1M satellites:
+   * - Position: 16 MB (vec4<f32>)
+   * - Elements: 16 MB (vec4<f32>)
+   * - Extended: 32 MB (8 floats × 4 bytes, compact)
+   * - Colors: 4 MB (rgba8unorm packed)
+   * - Patterns: 16 MB (Sky Strips pattern data)
+   * - Beams: 2 MB (64k beams × 32 bytes)
+   * - Trails: 32 MB (2 frames × vec4f, reduced from 4)
+   * - Uniforms: ~1 KB (various uniform buffers)
+   * Total: ~118 MB (under 128 MB Pascal limit)
    */
   private calculateTotalBufferSize(): number {
     const numSats = this.numSatellites;
     
     // Tight, realistic sizes
-    const POSITION_SIZE = numSats * 16;     // vec4<f32> (pos + flare)
-    const ELEMENT_SIZE = numSats * 16;      // vec4<f32> (vel + feature)
-    const EXTENDED_ELEMENT_SIZE = numSats * 64; // 16 floats for J2 propagation
-    const COLOR_SIZE = numSats * 4;         // rgba8unorm packed
-    const PATTERN_SIZE = numSats * 16;      // Sky Strips pattern data
-    const BEAM_SIZE = 65536 * 32;           // 64k beams
-    const TRAIL_SIZE = numSats * 16 * 4;    // 4 frames × vec4f (reduced from 240)
-    const UNIFORM_SIZE = 256 + 32 + 16 + 16 + 64; // Various uniform buffers
+    const POSITION_SIZE = numSats * 16;      // vec4<f32> (pos + flare)
+    const ELEMENT_SIZE = numSats * 16;       // vec4<f32> (elements)
+    const EXT_ELEM_SIZE = numSats * 32;      // 8 floats × 4 bytes (COMPACT)
+    const COLOR_SIZE = numSats * 4;          // rgba8unorm packed
+    const PATTERN_SIZE = numSats * 16;       // Sky Strips pattern data
+    const BEAM_SIZE = 65536 * 32;            // 64k beams
+    const TRAIL_SIZE = numSats * 16 * 2;     // 2 frames × vec4f (REDUCED from 4)
+    const UNIFORM_SIZE = 256 + 32 + 16 + 16 + 64 + 32; // Various uniform buffers (includes skyStripUniforms)
     
-    return POSITION_SIZE + ELEMENT_SIZE + EXTENDED_ELEMENT_SIZE + COLOR_SIZE + PATTERN_SIZE + BEAM_SIZE + TRAIL_SIZE + UNIFORM_SIZE;
+    const total = POSITION_SIZE + ELEMENT_SIZE + EXT_ELEM_SIZE + COLOR_SIZE + 
+                  PATTERN_SIZE + BEAM_SIZE + TRAIL_SIZE + UNIFORM_SIZE;
+    
+    // Detailed buffer size breakdown for debugging
+    console.log(`[Buffer Size Debug] Breakdown for ${numSats.toLocaleString()} satellites:`);
+    console.log(`  Position:   ${(POSITION_SIZE / 1024 / 1024).toFixed(2)} MB (${numSats} × 16 bytes)`);
+    console.log(`  Elements:   ${(ELEMENT_SIZE / 1024 / 1024).toFixed(2)} MB (${numSats} × 16 bytes)`);
+    console.log(`  Extended:   ${(EXT_ELEM_SIZE / 1024 / 1024).toFixed(2)} MB (${numSats} × 32 bytes, COMPACT)`);
+    console.log(`  Colors:     ${(COLOR_SIZE / 1024 / 1024).toFixed(2)} MB (${numSats} × 4 bytes)`);
+    console.log(`  Patterns:   ${(PATTERN_SIZE / 1024 / 1024).toFixed(2)} MB (${numSats} × 16 bytes)`);
+    console.log(`  Beams:      ${(BEAM_SIZE / 1024 / 1024).toFixed(2)} MB (65536 × 32 bytes)`);
+    console.log(`  Trails:     ${(TRAIL_SIZE / 1024 / 1024).toFixed(2)} MB (${numSats} × 16 × 2 frames, REDUCED)`);
+    console.log(`  Uniforms:   ${(UNIFORM_SIZE / 1024).toFixed(2)} KB`);
+    console.log(`  TOTAL:      ${(total / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`  LIMIT:      128.00 MB (Pascal safe limit)`);
+    console.log(`  MARGIN:      ${((MAX_SAFE_BUFFER_SIZE - total) / 1024 / 1024).toFixed(2)} MB`);
+    
+    return total;
   }
 
   /**
@@ -183,9 +214,20 @@ export class SatelliteGPUBuffer {
     
     // ← SAFETY GUARD (prevents the 8GB crash)
     if (totalBytes > MAX_SAFE_BUFFER_SIZE) {
-      throw new Error(`Buffer total (${(totalBytes / 1024 / 1024).toFixed(1)} MB) exceeds Pascal safe limit of 128 MB`);
+      const exceeded = ((totalBytes - MAX_SAFE_BUFFER_SIZE) / 1024 / 1024).toFixed(2);
+      throw new Error(
+        `Buffer total (${(totalBytes / 1024 / 1024).toFixed(1)} MB) exceeds Pascal safe limit of 128 MB ` +
+        `(exceeded by ${exceeded} MB). Reduce NUM_SATELLITES or buffer sizes.`
+      );
     }
-    console.log(`[Buffer Safety] Total allocated: ${(totalBytes / 1024 / 1024).toFixed(2)} MB — OK`);
+    
+    // Warning if approaching the limit (safety margin)
+    if (totalBytes > WARNING_BUFFER_THRESHOLD) {
+      const margin = ((MAX_SAFE_BUFFER_SIZE - totalBytes) / 1024 / 1024).toFixed(2);
+      console.warn(`[Buffer Safety] WARNING: Buffer size (${(totalBytes / 1024 / 1024).toFixed(2)} MB) is within ${margin} MB of the 128 MB limit`);
+    }
+    
+    console.log(`[Buffer Safety] Total allocated: ${(totalBytes / 1024 / 1024).toFixed(2)} MB — OK ✓`);
 
     // Create orbital elements buffer (read-only)
     const orbitalElements = this.context.createBuffer(
@@ -193,22 +235,28 @@ export class SatelliteGPUBuffer {
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     );
 
-    // Create extended orbital elements buffer for J2 propagation (64 bytes/satellite)
+    // Create extended orbital elements buffer for J2 propagation (32 bytes/satellite, compact)
     const extendedElements = this.context.createBuffer(
       this.extendedElementBufferSize,
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     );
 
-    // Initialize extended orbital elements for J2 precession
-    const extElemData = new Float32Array(numSats * 16);
+    // Initialize extended orbital elements for J2 precession (compact 32-byte format)
+    // Layout: [semi_major_axis(f32), packed_angles(u32 as f32), mean_anomaly(f32), eccentricity(f32), 
+    //          current_raan(f32), mean_motion(f32), position_xy(vec2f)]
+    const extElemData = new ArrayBuffer(numSats * 32);
+    const f32View = new Float32Array(extElemData);
+    const u32View = new Uint32Array(extElemData);
+    
     for (let i = 0; i < numSats; i++) {
-      const idx = i * 16;
+      const floatIdx = i * 8;  // 8 floats per satellite
+      const uintIdx = i * 8;   // Same index for uint32 view
       
       // Get shell from existing orbitalElementData
       const shellData = this.orbitalElementData[i * 4 + 3];
       const shellIndex = (shellData >> 8) & 0xFF;
       
-      // Shell radii and inclinations (340km, 550km, 1150km altitudes)
+      // Shell radii (340km, 550km, 1150km altitudes)
       const SHELL_RADII_KM = [6711.0, 6921.0, 7521.0];
       
       const a = SHELL_RADII_KM[shellIndex] || 6921.0;
@@ -220,25 +268,24 @@ export class SatelliteGPUBuffer {
       const MU = 398600.4418; // km³/s²
       const n = Math.sqrt(MU / (a * a * a));
       
-      extElemData[idx + 0] = a;           // semi-major axis (km)
-      extElemData[idx + 1] = 0.001;       // eccentricity (nearly circular)
-      extElemData[idx + 2] = inc;         // inclination (rad)
-      extElemData[idx + 3] = raan;        // RAAN (rad)
-      extElemData[idx + 4] = 0.0;         // argument of perigee (rad)
-      extElemData[idx + 5] = meanAnomaly; // mean anomaly (rad)
-      extElemData[idx + 6] = n;           // mean motion (rad/s)
-      extElemData[idx + 7] = 0.0;         // reserved
-      extElemData[idx + 8] = 0.0;         // position x (filled by compute)
-      extElemData[idx + 9] = 0.0;         // position y
-      extElemData[idx + 10] = 0.0;        // position z
-      extElemData[idx + 11] = 0.0;        // reserved
-      extElemData[idx + 12] = 0.0;        // velocity x
-      extElemData[idx + 13] = 0.0;        // velocity y
-      extElemData[idx + 14] = 0.0;        // velocity z
-      extElemData[idx + 15] = 0.0;        // epoch
+      // Pack angles into u32 (8 bits per angle): (inc_u8 << 16) | (raan_u8 << 8) | argPerigee_u8
+      const packAngle = (rad: number): number => {
+        return Math.floor(((rad % (2 * Math.PI)) / (2 * Math.PI)) * 255) & 0xFF;
+      };
+      const packedAngles = (packAngle(inc) << 16) | (packAngle(raan) << 8) | 0; // argPerigee = 0
+      
+      // Store data using views
+      f32View[floatIdx + 0] = a;              // semi-major axis (km)
+      u32View[uintIdx + 1] = packedAngles;     // packed angles (u32 stored at same offset)
+      f32View[floatIdx + 2] = meanAnomaly;    // mean anomaly (rad)
+      f32View[floatIdx + 3] = 0.001;          // eccentricity (nearly circular)
+      f32View[floatIdx + 4] = raan;           // current_raan (updated by precession each frame)
+      f32View[floatIdx + 5] = n;              // mean motion (rad/s)
+      f32View[floatIdx + 6] = 0.0;            // position x (filled by compute)
+      f32View[floatIdx + 7] = 0.0;            // position y (z computed or stored elsewhere)
     }
-    this.context.writeBuffer(extendedElements, extElemData);
-    console.log(`[SatelliteGPUBuffer] Extended elements buffer: ${(this.extendedElementBufferSize / 1024 / 1024).toFixed(2)} MB (J2 propagation)`);
+    this.context.writeBuffer(extendedElements, f32View);
+    console.log(`[SatelliteGPUBuffer] Extended elements buffer: ${(this.extendedElementBufferSize / 1024 / 1024).toFixed(2)} MB (J2 propagation, compact 32-byte)`);
 
     // Create position buffer(s)
     let positions: GPUBuffer | BufferPair;
@@ -336,8 +383,8 @@ export class SatelliteGPUBuffer {
     smileV2UniformsData[3] = 0;   // morph_progress
     this.context.writeBuffer(smileV2Uniforms, smileV2UniformsData);
 
-    // Create Smile V2 trail buffer (4 frames × vec4f per satellite)
-    const TRAIL_HISTORY_FRAMES = 4;
+    // Create Smile V2 trail buffer (2 frames × vec4f per satellite)
+    const TRAIL_HISTORY_FRAMES = 2;
     const trailBufferSize = numSats * 16 * TRAIL_HISTORY_FRAMES;
     const trailBuffer = this.context.createBuffer(
       trailBufferSize,
@@ -699,19 +746,48 @@ export class SatelliteGPUBuffer {
 
   /**
    * Calculate total GPU memory usage in bytes
+   * 
+   * Includes all allocated buffers:
+   * - Orbital elements (16 MB)
+   * - Extended elements (32 MB)
+   * - Positions (16 MB, or 32 MB if double-buffered)
+   * - Uniforms (~1 KB)
+   * - Bloom uniforms (2 × small)
+   * - Beams (2 MB)
+   * - Beam params (16 bytes)
+   * - Pattern params (16 bytes)
+   * - Colors (4 MB)
+   * - Patterns (16 MB)
+   * - Sky strip uniforms (32 bytes)
+   * - Smile V2 uniforms (64 bytes)
+   * - Trail buffer (32 MB)
    */
   getMemoryUsage(): number {
-    let total = this.elementBufferSize + this.extendedElementBufferSize + BUFFER_SIZES.UNIFORM + BUFFER_SIZES.BLOOM_UNIFORM * 2;
+    const numSats = this.numSatellites;
     
+    // Core buffers (always allocated)
+    let total = this.elementBufferSize +       // orbitalElements (16 MB)
+                this.extendedElementBufferSize + // extendedElements (32 MB)
+                BUFFER_SIZES.UNIFORM +           // uniforms (256 bytes)
+                BUFFER_SIZES.BLOOM_UNIFORM * 2;  // bloomUniforms H/V (2 × buffer)
+    
+    // Position buffer (single or double)
     if (this.config.doubleBuffer && this.buffers && this.isBufferPair(this.buffers.positions)) {
       total += this.positionBufferSize * 2;
     } else {
       total += this.positionBufferSize;
     }
     
+    // Additional buffers (only if initialized)
     if (this.buffers) {
-      total += 64; // smileV2Uniforms
-      total += CONSTANTS.NUM_SATELLITES * 16 * 4; // trailBuffer
+      total += 65536 * 32;           // beams (2 MB)
+      total += 16;                    // beamParams
+      total += 16;                    // patternParams
+      total += numSats * 4;           // colors (4 MB)
+      total += numSats * 16;          // patterns (16 MB)
+      total += 32;                    // skyStripUniforms
+      total += 64;                    // smileV2Uniforms
+      total += numSats * 16 * 2;      // trailBuffer (32 MB, 2 frames)
     }
     
     return total;

@@ -99,6 +99,53 @@ fn getLodDistance() -> f32 {
 }
 
 // ============================================================================
+// ANGLE PACKING/UNPACKING FUNCTIONS (compact 32-byte layout)
+// ============================================================================
+
+/**
+ * Pack angle [0, 2π) into u8 [0, 255]
+ */
+fn packAngleU8(angle_rad: f32) -> u32 {
+  return u32(fract(angle_rad / (2.0 * 3.14159265359)) * 255.0);
+}
+
+/**
+ * Unpack u8 [0, 255] to angle [0, 2π)
+ */
+fn unpackAngleU8(packed: u32) -> f32 {
+  return f32(packed & 0xFFu) / 255.0 * 2.0 * 3.14159265359;
+}
+
+/**
+ * Extract inclination from packed u32
+ * Layout: (inc_u8 << 16) | (raan_u8 << 8) | argPerigee_u8
+ */
+fn getInclinationFromPacked(packed: u32) -> f32 {
+  return unpackAngleU8(packed >> 16u);
+}
+
+/**
+ * Extract initial RAAN from packed u32
+ */
+fn getInitialRAANFromPacked(packed: u32) -> f32 {
+  return unpackAngleU8(packed >> 8u);
+}
+
+/**
+ * Extract argument of perigee from packed u32
+ */
+fn getArgPerigeeFromPacked(packed: u32) -> f32 {
+  return unpackAngleU8(packed);
+}
+
+/**
+ * Reinterpret f32 bits as u32
+ */
+fn floatBitsToUint(f: f32) -> u32 {
+  return bitcast<u32>(f);
+}
+
+// ============================================================================
 // STORAGE BUFFERS
 // ============================================================================
 
@@ -113,21 +160,20 @@ fn getLodDistance() -> f32 {
 @group(0) @binding(1) var<storage, read> orb_elem : array<vec4f>;
 
 /**
- * Extended Elements Storage (64 bytes per satellite) - optional
+ * Extended Elements Storage (32 bytes per satellite) - compact layout
  * Used for advanced propagation modes
- * Layout per satellite (16 floats):
- *   [0]: semi-major axis (km)
- *   [1]: eccentricity
- *   [2]: inclination (rad)
- *   [3]: RAAN (rad)
- *   [4]: argument of perigee (rad)
- *   [5]: mean anomaly (rad)
- *   [6]: mean motion (rad/s)
- *   [7]: reserved
- *   [8-10]: position (filled by compute)
- *   [11]: reserved
- *   [12-14]: velocity (filled by compute)
- *   [15]: epoch
+ * Layout per satellite (8 floats = 32 bytes):
+ *   [0]: semi_major_axis (f32) - km
+ *   [1]: packed_angles (u32 bits stored as f32)
+ *         Layout: (inc_u8 << 16) | (raan_u8 << 8) | argPerigee_u8
+ *   [2]: mean_anomaly (f32) - rad
+ *   [3]: eccentricity (f32)
+ *   [4]: current_raan (f32) - rad, updated by precession each frame
+ *   [5]: mean_motion (f32) - rad/s
+ *   [6-7]: reserved (padding to 32 bytes)
+ * 
+ * Note: Position is NOT stored in ext_elem, only in sat_pos output buffer.
+ * Velocity is computed on-the-fly when needed for RK4.
  */
 @group(0) @binding(2) var<storage, read_write> ext_elem : array<f32>;
 
@@ -492,80 +538,75 @@ fn updateSatellites(@builtin(global_invocation_id) id: vec3u) {
       position = circularOrbitPosition(6921.0, raan, inc, M);
     }
     case 1u: {
-      // J2 perturbation only (element-based)
+      // J2 perturbation only (element-based) - COMPACT 32-BYTE LAYOUT
       // Get extended elements
-      let extIdx = idx * 16u;
+      let extIdx = idx * 8u;  // Changed from 16 to 8 (32 bytes per satellite)
       let a = ext_elem[extIdx + 0u];
-      let e = ext_elem[extIdx + 1u];
-      let i = ext_elem[extIdx + 2u];
-      let Ω = ext_elem[extIdx + 3u];
-      let ω = ext_elem[extIdx + 4u];
-      let M0 = ext_elem[extIdx + 5u];
-      let n = ext_elem[extIdx + 6u];
+      let packed_angles = floatBitsToUint(ext_elem[extIdx + 1u]);
+      let M0 = ext_elem[extIdx + 2u];
+      let e = ext_elem[extIdx + 3u];
+      let current_raan = ext_elem[extIdx + 4u];  // Already has precession applied
+      let n = ext_elem[extIdx + 5u];
       
-      // Apply J2 precession
+      // Unpack angles from compact storage
+      let i = getInclinationFromPacked(packed_angles);
+      let initial_raan = getInitialRAANFromPacked(packed_angles);
+      let ω = getArgPerigeeFromPacked(packed_angles);
+      
+      // For precession, we update current_raan incrementally each frame
       let Ωdot = nodalPrecessionRate(a, i);
+      let new_raan = current_raan + Ωdot * uni.delta_time;
+      
+      // Perigee precession (can also be updated incrementally if needed)
       let ωdot = perigeePrecessionRate(a, i);
-      
-      let Ω_current = Ω + Ωdot * physics_time;
       let ω_current = ω + ωdot * physics_time;
-      let M_current = M0 + n * physics_time;
       
-      position = keplerianToPosition(a, e, i, Ω_current, ω_current, M_current);
+      let M_current = M0 + n * uni.sim_time;
       
-      // Update stored elements for next frame
-      ext_elem[extIdx + 3u] = Ω_current;
-      ext_elem[extIdx + 4u] = ω_current;
-      ext_elem[extIdx + 5u] = M_current;
-      ext_elem[extIdx + 8u] = position.x;
-      ext_elem[extIdx + 9u] = position.y;
-      ext_elem[extIdx + 10u] = position.z;
+      position = keplerianToPosition(a, e, i, new_raan, ω_current, M_current);
+      
+      // Store updated current_raan for next frame (position not stored in ext_elem)
+      ext_elem[extIdx + 4u] = new_raan;
     }
     case 2u: {
-      // Full RK4 integration
-      // Load current state from extended buffer or compute from elements
-      let extIdx = idx * 16u;
+      // Full RK4 integration - COMPACT 32-BYTE LAYOUT
+      // Note: RK4 requires position/velocity storage which doesn't fit in compact layout.
+      // We compute initial state from elements each frame and integrate forward.
+      let extIdx = idx * 8u;  // Changed from 16 to 8 (32 bytes per satellite)
       
       var state: OrbitState;
       
-      // Check if we have a valid stored position
-      let storedX = ext_elem[extIdx + 8u];
-      if (storedX != 0.0) {
-        // Use stored position/velocity
-        state.pos = vec3f(
-          storedX,
-          ext_elem[extIdx + 9u],
-          ext_elem[extIdx + 10u]
-        );
-        state.vel = vec3f(
-          ext_elem[extIdx + 12u],
-          ext_elem[extIdx + 13u],
-          ext_elem[extIdx + 14u]
-        );
-      } else {
-        // Initialize from elements
-        let a = ext_elem[extIdx + 0u];
-        let e = ext_elem[extIdx + 1u];
-        let i = ext_elem[extIdx + 2u];
-        let Ω = ext_elem[extIdx + 3u];
-        let ω = ext_elem[extIdx + 4u];
-        let M = ext_elem[extIdx + 5u];
-        
-        state.pos = keplerianToPosition(a, e, i, Ω, ω, M);
-        
-        // Calculate initial velocity
-        let n = sqrt(MU / (a * a * a));
-        let p = a * (1.0 - e * e);
-        let h = sqrt(MU * p);
-        
-        // Simplified velocity for circular orbit
-        let v = sqrt(MU * (2.0 / length(state.pos) - 1.0 / a));
-        
-        // Velocity perpendicular to position
-        let r_norm = normalize(state.pos);
-        let perp = normalize(cross(r_norm, vec3f(0.0, 0.0, 1.0)));
-        state.vel = perp * v;
-      }
+      // Always initialize from elements (compact layout has no position/velocity storage)
+      let a = ext_elem[extIdx + 0u];
+      let packed_angles = floatBitsToUint(ext_elem[extIdx + 1u]);
+      let M0 = ext_elem[extIdx + 2u];
+      let e = ext_elem[extIdx + 3u];
+      let current_raan = ext_elem[extIdx + 4u];
+      let n = ext_elem[extIdx + 5u];
+      
+      // Unpack angles
+      let i = getInclinationFromPacked(packed_angles);
+      let ω = getArgPerigeeFromPacked(packed_angles);
+      
+      // Current mean anomaly
+      let M_current = M0 + n * uni.sim_time;
+      
+      // Initial position from Keplerian elements
+      state.pos = keplerianToPosition(a, e, i, current_raan, ω, M_current);
+      
+      // Calculate initial velocity vector properly
+      let r = length(state.pos);
+      let v_scalar = sqrt(MU * (2.0 / r - 1.0 / a));
+      
+      // Velocity is perpendicular to position in orbital plane
+      // For a proper RK4 integration, we'd need to track velocity state
+      // For now, approximate velocity direction from orbital mechanics
+      let h_vec = vec3f(
+        sin(i) * sin(current_raan),
+        -sin(i) * cos(current_raan),
+        cos(i)
+      ); // Angular momentum vector (perpendicular to orbital plane)
+      state.vel = normalize(cross(h_vec, state.pos)) * v_scalar;
       
       // Limit dt for stability
       let dt = min(uni.delta_time, 10.0);
@@ -573,51 +614,44 @@ fn updateSatellites(@builtin(global_invocation_id) id: vec3u) {
       // RK4 integration step
       state = rk4Step(state, dt);
       
-      // Store updated state
-      ext_elem[extIdx + 8u] = state.pos.x;
-      ext_elem[extIdx + 9u] = state.pos.y;
-      ext_elem[extIdx + 10u] = state.pos.z;
-      ext_elem[extIdx + 12u] = state.vel.x;
-      ext_elem[extIdx + 13u] = state.vel.y;
-      ext_elem[extIdx + 14u] = state.vel.z;
+      // Note: Position/velocity are NOT stored back to ext_elem in compact layout
+      // They are only written to sat_pos output buffer
       
       position = state.pos;
     }
     case 3u: {
-      // Precession visualization mode
+      // Precession visualization mode - COMPACT 32-BYTE LAYOUT
       // Uses J2 perturbation with color-coding based on RAAN
       // This visualizes how orbital planes rotate over time
       
-      let extIdx = idx * 16u;
+      let extIdx = idx * 8u;  // Changed from 16 to 8 (32 bytes per satellite)
       let a = ext_elem[extIdx + 0u];
-      let e = ext_elem[extIdx + 1u];
-      let i = ext_elem[extIdx + 2u];
-      let Ω = ext_elem[extIdx + 3u];
-      let ω = ext_elem[extIdx + 4u];
-      let M0 = ext_elem[extIdx + 5u];
-      let n = ext_elem[extIdx + 6u];
+      let packed_angles = floatBitsToUint(ext_elem[extIdx + 1u]);
+      let M0 = ext_elem[extIdx + 2u];
+      let e = ext_elem[extIdx + 3u];
+      let current_raan = ext_elem[extIdx + 4u];
+      let n = ext_elem[extIdx + 5u];
       
-      // Apply J2 precession using sim_time (scaled simulation time)
+      // Unpack angles
+      let i = getInclinationFromPacked(packed_angles);
+      let ω = getArgPerigeeFromPacked(packed_angles);
+      
+      // Apply J2 precession using delta_time for incremental update
       let Ωdot = nodalPrecessionRate(a, i);
+      let new_raan = current_raan + Ωdot * uni.delta_time;
+      
       let ωdot = perigeePrecessionRate(a, i);
-      
-      let Ω_current = Ω + Ωdot * physics_time;
       let ω_current = ω + ωdot * physics_time;
-      let M_current = M0 + n * physics_time;
+      let M_current = M0 + n * uni.sim_time;
       
-      position = keplerianToPosition(a, e, i, Ω_current, ω_current, M_current);
+      position = keplerianToPosition(a, e, i, new_raan, ω_current, M_current);
       
-      // Store updated elements
-      ext_elem[extIdx + 3u] = Ω_current;
-      ext_elem[extIdx + 4u] = ω_current;
-      ext_elem[extIdx + 5u] = M_current;
-      ext_elem[extIdx + 8u] = position.x;
-      ext_elem[extIdx + 9u] = position.y;
-      ext_elem[extIdx + 10u] = position.z;
+      // Store updated current_raan only (position not stored in ext_elem)
+      ext_elem[extIdx + 4u] = new_raan;
       
       // Encode precession color in the position w component for visualization
       // The fragment shader can extract this to color satellites by their orbital plane
-      let planeColor = getPrecessionColor(Ω_current);
+      let planeColor = getPrecessionColor(new_raan);
       
       // Pack color into visibility data (will be processed by vertex/fragment shaders)
       // Store as a special marker in the w component: 100.0 + encoded color
