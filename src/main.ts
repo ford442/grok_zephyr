@@ -77,6 +77,12 @@ class GrokZephyrApp {
   /** Current physics mode (0=simple, 1=keplerian, 2=J2) */
   private currentPhysicsMode = 0;
 
+  /** Time scale for simulation (1.0 = real-time) */
+  private timeScale: number = 1.0;
+
+  /** Scaled simulation time (accumulated based on timeScale) */
+  private simTime: number = 0.0;
+
   /**
    * Setup UI and camera callbacks
    */
@@ -109,6 +115,12 @@ class GrokZephyrApp {
     
     // Ground observer preset buttons
     this.setupGroundPresetButtons();
+    
+    // Time scale controls
+    this.ui.createTimeScaleControl();
+    this.ui.onTimeScaleChange((scale) => {
+      this.setTimeScale(scale);
+    });
     
     // Camera angle change updates UI
     this.camera.onAngleChange((yaw, pitch) => {
@@ -477,6 +489,40 @@ class GrokZephyrApp {
   }
 
   /**
+   * Calculate sun position in ECI frame for eclipse shadow calculation.
+   * Sun orbits at 1 AU in the XY plane.
+   */
+  private calculateSunPosition(simTime: number): [number, number, number] {
+    // Sun at 1 AU, rotating in XY plane
+    // Angular frequency: 2π / (365.25 days in seconds)
+    const SUN_DISTANCE_KM = 149597870.0;
+    const ORBITAL_PERIOD_SEC = 31557600.0; // 365.25 days
+    const angle = (simTime / ORBITAL_PERIOD_SEC) * Math.PI * 2;
+    return [
+      Math.cos(angle) * SUN_DISTANCE_KM,
+      Math.sin(angle) * SUN_DISTANCE_KM,
+      0.0
+    ];
+  }
+
+  /**
+   * Set time scale for simulation (1.0 = real-time).
+   * @param scale - Time multiplier (clamped between 1 and 100000)
+   */
+  setTimeScale(scale: number): void {
+    this.timeScale = Math.max(1, Math.min(100000, scale));
+    console.log(`⏱️ Time scale: ${this.timeScale}x`);
+  }
+
+  /**
+   * Get current time scale.
+   * @returns Current time multiplier
+   */
+  getTimeScale(): number {
+    return this.timeScale;
+  }
+
+  /**
    * Write uniform buffer data
    */
   private writeUniforms(time: number, deltaTime: number): void {
@@ -498,47 +544,58 @@ class GrokZephyrApp {
     // Extract frustum planes
     const frustum = extractFrustum(viewProjection);
     
-    // Build uniform buffer (256 bytes)
-    const uniformData = new ArrayBuffer(BUFFER_SIZES.UNIFORM);
-    const f32 = new Float32Array(uniformData);
-    const u32 = new Uint32Array(uniformData);
-    
-    // View-projection matrix (0-63)
-    f32.set(viewProjection, 0);
-    
-    // Camera position (64-79)
-    f32[16] = camera.position[0];
-    f32[17] = camera.position[1];
-    f32[18] = camera.position[2];
-    f32[19] = 1.0;
-    
-    // Camera right (80-95)
-    f32[20] = right[0];
-    f32[21] = right[1];
-    f32[22] = right[2];
-    f32[23] = 0.0;
-    
-    // Camera up (96-111)
-    f32[24] = up[0];
-    f32[25] = up[1];
-    f32[26] = up[2];
-    f32[27] = 0.0;
-    
-    // Time, delta time, view mode (112-123)
-    f32[28] = time;
-    f32[29] = deltaTime;
-    u32[30] = this.camera.getViewModeIndex();
-
-    // is_ground_view flag (offset 124) - 1 if camera is near/on surface
+    // Calculate camera radius for ground view detection
     const cameraRadius = Math.sqrt(
       camera.position[0] * camera.position[0] +
       camera.position[1] * camera.position[1] +
       camera.position[2] * camera.position[2]
     );
-    const isGroundView = cameraRadius < CONSTANTS.EARTH_RADIUS_KM + 100.0 ? 1 : 0;
-    u32[31] = isGroundView;
     
-    // Frustum planes (128-223) - 6 planes * 4 floats each
+    // Pack view_flags: view_mode (bits 0-15), is_ground_view (bit 16), physics_mode (bits 17-19)
+    const viewMode = this.camera.getViewModeIndex();
+    const isGroundView = cameraRadius < CONSTANTS.EARTH_RADIUS_KM + 100.0 ? 1 : 0;
+    const physicsMode = this.currentPhysicsMode;
+    const viewFlags = (viewMode & 0xFFFF) | ((isGroundView & 0x1) << 16) | ((physicsMode & 0x7) << 17);
+    
+    // Calculate sun position based on scaled simulation time
+    const sunPos = this.calculateSunPosition(this.simTime);
+    
+    // Build uniform buffer (256 bytes)
+    const uniformData = new ArrayBuffer(BUFFER_SIZES.UNIFORM);
+    const f32 = new Float32Array(uniformData);
+    const u32 = new Uint32Array(uniformData);
+    
+    // View-projection matrix (0-63) - f32[0-15]
+    f32.set(viewProjection, 0);
+    
+    // Camera position (64-79) - f32[16-19]
+    f32[16] = camera.position[0];
+    f32[17] = camera.position[1];
+    f32[18] = camera.position[2];
+    f32[19] = 1.0;
+    
+    // Camera right (80-95) - f32[20-23]
+    f32[20] = right[0];
+    f32[21] = right[1];
+    f32[22] = right[2];
+    f32[23] = 0.0;
+    
+    // Camera up (96-111) - f32[24-27]
+    f32[24] = up[0];
+    f32[25] = up[1];
+    f32[26] = up[2];
+    f32[27] = 0.0;
+    
+    // Time (112-115) - f32[28]
+    f32[28] = time;
+    // Delta time (116-119) - f32[29]
+    f32[29] = deltaTime;
+    // View flags (120-123) - u32[30]
+    u32[30] = viewFlags;
+    // Sim time (124-127) - f32[31]
+    f32[31] = this.simTime;
+    
+    // Frustum planes (128-223) - 6 planes * 4 floats each - f32[32-55]
     for (let p = 0; p < 6; p++) {
       f32[32 + p * 4 + 0] = frustum[p][0];
       f32[32 + p * 4 + 1] = frustum[p][1];
@@ -546,13 +603,19 @@ class GrokZephyrApp {
       f32[32 + p * 4 + 3] = frustum[p][3];
     }
     
-    // Screen size (224-231)
+    // Screen size (224-231) - f32[56-57]
     f32[56] = width;
     f32[57] = height;
-    // Physics mode (232-235)
-    u32[58] = this.currentPhysicsMode;
-    // Padding (236-239)
+    // Time scale (232-235) - f32[58]
+    f32[58] = this.timeScale;
+    // Padding (236-239) - u32[59]
     u32[59] = 0;
+    
+    // Sun position (240-255) - vec4f - f32[60-63]
+    f32[60] = sunPos[0];
+    f32[61] = sunPos[1];
+    f32[62] = sunPos[2];
+    f32[63] = 1.0; // w component
     
     // Write to GPU
     this.context.writeBuffer(this.buffers.getBuffers().uniforms, uniformData);
@@ -599,6 +662,9 @@ class GrokZephyrApp {
     const time = timestamp * 0.001;
     const deltaTime = Math.min(time - this.lastTime, 0.1);
     this.lastTime = time;
+    
+    // Update scaled simulation time based on timeScale
+    this.simTime += deltaTime * this.timeScale;
     
     // Update profiler
     this.profiler.beginFrame(timestamp);
@@ -651,6 +717,9 @@ class GrokZephyrApp {
       stats.visibleSatellites = this.estimateVisibleSatellites();
       // Update UI with modified stats
       this.ui.updateStats(stats);
+      
+      // Update simulation time display
+      this.ui.updateSimTime(this.simTime);
     }
     
     // Next frame

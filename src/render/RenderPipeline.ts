@@ -123,6 +123,7 @@ export class RenderPipeline {
             { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
             { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
             { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+            { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
           ],
         }),
       ],
@@ -453,7 +454,8 @@ export class RenderPipeline {
         entries: [
           { binding: 0, resource: { buffer: this.buffers.uniforms } },
           { binding: 1, resource: { buffer: this.buffers.orbitalElements } },
-          { binding: 2, resource: { buffer: posBuffer } },
+          { binding: 2, resource: { buffer: this.buffers.extendedElements } },
+          { binding: 3, resource: { buffer: posBuffer } },
         ],
       }),
 

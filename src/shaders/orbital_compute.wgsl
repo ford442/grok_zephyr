@@ -23,6 +23,11 @@ const MU: f32 = 398600.4418;             // km³/s²
 const J2: f32 = 0.00108263;              // Earth's oblateness
 const J4: f32 = -0.000002370912;         // Higher-order J4 term (optional)
 
+// Sun constants for eclipse shadow calculation
+const SUN_DISTANCE_KM: f32 = 149597870.0; // 1 AU in km
+const ORBITAL_PERIOD_SEC: f32 = 31557600.0; // 365.25 days in seconds
+const PENUMBRA_WIDTH_KM: f32 = 200.0;     // Soft shadow transition width (km)
+
 // Starlink shell altitudes (km)
 const SHELL_1_ALT: f32 = 550.0;
 const SHELL_2_ALT: f32 = 540.0;
@@ -38,6 +43,24 @@ const SHELL_3_N: f32 = 0.001103;         // 570km
 // UNIFORM STRUCT (matches CPU layout)
 // ============================================================================
 
+/**
+ * Total size: 256 bytes (aligned)
+ * 
+ * Memory Layout:
+ *   offset   0  size 64  view_proj      - View-projection matrix
+ *   offset  64  size 16  camera_pos     - Camera position in ECI frame
+ *   offset  80  size 16  camera_right   - Camera right vector
+ *   offset  96  size 16  camera_up      - Camera up vector
+ *   offset 112  size  4  time           - Real time (seconds since epoch)
+ *   offset 116  size  4  delta_time     - Frame delta time (seconds)
+ *   offset 120  size  4  view_flags     - Packed: bits 0-15=view_mode, bit 16=is_ground_view, bits 17-19=physics_mode
+ *   offset 124  size  4  sim_time       - Scaled simulation time for physics
+ *   offset 128  size 96  frustum        - 6 frustum planes (vec4f each)
+ *   offset 224  size  8  screen_size    - Screen width/height in pixels
+ *   offset 232  size  4  time_scale     - Time multiplier (1x, 100x, 1000x, etc.)
+ *   offset 236  size  4  pad0           - Padding for alignment
+ *   offset 240  size 16  sun_pos        - Sun position in ECI frame (xyz), w=lod_distance
+ */
 struct Uni {
   view_proj      : mat4x4f,              // offset   0, size 64
   camera_pos     : vec4f,                // offset  64, size 16
@@ -45,15 +68,35 @@ struct Uni {
   camera_up      : vec4f,                // offset  96, size 16
   time           : f32,                  // offset 112
   delta_time     : f32,                  // offset 116
-  view_mode      : u32,                  // offset 120
-  physics_mode   : u32,                  // offset 124 (0=simple, 1=J2, 2=RK4)
+  view_flags     : u32,                  // offset 120 (packed flags)
+  sim_time       : f32,                  // offset 124 (scaled simulation time)
   frustum        : array<vec4f, 6>,      // offset 128, size 96
   screen_size    : vec2f,                // offset 224
-  lod_distance   : f32,                  // offset 232 (distance for detail level)
+  time_scale     : f32,                  // offset 232 (time multiplier)
   pad0           : f32,                  // offset 236
-};                                       // total 240 → padded to 256
+  sun_pos        : vec4f,                // offset 240 (xyz=position, w=lod_distance)
+};                                       // total 256 bytes
 
 @group(0) @binding(0) var<uniform> uni : Uni;
+
+/**
+ * Helper functions for unpacking view_flags
+ */
+fn getViewMode() -> u32 {
+  return uni.view_flags & 0xFFFFu;
+}
+
+fn isGroundView() -> bool {
+  return ((uni.view_flags >> 16u) & 0x1u) != 0u;
+}
+
+fn getPhysicsMode() -> u32 {
+  return (uni.view_flags >> 17u) & 0x7u;
+}
+
+fn getLodDistance() -> f32 {
+  return uni.sun_pos.w;
+}
 
 // ============================================================================
 // STORAGE BUFFERS
@@ -156,7 +199,30 @@ fn totalAcceleration(pos: vec3f) -> vec3f {
 /**
  * Calculate J2 nodal precession rate (RAAN dot)
  * 
- * Ω̇ = -3/2 * J2 * (Re/p)² * n * cos(i)
+ * RAAN (Right Ascension of the Ascending Node) precession occurs because Earth's
+ * equatorial bulge (J2 perturbation) exerts a torque on the orbital plane.
+ * 
+ * The formula is:
+ *   Ω̇ = -3/2 * J2 * (Re/a)² * n * cos(i)
+ * 
+ * Where:
+ *   - J2 = 0.00108263 (Earth's oblateness coefficient)
+ *   - Re = 6371 km (Earth's equatorial radius)
+ *   - a = semi-major axis (km)
+ *   - n = mean motion = sqrt(μ/a³) (rad/s)
+ *   - i = inclination (rad)
+ * 
+ * Key properties:
+ *   - Negative for prograde orbits (i < 90°): westward precession
+ *   - Positive for retrograde orbits (i > 90°): eastward precession
+ *   - Zero for polar orbits (i = 90°)
+ *   - Faster at lower altitudes (stronger J2 effect)
+ *   - Depends on cos(i) - zero at equatorial, max at polar (but sign flips)
+ * 
+ * Expected rates for Starlink shells:
+ *   - Shell 1 (550km, 53°): Ω̇ ≈ -0.057°/day, period ≈ 17 years for 360°
+ *   - Shell 2 (540km, 53°): Ω̇ ≈ -0.058°/day, period ≈ 17 years
+ *   - Shell 3 (570km, 53°): Ω̇ ≈ -0.055°/day, period ≈ 18 years
  * 
  * For circular orbits: p = a
  */
@@ -169,7 +235,12 @@ fn nodalPrecessionRate(a: f32, i: f32) -> f32 {
 /**
  * Calculate J2 perigee precession rate (argument of perigee dot)
  * 
- * ω̇ = 3/4 * J2 * (Re/p)² * n * (5cos²(i) - 1)
+ * The argument of perigee also precesses due to Earth's oblateness:
+ *   ω̇ = 3/4 * J2 * (Re/a)² * n * (5cos²(i) - 1)
+ * 
+ * Critical inclination at i = 63.4° where ω̇ = 0 (frozen orbits).
+ * For i < 63.4°, perigee precesses in the direction of motion.
+ * For i > 63.4°, perigee precesses opposite to motion.
  */
 fn perigeePrecessionRate(a: f32, i: f32) -> f32 {
   let n = sqrt(MU / (a * a * a));
@@ -382,8 +453,8 @@ fn calculateVisibility(pos: vec3f) -> u32 {
     return 0u;
   }
   
-  // LOD based on distance
-  if (dist > uni.lod_distance) {
+  // LOD based on distance (using sun_pos.w as lod_distance)
+  if (dist > getLodDistance()) {
     return 1u;
   }
   
@@ -409,12 +480,15 @@ fn updateSatellites(@builtin(global_invocation_id) id: vec3u) {
   var position: vec3f;
   var visibilityLevel: u32 = 2u;
   
+  // Use sim_time for physics calculations (scaled time)
+  let physics_time = uni.sim_time;
+  
   // Select physics mode
-  switch (uni.physics_mode) {
+  switch (getPhysicsMode()) {
     case 0u: {
       // Simple circular orbit (original method)
       let meanMotion = sqrt(MU / (6921.0 * 6921.0 * 6921.0)); // 550km altitude
-      let M = m0 + meanMotion * uni.time;
+      let M = m0 + meanMotion * physics_time;
       position = circularOrbitPosition(6921.0, raan, inc, M);
     }
     case 1u: {
@@ -433,9 +507,9 @@ fn updateSatellites(@builtin(global_invocation_id) id: vec3u) {
       let Ωdot = nodalPrecessionRate(a, i);
       let ωdot = perigeePrecessionRate(a, i);
       
-      let Ω_current = Ω + Ωdot * uni.time;
-      let ω_current = ω + ωdot * uni.time;
-      let M_current = M0 + n * uni.time;
+      let Ω_current = Ω + Ωdot * physics_time;
+      let ω_current = ω + ωdot * physics_time;
+      let M_current = M0 + n * physics_time;
       
       position = keplerianToPosition(a, e, i, Ω_current, ω_current, M_current);
       
@@ -509,10 +583,59 @@ fn updateSatellites(@builtin(global_invocation_id) id: vec3u) {
       
       position = state.pos;
     }
+    case 3u: {
+      // Precession visualization mode
+      // Uses J2 perturbation with color-coding based on RAAN
+      // This visualizes how orbital planes rotate over time
+      
+      let extIdx = idx * 16u;
+      let a = ext_elem[extIdx + 0u];
+      let e = ext_elem[extIdx + 1u];
+      let i = ext_elem[extIdx + 2u];
+      let Ω = ext_elem[extIdx + 3u];
+      let ω = ext_elem[extIdx + 4u];
+      let M0 = ext_elem[extIdx + 5u];
+      let n = ext_elem[extIdx + 6u];
+      
+      // Apply J2 precession using sim_time (scaled simulation time)
+      let Ωdot = nodalPrecessionRate(a, i);
+      let ωdot = perigeePrecessionRate(a, i);
+      
+      let Ω_current = Ω + Ωdot * physics_time;
+      let ω_current = ω + ωdot * physics_time;
+      let M_current = M0 + n * physics_time;
+      
+      position = keplerianToPosition(a, e, i, Ω_current, ω_current, M_current);
+      
+      // Store updated elements
+      ext_elem[extIdx + 3u] = Ω_current;
+      ext_elem[extIdx + 4u] = ω_current;
+      ext_elem[extIdx + 5u] = M_current;
+      ext_elem[extIdx + 8u] = position.x;
+      ext_elem[extIdx + 9u] = position.y;
+      ext_elem[extIdx + 10u] = position.z;
+      
+      // Encode precession color in the position w component for visualization
+      // The fragment shader can extract this to color satellites by their orbital plane
+      let planeColor = getPrecessionColor(Ω_current);
+      
+      // Pack color into visibility data (will be processed by vertex/fragment shaders)
+      // Store as a special marker in the w component: 100.0 + encoded color
+      // This allows the render shader to detect precession visualization mode
+      let colorEncoded = 100.0 + planeColor.r * 0.3 + planeColor.g * 0.1 + planeColor.b * 0.01;
+      
+      // Override the default position storage to include color info
+      sat_pos[idx] = vec4f(position, colorEncoded);
+      
+      // Skip the default position write at end of function
+      visibilityLevel = calculateVisibility(position);
+      visibility[idx] = visibilityLevel;
+      return;
+    }
     default: {
       // Fallback to simple orbit
       let meanMotion = sqrt(MU / (6921.0 * 6921.0 * 6921.0));
-      let M = m0 + meanMotion * uni.time;
+      let M = m0 + meanMotion * physics_time;
       position = circularOrbitPosition(6921.0, raan, inc, M);
     }
   }
@@ -526,6 +649,34 @@ fn updateSatellites(@builtin(global_invocation_id) id: vec3u) {
   // Store position with encoded visibility in w component
   let visEncoded = f32(visibilityLevel);
   sat_pos[idx] = vec4f(position, cdat + visEncoded * 0.01);
+}
+
+// ============================================================================
+// COLOR CONVERSION UTILITIES
+// ============================================================================
+
+/**
+ * Convert HSV color to RGB
+ * 
+ * h: hue in range [0, 1] (0=red, 1/3=green, 2/3=blue, 1=red)
+ * s: saturation in range [0, 1]
+ * v: value/brightness in range [0, 1]
+ */
+fn hsv2rgb(h: f32, s: f32, v: f32) -> vec3f {
+  let k = vec3f(1.0, 2.0 / 3.0, 1.0 / 3.0);
+  let p = abs(fract(vec3f(h, h, h) + k) * 6.0 - vec3f(3.0, 3.0, 3.0));
+  return v * mix(vec3f(k.x, k.x, k.x), clamp(p - vec3f(k.x, k.x, k.x), vec3f(0.0, 0.0, 0.0), vec3f(1.0, 1.0, 1.0)), s);
+}
+
+/**
+ * Generate color based on RAAN for precession visualization
+ * Satellites in the same orbital plane (same Ω) will have the same color
+ */
+fn getPrecessionColor(raan: f32) -> vec3f {
+  // Normalize RAAN to [0, 1] and use as hue
+  // RAAN ranges from 0 to 2π, so we divide by 2π to get a hue
+  let hue = fract(raan / (2.0 * 3.14159265359));
+  return hsv2rgb(hue, 1.0, 1.0);
 }
 
 // ============================================================================
@@ -584,4 +735,54 @@ fn getSatelliteSize(dist: f32, visLevel: u32) -> f32 {
   }
   
   return size;
+}
+
+/**
+ * Check if satellite is in Earth's shadow (eclipse)
+ * Returns 0.0 (full shadow) to 1.0 (full sun)
+ */
+fn getShadowFactor(satPos: vec3f) -> f32 {
+  // Vector from satellite to Sun
+  let satToSun = uni.sun_pos.xyz - satPos;
+  let satToSunDir = normalize(satToSun);
+  let satToSunDist = length(satToSun);
+  
+  // Vector from Earth center to satellite
+  let earthToSat = satPos;
+  
+  // Project satellite position onto sun direction
+  let projDist = dot(earthToSat, satToSunDir);
+  
+  // Closest approach to Earth center from sun line
+  let closestPoint = earthToSat - satToSunDir * projDist;
+  let closestDist = length(closestPoint);
+  
+  // Umbra radius at satellite distance
+  // Simple cylindrical shadow approximation
+  // Sun angular radius ~0.27 degrees, so shadow cone is almost cylindrical
+  let earthRadiusAtDist = EARTH_R;
+  
+  // If closest approach is greater than Earth radius, satellite is lit
+  if (closestDist > earthRadiusAtDist + PENUMBRA_WIDTH_KM) {
+    return 1.0;
+  }
+  
+  // If completely inside Earth radius, full shadow
+  if (closestDist < earthRadiusAtDist - PENUMBRA_WIDTH_KM && projDist < 0.0) {
+    return 0.0;
+  }
+  
+  // In penumbra - smooth transition
+  let penumbraFactor = smoothstep(
+    earthRadiusAtDist + PENUMBRA_WIDTH_KM,
+    earthRadiusAtDist - PENUMBRA_WIDTH_KM,
+    closestDist
+  );
+  
+  // Only in shadow if on opposite side of Earth from Sun
+  if (projDist > 0.0) {
+    return 1.0;
+  }
+  
+  return penumbraFactor;
 }

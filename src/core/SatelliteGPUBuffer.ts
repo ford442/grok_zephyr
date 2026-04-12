@@ -41,6 +41,8 @@ const MAX_SAFE_BUFFER_SIZE = 128 * 1024 * 1024; // 128 MB
 export interface SatelliteBufferSet {
   /** Orbital elements (read-only storage) */
   orbitalElements: GPUBuffer;
+  /** Extended orbital elements for J2 propagation (64 bytes/sat: 16 floats) */
+  extendedElements: GPUBuffer;
   /** Satellite positions (read-write storage) */
   positions: GPUBuffer | BufferPair;
   /** Uniform buffer for frame data */
@@ -124,6 +126,7 @@ export class SatelliteGPUBuffer {
   private readonly numSatellites: number;
   private readonly positionBufferSize: number;
   private readonly elementBufferSize: number;
+  private readonly extendedElementBufferSize: number;
 
   constructor(
     context: WebGPUContext,
@@ -140,6 +143,7 @@ export class SatelliteGPUBuffer {
     this.numSatellites = CONSTANTS.NUM_SATELLITES;
     this.positionBufferSize = this.numSatellites * 16; // vec4f
     this.elementBufferSize = this.numSatellites * 16;  // vec4f
+    this.extendedElementBufferSize = this.numSatellites * 64; // 16 floats for J2 propagation
     
     // Pre-allocate orbital element data on CPU
     this.orbitalElementData = new Float32Array(this.numSatellites * 4);
@@ -154,13 +158,14 @@ export class SatelliteGPUBuffer {
     // Tight, realistic sizes
     const POSITION_SIZE = numSats * 16;     // vec4<f32> (pos + flare)
     const ELEMENT_SIZE = numSats * 16;      // vec4<f32> (vel + feature)
+    const EXTENDED_ELEMENT_SIZE = numSats * 64; // 16 floats for J2 propagation
     const COLOR_SIZE = numSats * 4;         // rgba8unorm packed
     const PATTERN_SIZE = numSats * 16;      // Sky Strips pattern data
     const BEAM_SIZE = 65536 * 32;           // 64k beams
     const TRAIL_SIZE = numSats * 16 * 4;    // 4 frames × vec4f (reduced from 240)
     const UNIFORM_SIZE = 256 + 32 + 16 + 16 + 64; // Various uniform buffers
     
-    return POSITION_SIZE + ELEMENT_SIZE + COLOR_SIZE + PATTERN_SIZE + BEAM_SIZE + TRAIL_SIZE + UNIFORM_SIZE;
+    return POSITION_SIZE + ELEMENT_SIZE + EXTENDED_ELEMENT_SIZE + COLOR_SIZE + PATTERN_SIZE + BEAM_SIZE + TRAIL_SIZE + UNIFORM_SIZE;
   }
 
   /**
@@ -187,6 +192,53 @@ export class SatelliteGPUBuffer {
       this.elementBufferSize,
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     );
+
+    // Create extended orbital elements buffer for J2 propagation (64 bytes/satellite)
+    const extendedElements = this.context.createBuffer(
+      this.extendedElementBufferSize,
+      GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+    );
+
+    // Initialize extended orbital elements for J2 precession
+    const extElemData = new Float32Array(numSats * 16);
+    for (let i = 0; i < numSats; i++) {
+      const idx = i * 16;
+      
+      // Get shell from existing orbitalElementData
+      const shellData = this.orbitalElementData[i * 4 + 3];
+      const shellIndex = (shellData >> 8) & 0xFF;
+      
+      // Shell radii and inclinations (340km, 550km, 1150km altitudes)
+      const SHELL_RADII_KM = [6711.0, 6921.0, 7521.0];
+      
+      const a = SHELL_RADII_KM[shellIndex] || 6921.0;
+      const inc = this.orbitalElementData[i * 4 + 1]; // inclination from elements
+      const raan = this.orbitalElementData[i * 4 + 0]; // RAAN from elements
+      const meanAnomaly = this.orbitalElementData[i * 4 + 2]; // M from elements
+      
+      // Calculate mean motion from semi-major axis
+      const MU = 398600.4418; // km³/s²
+      const n = Math.sqrt(MU / (a * a * a));
+      
+      extElemData[idx + 0] = a;           // semi-major axis (km)
+      extElemData[idx + 1] = 0.001;       // eccentricity (nearly circular)
+      extElemData[idx + 2] = inc;         // inclination (rad)
+      extElemData[idx + 3] = raan;        // RAAN (rad)
+      extElemData[idx + 4] = 0.0;         // argument of perigee (rad)
+      extElemData[idx + 5] = meanAnomaly; // mean anomaly (rad)
+      extElemData[idx + 6] = n;           // mean motion (rad/s)
+      extElemData[idx + 7] = 0.0;         // reserved
+      extElemData[idx + 8] = 0.0;         // position x (filled by compute)
+      extElemData[idx + 9] = 0.0;         // position y
+      extElemData[idx + 10] = 0.0;        // position z
+      extElemData[idx + 11] = 0.0;        // reserved
+      extElemData[idx + 12] = 0.0;        // velocity x
+      extElemData[idx + 13] = 0.0;        // velocity y
+      extElemData[idx + 14] = 0.0;        // velocity z
+      extElemData[idx + 15] = 0.0;        // epoch
+    }
+    this.context.writeBuffer(extendedElements, extElemData);
+    console.log(`[SatelliteGPUBuffer] Extended elements buffer: ${(this.extendedElementBufferSize / 1024 / 1024).toFixed(2)} MB (J2 propagation)`);
 
     // Create position buffer(s)
     let positions: GPUBuffer | BufferPair;
@@ -303,6 +355,7 @@ export class SatelliteGPUBuffer {
 
     this.buffers = {
       orbitalElements,
+      extendedElements,
       positions,
       uniforms,
       bloomUniforms,
@@ -648,7 +701,7 @@ export class SatelliteGPUBuffer {
    * Calculate total GPU memory usage in bytes
    */
   getMemoryUsage(): number {
-    let total = this.elementBufferSize + BUFFER_SIZES.UNIFORM + BUFFER_SIZES.BLOOM_UNIFORM * 2;
+    let total = this.elementBufferSize + this.extendedElementBufferSize + BUFFER_SIZES.UNIFORM + BUFFER_SIZES.BLOOM_UNIFORM * 2;
     
     if (this.config.doubleBuffer && this.buffers && this.isBufferPair(this.buffers.positions)) {
       total += this.positionBufferSize * 2;
@@ -670,6 +723,7 @@ export class SatelliteGPUBuffer {
   destroy(): void {
     if (this.buffers) {
       this.buffers.orbitalElements.destroy();
+      this.buffers.extendedElements.destroy();
       this.buffers.uniforms.destroy();
       this.buffers.bloomUniforms.horizontal.destroy();
       this.buffers.bloomUniforms.vertical.destroy();

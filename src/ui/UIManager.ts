@@ -24,6 +24,10 @@ export interface UIElements {
   angleInfo: HTMLElement;
   resetAngleBtn: HTMLElement;
   animationControls: HTMLElement;
+  timeControls: HTMLElement;
+  simTimeDisplay: HTMLElement;
+  timeScaleSlider: HTMLInputElement;
+  timeScaleValue: HTMLElement;
 }
 
 /** Animation control options */
@@ -410,6 +414,185 @@ export class UIManager {
    */
   onLoopToggle(callback: (loop: boolean) => void): void {
     this.onLoopToggleCallback = callback;
+  }
+
+  // Time scale control properties
+  private onTimeScaleChangeCallback: ((scale: number) => void) | null = null;
+  private currentTimeScale: number = 1.0;
+  private timePresets = [
+    { label: '1x', value: 1 },
+    { label: '1h/s', value: 3600 },
+    { label: '1d/s', value: 86400 },
+    { label: '1w/s', value: 604800 },
+  ];
+
+  /**
+   * Create time scale control UI
+   */
+  createTimeScaleControl(): void {
+    const container = document.createElement('div');
+    container.id = 'time-controls';
+    container.className = 'time-controls';
+    
+    container.innerHTML = `
+      <div class="time-label">⏱ TIME SCALE</div>
+      <div class="time-display" id="sim-time-display">Sim Time: 0h</div>
+      <div class="time-slider-row">
+        <input type="range" id="timeScaleSlider" min="0" max="4" step="0.1" value="0">
+        <span id="timeScaleValue">1x</span>
+      </div>
+      <div class="time-presets">
+        <button class="time-preset-btn active" data-scale="1">1x</button>
+        <button class="time-preset-btn" data-scale="3600">1h/s</button>
+        <button class="time-preset-btn" data-scale="86400">1d/s</button>
+        <button class="time-preset-btn" data-scale="604800">1w/s</button>
+      </div>
+    `;
+    
+    // Insert after animation controls or at the end of body
+    const animationControls = document.getElementById('animation-controls');
+    if (animationControls && animationControls.parentElement) {
+      animationControls.parentElement.insertBefore(container, animationControls.nextSibling);
+    } else {
+      document.body.appendChild(container);
+    }
+    
+    // Store references
+    this.elements.timeControls = container;
+    this.elements.simTimeDisplay = document.getElementById('sim-time-display')!;
+    this.elements.timeScaleSlider = document.getElementById('timeScaleSlider') as HTMLInputElement;
+    this.elements.timeScaleValue = document.getElementById('timeScaleValue')!;
+    
+    // Setup slider event (logarithmic scale: 0->1, 1->10, 2->100, 3->1000, 4->10000)
+    this.elements.timeScaleSlider.addEventListener('input', (e) => {
+      const sliderValue = parseFloat((e.target as HTMLInputElement).value);
+      const scale = Math.pow(10, sliderValue);
+      this.setTimeScale(scale);
+    });
+    
+    // Setup preset buttons
+    const presetButtons = container.querySelectorAll('.time-preset-btn');
+    presetButtons.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const target = e.target as HTMLButtonElement;
+        const scale = parseInt(target.dataset.scale || '1');
+        this.setTimeScale(scale);
+        
+        // Update active state
+        presetButtons.forEach(b => b.classList.remove('active'));
+        target.classList.add('active');
+      });
+    });
+    
+    // Keyboard shortcuts (+/- to adjust speed)
+    document.addEventListener('keydown', (e) => {
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        this.adjustTimeScale(1.5);
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        this.adjustTimeScale(0.67);
+      } else if (e.key === '0') {
+        e.preventDefault();
+        this.setTimeScale(1);
+      }
+    });
+  }
+
+  /**
+   * Set time scale and update UI
+   */
+  private setTimeScale(scale: number): void {
+    // Clamp to valid range (1 to 10000)
+    this.currentTimeScale = Math.max(1, Math.min(10000, Math.round(scale)));
+    
+    // Update slider position (logarithmic)
+    if (this.elements.timeScaleSlider) {
+      const sliderValue = Math.log10(this.currentTimeScale);
+      this.elements.timeScaleSlider.value = Math.max(0, Math.min(4, sliderValue)).toString();
+    }
+    
+    // Update value display
+    if (this.elements.timeScaleValue) {
+      this.elements.timeScaleValue.textContent = this.formatTimeScale(this.currentTimeScale);
+    }
+    
+    // Update preset button active state
+    const presetButtons = document.querySelectorAll('.time-preset-btn');
+    presetButtons.forEach((btn) => {
+      const btnScale = parseInt((btn as HTMLButtonElement).dataset.scale || '0');
+      btn.classList.toggle('active', btnScale === this.currentTimeScale);
+    });
+    
+    // Notify callback
+    if (this.onTimeScaleChangeCallback) {
+      this.onTimeScaleChangeCallback(this.currentTimeScale);
+    }
+  }
+
+  /**
+   * Adjust time scale by a multiplier
+   */
+  private adjustTimeScale(multiplier: number): void {
+    const newScale = this.currentTimeScale * multiplier;
+    this.setTimeScale(newScale);
+  }
+
+  /**
+   * Format time scale for display
+   */
+  private formatTimeScale(scale: number): string {
+    if (scale >= 604800) {
+      return `${(scale / 604800).toFixed(1)}w/s`;
+    } else if (scale >= 86400) {
+      return `${(scale / 86400).toFixed(1)}d/s`;
+    } else if (scale >= 3600) {
+      return `${(scale / 3600).toFixed(1)}h/s`;
+    } else if (scale >= 60) {
+      return `${(scale / 60).toFixed(1)}m/s`;
+    } else {
+      return `${Math.round(scale)}x`;
+    }
+  }
+
+  /**
+   * Update displayed simulation time
+   */
+  updateSimTime(simTime: number): void {
+    if (this.elements.simTimeDisplay) {
+      this.elements.simTimeDisplay.textContent = `Sim Time: ${this.formatSimTime(simTime)}`;
+    }
+  }
+
+  /**
+   * Format simulation time to human-readable string
+   */
+  private formatSimTime(seconds: number): string {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    
+    if (days > 365) {
+      const years = (days / 365.25).toFixed(1);
+      return `Year ${years}`;
+    } else if (days > 30) {
+      const months = Math.floor(days / 30);
+      const remDays = days % 30;
+      return `${months}mo ${remDays}d`;
+    } else if (days > 0) {
+      return `Day ${days} ${hours}h`;
+    } else if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else {
+      return `${Math.floor(seconds / 60)}m`;
+    }
+  }
+
+  /**
+   * Register time scale change callback
+   */
+  onTimeScaleChange(callback: (scale: number) => void): void {
+    this.onTimeScaleChangeCallback = callback;
   }
 
   /**
