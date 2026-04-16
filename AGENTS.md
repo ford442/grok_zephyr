@@ -4,7 +4,7 @@
 
 **Grok Zephyr** (also referred to as **Colossus Fleet**) is a WebGPU-powered orbital simulation featuring 1,048,576 simulated satellites. The project visualizes a massive satellite constellation in Earth orbit at 550km altitude, inspired by the Grok, SpaceX, and Colossus project concepts.
 
-The simulation renders a real-time light show with RGB beam projections from satellites, viewable from multiple camera perspectives including a 720km horizon vantage point, free-floating "God View", and first-person "Fleet POV".
+The simulation renders a real-time light show with RGB beam projections from satellites, viewable from multiple camera perspectives including a 720km horizon vantage point, free-floating "God View", first-person "Fleet POV", immersive "Ground View" with environmental overlays, and a distant "Moon View". It also supports interactive beam patterns (CHAOS, GROK, 𝕏 LOGO), constellation animation patterns (SMILE, DIGITAL RAIN, HEARTBEAT), and selectable physics propagation modes.
 
 ## Technology Stack
 
@@ -15,7 +15,7 @@ The simulation renders a real-time light show with RGB beam projections from sat
 | Frontend | TypeScript 5.3+ |
 | Build Tool | Vite 5.0+ |
 | Math Utilities | Custom column-major matrix implementation |
-| Physics | Custom Keplerian orbital mechanics (with SGP4 stubs) |
+| Physics | satellite.js 5.0+ (SGP4), custom Keplerian propagation |
 | Package Manager | npm |
 | Deployment | Python 3 + Paramiko (SFTP) |
 
@@ -23,58 +23,112 @@ The simulation renders a real-time light show with RGB beam projections from sat
 
 ```
 grok_zephyr/
-├── index.html                 # Main HTML entry point
+├── index.html                 # Main HTML entry point with UI controls
 ├── package.json               # npm dependencies and scripts
-├── tsconfig.json              # TypeScript configuration
+├── tsconfig.json              # TypeScript configuration (strict mode)
 ├── vite.config.ts             # Vite build configuration with custom plugins
-├── deploy.py                  # SFTP deployment script (expects build/ directory)
+├── deploy.py                  # SFTP deployment script (expects dist/ directory)
 ├── git.sh                     # Git helper script
-├── README.md                  # Brief project description
+├── README.md                  # Human-readable project description
 ├── AGENTS.md                  # This file
-├── initial_plan.md            # Design documentation and planning
-├── SWARM_PROMPT.md            # AI prompt context
 ├── ARCHITECTURE.md            # Architecture documentation
-├── src/
-│   ├── main.ts                # Application entry point (GrokZephyrApp class)
-│   ├── styles.css             # Global styles and UI theming
-│   ├── types/
-│   │   ├── index.ts           # Core TypeScript interfaces and types
-│   │   ├── constants.ts       # Simulation and rendering constants
-│   │   └── shaders.ts         # Shader-related types
-│   ├── core/
-│   │   ├── WebGPUContext.ts   # WebGPU adapter/device initialization
-│   │   └── SatelliteGPUBuffer.ts  # GPU buffer management for 1M satellites
-│   ├── render/
-│   │   └── RenderPipeline.ts  # 6-pass rendering pipeline
-│   ├── camera/
-│   │   └── CameraController.ts # View modes and camera math
-│   ├── ui/
-│   │   └── UIManager.ts       # HUD updates and control buttons
-│   ├── utils/
-│   │   ├── math.ts            # 3D math utilities (vectors, matrices)
-│   │   └── PerformanceProfiler.ts  # FPS and timing metrics
-│   ├── physics/
-│   │   ├── OrbitalPropagator.ts    # Keplerian propagation
-│   │   ├── Propagator.ts           # Advanced propagation (SGP4/J2)
-│   │   └── index.ts
-│   ├── data/
-│   │   ├── ConstellationLoader.ts  # Walker constellation generation
-│   │   └── TLELoader.ts            # TLE data parsing
-│   ├── matrix/
-│   │   └── ColorMatrix.ts          # RGB color management
-│   └── shaders/
-│       ├── index.ts           # Shader code (WGSL strings)
-│       ├── uniforms.wgsl      # Shared uniform struct
-│       ├── orbital_compute.wgsl   # Compute shader for positions
-│       ├── stars.wgsl         # Starfield background
-│       ├── earth.wgsl         # Earth sphere rendering
-│       ├── atmosphere.wgsl    # Atmospheric limb glow
-│       ├── satellites.wgsl    # Satellite billboards
-│       ├── bloom_threshold.wgsl   # Bloom extraction
-│       ├── bloom_blur.wgsl    # Gaussian blur
-│       └── composite.wgsl     # Final tonemapping
-├── public/                    # Static assets
-└── dist/                      # Build output (generated)
+├── initial_plan.md            # Design documentation and planning
+├── update_plan.md             # Recent updates and roadmap
+├── SWARM_PROMPT.md            # AI prompt context
+├── demo-ground-observer.html  # Ground observer demo page
+├── scripts/
+│   └── build-standalone.ts    # Standalone HTML build script
+├── public/
+│   └── tle/
+│       └── starlink_sample.txt # Sample Starlink TLE data
+├── dist/                      # Build output (generated)
+└── src/
+    ├── main.ts                # Application entry point (GrokZephyrApp class)
+    ├── styles.css             # Global styles and UI theming
+    ├── styles/
+    │   └── ground-observer.css # Ground view overlay styles
+    ├── types/
+    │   ├── index.ts           # Core TypeScript interfaces and types
+    │   ├── constants.ts       # Simulation and rendering constants
+    │   ├── shaders.ts         # Shader-related types
+    │   └── animation.ts       # Animation, LOD, TAA, post-process types
+    ├── core/
+    │   ├── WebGPUContext.ts   # WebGPU adapter/device initialization
+    │   ├── SatelliteGPUBuffer.ts  # GPU buffer management for 1M satellites
+    │   ├── SatelliteColorBuffer.ts # Per-satellite color buffer management
+    │   └── BlinkTimingModel.ts # Coherent ground-image blink timing
+    ├── render/
+    │   ├── RenderPipeline.ts  # Main rendering pipeline orchestration
+    │   ├── PostProcessStack.ts # Post-processing configuration stack
+    │   ├── RenderTargets.ts   # HDR, depth, and bloom target management
+    │   ├── TrailRenderer.ts   # Satellite trail/ribbon rendering
+    │   ├── SmileV2Pipeline.ts # Smile V2 animation compute pipeline
+    │   ├── SmileV2Controller.ts # Smile V2 animation state controller
+    │   ├── passes/
+    │   │   └── index.ts       # Render pass helpers
+    │   └── pipelines/
+    │       ├── index.ts       # Pipeline exports
+    │       ├── types.ts       # Pipeline type definitions
+    │       ├── ComputePipeline.ts   # Compute pipeline creation
+    │       ├── ScenePipelines.ts    # Scene render pipelines
+    │       ├── EffectPipelines.ts   # Effect render pipelines
+    │       └── PostProcessPipelines.ts # Bloom/composite pipelines
+    ├── camera/
+    │   ├── CameraController.ts     # View modes and camera math
+    │   └── GroundObserverCamera.ts # Ground view presets and parallax
+    ├── ui/
+    │   └── UIManager.ts       # HUD updates, control buttons, animation UI
+    ├── utils/
+    │   ├── math.ts            # 3D math utilities (vectors, matrices)
+    │   └── PerformanceProfiler.ts  # FPS and timing metrics
+    ├── physics/
+    │   ├── OrbitalPropagator.ts    # Keplerian propagation
+    │   ├── Propagator.ts           # Advanced propagation (SGP4/J2)
+    │   └── index.ts
+    ├── data/
+    │   ├── ConstellationLoader.ts  # Walker constellation generation
+    │   └── TLELoader.ts            # TLE data parsing and loading
+    ├── matrix/
+    │   ├── ColorMatrix.ts          # RGB projection patterns
+    │   └── AnimationEngine.ts      # Animation engine for patterns
+    ├── patterns/
+    │   └── PatternSequencer.ts     # Pattern sequencing logic
+    ├── animations/
+    │   ├── SmileV2Controller.ts    # Smile V2 animation controller
+    │   ├── SmileV2IntegrationExample.ts # Integration example
+    │   └── index.ts
+    └── shaders/
+        ├── index.ts             # Central shader exports
+        ├── uniforms.ts          # Shared uniform struct (TypeScript)
+        ├── uniforms.wgsl        # Shared uniform struct (WGSL)
+        ├── compute/
+        │   ├── index.ts         # Compute shader exports
+        │   ├── orbital.ts       # Orbital mechanics compute shader
+        │   └── beam.ts          # Beam compute shader
+        ├── render/
+        │   ├── index.ts         # Render shader exports
+        │   ├── stars.ts         # Starfield background
+        │   ├── earth.ts         # Earth sphere rendering
+        │   ├── atmosphere.ts    # Atmospheric limb glow
+        │   ├── satellites.ts    # Satellite billboards
+        │   ├── beam.ts          # Laser beam rendering
+        │   ├── ground.ts        # Ground terrain rendering
+        │   └── postProcess/
+        │       ├── index.ts     # Post-process shader exports
+        │       ├── bloomThreshold.ts
+        │       ├── bloomBlur.ts
+        │       └── composite.ts # Final tonemapping
+        └── animations/
+            ├── index.ts         # Animation shader exports
+            ├── smile_v2.wgsl    # Smile V2 compute shader
+            ├── smileV2.ts       # Smile V2 shader export
+            ├── sky_strips_compute.wgsl
+            ├── skyStrips.ts
+            ├── digital_rain.wgsl
+            ├── fireworks.wgsl
+            ├── heartbeat.wgsl
+            ├── spiral_galaxy.wgsl
+            └── smile.wgsl
 ```
 
 ## Build and Development Commands
@@ -86,29 +140,38 @@ npm install
 # Start development server (port 5173)
 npm run dev
 
-# Build for production
+# Build for production (outputs to dist/)
 npm run build
 
-# Build standalone single-file version
+# Build standalone single-file version (grok-zephyr.standalone.html)
 npm run build:standalone
 
-# Preview production build
+# Preview production build locally
 npm run preview
 
 # Type check without emitting
 npm run type-check
+
+# Deploy (builds and prints gh-pages instructions)
+npm run deploy
 ```
 
 ## Architecture Details
 
-### Rendering Pipeline (6 Passes)
+### Rendering Pipeline (7+ Passes)
+
+The frame is rendered through the following passes:
 
 1. **Compute Pass**: Update 1,048,576 satellite positions via compute shader (16,384 workgroups × 64 threads)
-2. **Scene Pass**: Render to HDR texture (stars → Earth → atmosphere → satellites)
-3. **Bloom Threshold**: Extract bright pixels to bloom texture
-4. **Bloom Horizontal Blur**: Gaussian blur pass
-5. **Bloom Vertical Blur**: Gaussian blur pass  
-6. **Composite Pass**: Tonemap HDR + bloom to swapchain with ACES approximation
+2. **Beam Compute Pass**: Compute laser beam start/end positions based on beam pattern mode
+3. **Smile V2 Compute (optional)**: Run constellation animation pattern compute if an animation is active
+4. **Scene Pass**: Render to HDR texture
+   - Ground View uses `encodeGroundScenePass` with terrain rendering
+   - Other views use `encodeScenePass` (stars → Earth → atmosphere → satellites → beams)
+5. **Bloom Threshold**: Extract bright pixels to bloom texture
+6. **Bloom Horizontal Blur**: Gaussian blur pass
+7. **Bloom Vertical Blur**: Gaussian blur pass
+8. **Composite Pass**: Tonemap HDR + bloom to swapchain with ACES approximation
 
 ### Simulation Constants
 
@@ -117,6 +180,7 @@ const NUM_SATELLITES = 1048576;    // 2^20 satellites
 const EARTH_RADIUS_KM = 6371.0;    // km - Earth radius
 const ORBIT_RADIUS_KM = 6921.0;    // km - 550km altitude orbit
 const CAMERA_RADIUS_KM = 7091.0;   // km - 720km altitude camera
+const MOON_DISTANCE_KM = 384400.0; // km - average Earth-Moon distance
 const MEAN_MOTION = 0.001097;      // rad/s - orbital angular velocity
 const NUM_PLANES = 1024;           // orbital planes
 const SATELLITES_PER_PLANE = 1024; // satellites per plane
@@ -131,11 +195,13 @@ const SATELLITES_PER_PLANE = 1024; // satellites per plane
 [96-111]  camera_up:      vec4f        // Camera up vector
 [112-115] time:           f32          // Simulation time
 [116-119] delta_time:     f32          // Frame delta time
-[120-123] view_mode:      u32          // View mode index
-[124-127] pad0:           u32          // Padding
+[120-123] view_flags:     u32          // Packed: view_mode (bits 0-15), is_ground_view (bit 16), physics_mode (bits 17-19)
+[124-127] sim_time:       f32          // Scaled simulation time
 [128-223] frustum:        array<vec4f,6>  // Frustum planes
 [224-231] screen_size:    vec2f        // Screen dimensions
-[232-239] pad1:           vec2f        // Padding
+[232-235] time_scale:     f32          // Simulation time multiplier (1x - 100000x)
+[236-239] pad0:           u32          // Padding
+[240-255] sun_position:   vec4f        // Sun position in ECI frame
 ```
 
 ### View Modes
@@ -144,15 +210,49 @@ const SATELLITES_PER_PLANE = 1024; // satellites per plane
 |------|-----|-------------|
 | 720km Horizon | 0 | Camera at 720km altitude on +X axis, looking along constellation |
 | God View | 1 | Orbiting free camera with mouse controls (drag to rotate, scroll to zoom) |
-| Fleet POV | 2 | Camera follows satellite #0 in first-person |
+| Fleet POV | 2 | Camera follows satellite #0 in first-person; WASD for micro-drift |
+| Ground View | 3 | Surface observer looking up at the constellation; includes environmental overlays |
+| Moon View | 4 | Camera positioned at Earth-Moon distance viewing the near-side constellation |
+
+### Ground Observer Presets
+
+When in Ground View, the following presets are available via UI buttons:
+- **House** (`houseWindow`) — View from a house window
+- **Car** (`carWindshield`) — View from a car windshield
+- **Beach** (`beachNight`) — Night beach perspective
+- **Rooftop** (`rooftop`) — Urban rooftop view
+- **Airplane** (`airplaneWindow`) — View from an airplane window
+
+Each preset applies a different CSS overlay class to `#ground-observer-overlay`.
+
+### Beam Patterns
+
+Controlled by the "BEAM PATTERN" UI buttons:
+- **CHAOS** (`0`) — Random/unstructured beam pattern
+- **GROK** (`1`) — Grok-branded structured pattern (default)
+- **𝕏 LOGO** (`2`) — X logo projection pattern
+
+### Animation Patterns
+
+Controlled by the "CONSTELLATION PATTERNS" UI buttons:
+- **SMILE** (`3`) — Smile face constellation animation
+- **DIGITAL RAIN** (`4`) — Matrix-style digital rain effect
+- **HEARTBEAT** (`5`) — Pulsing heartbeat pattern
+
+### Physics Modes
+
+Controlled by the "PHYSICS MODE" UI buttons:
+- **Simple** (`0`) — Basic circular orbits (implemented)
+- **Keplerian** (`1`) — Elliptical orbits with mean anomaly (implemented)
+- **J2 Perturbed** (`2`) — Oblateness corrections (UI placeholder; not fully implemented in compute shader)
 
 ### Constellation Configuration
 
-The simulation uses a Walker constellation pattern with multiple inclination shells:
-- 53° - main Starlink-like shell
-- 70° - polar coverage
-- 97.6° - sun-synchronous
-- 30° - equatorial
+The default procedural mode uses a Walker constellation pattern with multiple inclination shells:
+- 53° — main Starlink-like shell
+- 70° — polar coverage
+- 97.6° — sun-synchronous
+- 30° — equatorial
 
 ## Key Files Reference
 
@@ -163,6 +263,9 @@ The simulation uses a Walker constellation pattern with multiple inclination she
 - Buffer management
 - Render loop
 - Camera and UI coordination
+- TLE data loading from query parameters
+- Pattern/physics/animation mode switching
+- Time scale control
 
 **src/core/WebGPUContext.ts**: WebGPU abstraction layer handling:
 - Adapter and device creation
@@ -172,10 +275,16 @@ The simulation uses a Walker constellation pattern with multiple inclination she
 
 **src/core/SatelliteGPUBuffer.ts**: GPU memory manager for:
 - 16MB orbital elements buffer (read-only)
+- 32MB extended elements buffer (for J2 propagation)
 - 16MB position buffer (read-write storage)
 - 256-byte uniform buffer
-- Double-buffering support (optional)
-- CPU-side position calculation for camera tracking
+- 4MB per-satellite color buffer (rgba8unorm packed)
+- 16MB pattern buffer (Sky Strips)
+- 2MB beam data buffer (64k beams)
+- 32MB trail buffer (2 frames)
+- Various uniform buffers for bloom, beams, patterns, Smile V2
+- Double-buffered staging uploads (zero CPU stall)
+- Total ~118 MB (under Pascal 128 MB safe limit)
 
 ### Rendering
 
@@ -183,15 +292,31 @@ The simulation uses a Walker constellation pattern with multiple inclination she
 - Pipeline creation for all shader stages
 - Render target management (HDR, depth, bloom)
 - Bind group setup
-- 6-pass encoding methods
+- Pass encoding methods (compute, scene, ground, bloom, composite)
+
+**src/render/SmileV2Pipeline.ts**: Smile V2 animation compute pipeline.
+
+**src/render/TrailRenderer.ts**: Satellite trail ribbon rendering.
 
 ### Camera System
 
 **src/camera/CameraController.ts**: Camera management:
-- Three view modes with smooth transitions
+- Five view modes with smooth transitions
 - God view mouse controls (orbit + zoom)
-- Fleet POV satellite tracking
+- Fleet POV satellite tracking with WASD micro-movement
+- Ground and Moon view camera math
 - View-projection matrix calculation
+
+**src/camera/GroundObserverCamera.ts**: Ground view presets and parallax updates.
+
+### Shader Organization
+
+Shaders are organized into three domains under `src/shaders/`:
+- **compute/** — Compute shaders (orbital mechanics, beams)
+- **render/** — Render shaders (stars, Earth, atmosphere, satellites, ground, post-process)
+- **animations/** — Animation shaders (Smile V2, Sky Strips, digital rain, heartbeat, etc.)
+
+The central export is `src/shaders/index.ts` which exposes `SHADERS.compute`, `SHADERS.render`, and `SHADERS.animations`. Legacy flat exports are deprecated but remain for backward compatibility.
 
 ## Vite Configuration Features
 
@@ -204,7 +329,13 @@ Path aliases configured:
 - `@/*` → `src/*`
 - `@/shaders/*` → `src/shaders/*`
 - `@/core/*` → `src/core/*`
-- etc.
+- `@/render/*` → `src/render/*`
+- `@/camera/*` → `src/camera/*`
+- `@/matrix/*` → `src/matrix/*`
+- `@/ui/*` → `src/ui/*`
+- `@/utils/*` → `src/utils/*`
+- `@/types/*` → `src/types/*`
+- `@/physics/*` → `src/physics/*`
 
 ## Code Style Guidelines
 
@@ -227,6 +358,7 @@ Path aliases configured:
 - Uniform struct shared across shaders via string concatenation
 - Workgroup size of 64 for compute shaders
 - Explicit binding layouts with proper visibility flags
+- Shaders are organized in domain subdirectories (`compute/`, `render/`, `animations/`)
 
 ## Browser Requirements
 
@@ -239,7 +371,7 @@ WebGPU requires a secure context (HTTPS or localhost).
 
 ## Deployment
 
-The `deploy.py` script expects a `build/` directory (created by `npm run build`):
+The `deploy.py` script expects a `dist/` directory (created by `npm run build`):
 
 ```bash
 npm run build
@@ -257,14 +389,14 @@ Target configuration:
 
 - **Compute Shader**: Dispatches 16,384 workgroups for 1M satellites
 - **Frustum Culling**: Done in vertex shader to degenerate invisible satellites
-- **Distance Culling**: Satellites >14,000km from camera are not rendered
+- **Distance Culling**: Satellites >150,000km from camera are not rendered (increased for Ground/Moon views)
 - **HDR Rendering**: Uses `rgba16float` format for intermediate buffers
 - **Texture Views**: Cached to avoid `createView()` calls every frame
+- **Pascal Safety**: Total GPU buffer footprint is kept under ~118 MB (128 MB safe limit) through tight packing (rgba8unorm colors, compact extended elements, reduced trail frames)
 
 ## TLE Mode (Real Satellite Data)
 
-The simulation supports loading real Two-Line Element (TLE) data as an alternative
-to the default procedural Walker constellation.
+The simulation supports loading real Two-Line Element (TLE) data as an alternative to the default procedural Walker constellation.
 
 ### Activation
 
@@ -291,10 +423,10 @@ Without `?tle=`, the default procedural Walker constellation is used.
 
 ```
 URL ?tle=starlink
-  → TLELoader.fromCelesTrak('starlink')        [src/data/TLELoader.ts]
-    → fetch() 3-line TLE text from CelesTrak
+  → TLELoader.fromFile(sourceUrl)               [src/data/TLELoader.ts]
+    → fetch() 3-line TLE text
     → TLELoader.parse() → TLEData[]
-  → SatelliteGPUBuffer.loadFromTLEData(tles)   [src/core/SatelliteGPUBuffer.ts]
+  → SatelliteGPUBuffer.loadFromTLEData(tles)    [src/core/SatelliteGPUBuffer.ts]
     → For each TLE: parse line2 fixed-width columns
       → Extract: inclination, RAAN, mean anomaly (deg → rad)
       → Derive altitude from mean motion: a = (μ/n²)^(1/3)
@@ -307,36 +439,29 @@ URL ?tle=starlink
 
 ### Padding Behavior
 
-Real TLE counts (~6K) are much smaller than the 1,048,576 buffer. Remaining
-slots are filled deterministically with Walker satellites. The HUD displays
-the data source, e.g. "Source: TLE (6,142 real)".
+Real TLE counts (~6K) are much smaller than the 1,048,576 buffer. Remaining slots are filled deterministically with Walker satellites. The HUD displays the data source, e.g. "Source: TLE (6,142 real)".
 
 ### Fallback
 
-If TLE fetch/parse fails (network error, CORS, invalid format), the app logs
-a warning and falls back to procedural generation. Startup is never blocked.
+If TLE fetch/parse fails (network error, CORS, invalid format), the app logs a warning and falls back to procedural generation. Startup is never blocked.
 
 ### Caveats
 
-- **Scale**: Real constellations have ~6K sats vs 1M procedural. Padded sats
-  use the standard Walker pattern.
-- **Accuracy**: TLEs are propagated with the same simplified circular Keplerian
-  model. Full SGP4 would require compute shader changes.
-- **Epoch**: Simulation uses wall-clock elapsed time, not UTC. Positions drift
-  from reality over time.
+- **Scale**: Real constellations have ~6K sats vs 1M procedural. Padded sats use the standard Walker pattern.
+- **Accuracy**: TLEs are propagated with the same simplified circular Keplerian model. Full SGP4 in compute shader is not yet implemented.
+- **Epoch**: Simulation uses wall-clock elapsed time, not UTC. Positions drift from reality over time.
 - **CORS**: CelesTrak allows cross-origin. Custom URLs need CORS headers.
 
 ## Known Limitations and TODOs
 
-1. ~~**TLE Loading**: The TLE parser exists but is not wired into the main simulation~~ *(Done: use `?tle=` query param)*
-2. **SGP4 Propagation**: Currently using simplified Keplerian mechanics; full SGP4 implementation is stubbed
-3. **J2 Perturbations**: Not yet implemented in the compute shader
-4. **GPU Timing**: Only works if the browser supports `timestamp-query` feature
-5. **Standalone Build**: Creates a single HTML file but requires manual deployment
+1. **SGP4 Propagation**: Currently using simplified Keplerian mechanics in the compute shader; full GPU SGP4 implementation is stubbed
+2. **J2 Perturbations**: UI exists but compute shader implementation is incomplete
+3. **GPU Timing**: Only works if the browser supports `timestamp-query` feature
+4. **Standalone Build**: Creates a single HTML file but requires manual deployment
 
 ## Security Considerations
 
-- **deploy.py contains hardcoded credentials** - Should be refactored to use environment variables
+- **deploy.py contains hardcoded credentials** — Should be refactored to use environment variables
 - No sensitive data in frontend code
 - WebGPU requires secure context (HTTPS or localhost)
 
@@ -347,16 +472,34 @@ a warning and falls back to procedural generation. Startup is never blocked.
 2. Add button to `#controls` div in `index.html`
 3. Update `setViewMode()` method in `CameraController.ts`
 4. Add camera logic in `calculateCamera()` method
+5. Update `estimateVisibleSatellites()` in `main.ts` if needed
 
 ### Modifying Orbital Mechanics
 - Orbital elements generated in `SatelliteGPUBuffer.generateOrbitalElements()`
-- Compute shader in `src/shaders/index.ts` (`ORBITAL_CS`)
+- Compute shader in `src/shaders/compute/orbital.ts`
 - CPU-side position calculation in `calculateSatellitePosition()` for camera tracking
 
 ### Shader Development
-- Shaders are defined as template literals in `src/shaders/index.ts`
-- WGSL files exist in `src/shaders/` but are not directly loaded (future enhancement)
+- Shaders are defined in domain subdirectories under `src/shaders/`
+- Entry point is `src/shaders/index.ts` which exports `SHADERS.compute`, `SHADERS.render`, and `SHADERS.animations`
 - Check browser console for shader compilation errors
+- The Vite WGSL plugin supports `#import "relative/path.wgsl"` for shader includes
+
+### Adding New Beam Patterns
+1. Update the beam compute shader in `src/shaders/compute/beam.ts`
+2. Add UI button in `index.html` with `data-pattern` attribute
+3. Update `setPatternMode()` in `main.ts` if pattern param semantics change
+
+### Adding New Animation Patterns
+1. Create WGSL shader in `src/shaders/animations/`
+2. Export from `src/shaders/animations/index.ts`
+3. Add UI button in `index.html` under `#animation-controls`
+4. Wire up in `UIManager.ts` and `main.ts`
+
+### Ground Observer Development
+1. Presets are defined in `GroundObserverCamera.ts`
+2. Overlay CSS classes are in `src/styles/ground-observer.css`
+3. Preset buttons are in `index.html` inside `#ground-preset-selector`
 
 ## File Dependencies Graph
 
@@ -365,10 +508,15 @@ main.ts
 ├── WebGPUContext
 ├── SatelliteGPUBuffer
 ├── RenderPipeline
-│   └── shaders/index.ts
+│   ├── shaders/index.ts
+│   ├── SmileV2Pipeline
+│   ├── PostProcessStack
+│   └── RenderTargets
 ├── CameraController
 │   └── utils/math.ts
+├── GroundObserverCamera
 ├── UIManager
 ├── PerformanceProfiler
+├── TLELoader
 └── types/constants.ts
 ```
