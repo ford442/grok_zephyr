@@ -315,13 +315,9 @@ export class SatelliteGPUBuffer {
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     );
     
-    // Create beam params uniform buffer (16 bytes)
-    const beamParams = this.context.createUniformBuffer(16);
-    const beamParamsData = new Float32Array(4);
-    beamParamsData[0] = 0;      // time
-    beamParamsData[1] = 1;      // patternMode (GROK logo default)
-    beamParamsData[2] = MAX_BEAMS;
-    beamParamsData[3] = 0;
+    // Create beam params uniform buffer (256 bytes for new volumetric beams)
+    const beamParams = this.context.createUniformBuffer(256);
+    const beamParamsData = new Float32Array(64);
     this.context.writeBuffer(beamParams, beamParamsData);
 
     // Create pattern params uniform buffer
