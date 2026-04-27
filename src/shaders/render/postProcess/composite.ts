@@ -3,9 +3,7 @@
  * Final tone mapping, vignetting, chromatic aberration, film grain
  */
 
-import { UNIFORM_STRUCT } from '../../uniforms.js';
-
-export const COMPOSITE = UNIFORM_STRUCT + /* wgsl */ `
+export const COMPOSITE = /* wgsl */ `
 struct VSOut {
   @builtin(position) pos: vec4f,
   @location(0) uv: vec2f,
@@ -80,7 +78,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let vignetted = applyVignette(gammaCorrected, uv);
 
   // Apply film grain (luminance-preserving)
-  let grain = filmGrain(uv, uni.time);
+  let grain = filmGrain(uv, 0.0);
   let lum = dot(vignetted, vec3f(0.299, 0.587, 0.114));
   let grained = vignetted + grain * GRAIN_STRENGTH * (1.0 - lum);
 

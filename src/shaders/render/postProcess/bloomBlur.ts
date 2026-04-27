@@ -3,9 +3,7 @@
  * Gaussian blur for bloom effect
  */
 
-import { UNIFORM_STRUCT } from '../../uniforms.js';
-
-export const BLOOM_BLUR = UNIFORM_STRUCT + /* wgsl */ `
+export const BLOOM_BLUR = /* wgsl */ `
 struct VSOut {
   @builtin(position) pos: vec4f,
   @location(0) uv: vec2f,

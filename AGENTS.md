@@ -15,75 +15,76 @@ The simulation renders a real-time light show with RGB beam projections from sat
 | Frontend | TypeScript 5.3+ |
 | Build Tool | Vite 5.0+ |
 | Math Utilities | Custom column-major matrix implementation |
-| Physics | satellite.js 5.0+ (SGP4), custom Keplerian propagation |
+| Physics | satellite.js 5.0+ (SGP4 dependency, but GPU propagation is custom Keplerian) |
 | Package Manager | npm |
 | Deployment | Python 3 + Paramiko (SFTP) |
+| Testing | **None currently** — no test framework or test files exist |
 
 ## Project Structure
 
 ```
 grok_zephyr/
-├── index.html                 # Main HTML entry point with UI controls
-├── package.json               # npm dependencies and scripts
-├── tsconfig.json              # TypeScript configuration (strict mode)
-├── vite.config.ts             # Vite build configuration with custom plugins
-├── deploy.py                  # SFTP deployment script (expects dist/ directory)
-├── git.sh                     # Git helper script
-├── README.md                  # Human-readable project description
-├── AGENTS.md                  # This file
-├── ARCHITECTURE.md            # Architecture documentation
-├── initial_plan.md            # Design documentation and planning
-├── update_plan.md             # Recent updates and roadmap
-├── SWARM_PROMPT.md            # AI prompt context
-├── demo-ground-observer.html  # Ground observer demo page
+├── index.html                    # Main HTML entry point with UI controls
+├── package.json                  # npm dependencies and scripts
+├── tsconfig.json                 # TypeScript configuration (strict mode)
+├── vite.config.ts                # Vite build configuration with custom plugins
+├── deploy.py                     # SFTP deployment script (expects dist/ directory)
+├── git.sh                        # Git helper script
+├── README.md                     # Human-readable project description
+├── AGENTS.md                     # This file
+├── ARCHITECTURE.md               # Architecture documentation
+├── initial_plan.md               # Design documentation and planning
+├── update_plan.md                # Recent updates and roadmap
+├── SWARM_PROMPT.md               # AI prompt context
+├── demo-ground-observer.html     # Ground observer demo page
 ├── scripts/
-│   └── build-standalone.ts    # Standalone HTML build script
+│   └── build-standalone.ts       # Standalone HTML build script
 ├── public/
 │   └── tle/
-│       └── starlink_sample.txt # Sample Starlink TLE data
-├── dist/                      # Build output (generated)
+│       └── starlink_sample.txt   # Sample Starlink TLE data
+├── dist/                         # Build output (generated)
 └── src/
-    ├── main.ts                # Application entry point (GrokZephyrApp class)
-    ├── styles.css             # Global styles and UI theming
+    ├── main.ts                   # Application entry point (GrokZephyrApp class)
+    ├── styles.css                # Global styles and UI theming
     ├── styles/
-    │   └── ground-observer.css # Ground view overlay styles
+    │   └── ground-observer.css   # Ground view overlay styles
     ├── types/
-    │   ├── index.ts           # Core TypeScript interfaces and types
-    │   ├── constants.ts       # Simulation and rendering constants
-    │   ├── shaders.ts         # Shader-related types
-    │   └── animation.ts       # Animation, LOD, TAA, post-process types
+    │   ├── index.ts              # Core TypeScript interfaces and types
+    │   ├── constants.ts          # Simulation and rendering constants
+    │   ├── shaders.ts            # Shader-related types
+    │   └── animation.ts          # Animation, LOD, TAA, post-process types
     ├── core/
-    │   ├── WebGPUContext.ts   # WebGPU adapter/device initialization
-    │   ├── SatelliteGPUBuffer.ts  # GPU buffer management for 1M satellites
+    │   ├── WebGPUContext.ts      # WebGPU adapter/device initialization
+    │   ├── SatelliteGPUBuffer.ts # GPU buffer management for 1M satellites
     │   ├── SatelliteColorBuffer.ts # Per-satellite color buffer management
-    │   └── BlinkTimingModel.ts # Coherent ground-image blink timing
+    │   └── BlinkTimingModel.ts   # Coherent ground-image blink timing
     ├── render/
-    │   ├── RenderPipeline.ts  # Main rendering pipeline orchestration
-    │   ├── PostProcessStack.ts # Post-processing configuration stack
-    │   ├── RenderTargets.ts   # HDR, depth, and bloom target management
-    │   ├── TrailRenderer.ts   # Satellite trail/ribbon rendering
-    │   ├── SmileV2Pipeline.ts # Smile V2 animation compute pipeline
-    │   ├── SmileV2Controller.ts # Smile V2 animation state controller
+    │   ├── RenderPipeline.ts     # Main rendering pipeline orchestration
+    │   ├── PostProcessStack.ts   # Post-processing configuration stack
+    │   ├── RenderTargets.ts      # HDR, depth, and bloom target management
+    │   ├── TrailRenderer.ts      # Satellite trail/ribbon rendering
+    │   ├── SmileV2Pipeline.ts    # Smile V2 animation compute pipeline
+    │   ├── SmileV2Controller.ts  # Smile V2 animation state controller
     │   ├── passes/
-    │   │   └── index.ts       # Render pass helpers
+    │   │   └── index.ts          # Render pass helpers
     │   └── pipelines/
-    │       ├── index.ts       # Pipeline exports
-    │       ├── types.ts       # Pipeline type definitions
-    │       ├── ComputePipeline.ts   # Compute pipeline creation
-    │       ├── ScenePipelines.ts    # Scene render pipelines
-    │       ├── EffectPipelines.ts   # Effect render pipelines
+    │       ├── index.ts          # Pipeline exports
+    │       ├── types.ts          # Pipeline type definitions
+    │       ├── ComputePipeline.ts    # Compute pipeline creation
+    │       ├── ScenePipelines.ts     # Scene render pipelines
+    │       ├── EffectPipelines.ts    # Effect render pipelines
     │       └── PostProcessPipelines.ts # Bloom/composite pipelines
     ├── camera/
-    │   ├── CameraController.ts     # View modes and camera math
-    │   └── GroundObserverCamera.ts # Ground view presets and parallax
+    │   ├── CameraController.ts      # View modes and camera math
+    │   └── GroundObserverCamera.ts  # Ground view presets and parallax
     ├── ui/
-    │   └── UIManager.ts       # HUD updates, control buttons, animation UI
+    │   └── UIManager.ts          # HUD updates, control buttons, animation UI
     ├── utils/
-    │   ├── math.ts            # 3D math utilities (vectors, matrices)
-    │   └── PerformanceProfiler.ts  # FPS and timing metrics
+    │   ├── math.ts               # 3D math utilities (vectors, matrices)
+    │   └── PerformanceProfiler.ts # FPS and timing metrics
     ├── physics/
-    │   ├── OrbitalPropagator.ts    # Keplerian propagation
-    │   ├── Propagator.ts           # Advanced propagation (SGP4/J2)
+    │   ├── OrbitalPropagator.ts  # Keplerian propagation (simplified, CPU-side stub)
+    │   ├── Propagator.ts         # Advanced propagation (SGP4/J2)
     │   └── index.ts
     ├── data/
     │   ├── ConstellationLoader.ts  # Walker constellation generation
@@ -98,30 +99,49 @@ grok_zephyr/
     │   ├── SmileV2IntegrationExample.ts # Integration example
     │   └── index.ts
     └── shaders/
-        ├── index.ts             # Central shader exports
-        ├── uniforms.ts          # Shared uniform struct (TypeScript)
-        ├── uniforms.wgsl        # Shared uniform struct (WGSL)
+        ├── index.ts              # Central shader exports
+        ├── uniforms.ts           # Shared uniform struct (TypeScript)
+        ├── uniforms.wgsl         # Shared uniform struct (WGSL)
+        ├── constellation_optics.wgsl
+        ├── orbital_compute.wgsl
+        ├── composite.wgsl
+        ├── atmosphere.wgsl
+        ├── sky_strips_compute.wgsl
+        ├── bloom_threshold.wgsl
+        ├── earth_atmosphere.wgsl
+        ├── satellite_render.wgsl
+        ├── satellites_lod.wgsl
+        ├── taa.wgsl
+        ├── constellation_patterns.wgsl
+        ├── stars.wgsl
+        ├── lens_effects.wgsl
+        ├── bloom_blur.wgsl
+        ├── earth_atmosphere_enhanced.wgsl
+        ├── projection_billboard.wgsl
+        ├── volumetric_beams.wgsl
+        ├── earth.wgsl
+        ├── satellites.wgsl
         ├── compute/
-        │   ├── index.ts         # Compute shader exports
-        │   ├── orbital.ts       # Orbital mechanics compute shader
-        │   └── beam.ts          # Beam compute shader
+        │   ├── index.ts          # Compute shader exports
+        │   ├── orbital.ts        # Orbital mechanics compute shader
+        │   └── beam.ts           # Beam compute shader
         ├── render/
-        │   ├── index.ts         # Render shader exports
-        │   ├── stars.ts         # Starfield background
-        │   ├── earth.ts         # Earth sphere rendering
-        │   ├── atmosphere.ts    # Atmospheric limb glow
-        │   ├── satellites.ts    # Satellite billboards
-        │   ├── beam.ts          # Laser beam rendering
-        │   ├── ground.ts        # Ground terrain rendering
+        │   ├── index.ts          # Render shader exports
+        │   ├── stars.ts          # Starfield background
+        │   ├── earth.ts          # Earth sphere rendering
+        │   ├── atmosphere.ts     # Atmospheric limb glow
+        │   ├── satellites.ts     # Satellite billboards
+        │   ├── beam.ts           # Laser beam rendering
+        │   ├── ground.ts         # Ground terrain rendering
         │   └── postProcess/
-        │       ├── index.ts     # Post-process shader exports
+        │       ├── index.ts      # Post-process shader exports
         │       ├── bloomThreshold.ts
         │       ├── bloomBlur.ts
-        │       └── composite.ts # Final tonemapping
+        │       └── composite.ts  # Final tonemapping
         └── animations/
-            ├── index.ts         # Animation shader exports
-            ├── smile_v2.wgsl    # Smile V2 compute shader
-            ├── smileV2.ts       # Smile V2 shader export
+            ├── index.ts          # Animation shader exports
+            ├── smile_v2.wgsl     # Smile V2 compute shader
+            ├── smileV2.ts        # Smile V2 shader export
             ├── sky_strips_compute.wgsl
             ├── skyStrips.ts
             ├── digital_rain.wgsl
@@ -369,6 +389,19 @@ Path aliases configured:
 
 WebGPU requires a secure context (HTTPS or localhost).
 
+## Testing
+
+**There are currently no tests in this project.** No test framework (Jest, Vitest, Playwright, etc.) is configured, and no test files exist.
+
+If you add tests, the recommended approach is:
+- Use **Vitest** (aligns with the Vite build system)
+- Place tests next to source files (`*.test.ts`) or in a `tests/` directory
+- Priority test areas:
+  1. `src/utils/math.ts` — matrix operations, vector math, frustum extraction
+  2. `src/data/TLELoader.ts` — TLE parsing logic
+  3. `src/core/SatelliteGPUBuffer.ts` — CPU-side position/velocity calculations
+  4. `src/camera/CameraController.ts` — camera state calculations for each view mode
+
 ## Deployment
 
 The `deploy.py` script expects a `dist/` directory (created by `npm run build`):
@@ -378,7 +411,7 @@ npm run build
 python deploy.py
 ```
 
-**Security Note**: The deploy script contains hardcoded credentials that should be moved to environment variables.
+**Security Note**: The deploy script contains hardcoded credentials (username `ford442`, password `GoogleBez12!`, host `1ink.us`) and should be refactored to use environment variables or a separate secrets file.
 
 Target configuration:
 - Host: `1ink.us`
@@ -458,10 +491,11 @@ If TLE fetch/parse fails (network error, CORS, invalid format), the app logs a w
 2. **J2 Perturbations**: UI exists but compute shader implementation is incomplete
 3. **GPU Timing**: Only works if the browser supports `timestamp-query` feature
 4. **Standalone Build**: Creates a single HTML file but requires manual deployment
+5. **No Automated Tests**: The project has no unit tests, integration tests, or end-to-end tests
 
 ## Security Considerations
 
-- **deploy.py contains hardcoded credentials** — Should be refactored to use environment variables
+- **deploy.py contains hardcoded credentials** (`GoogleBez12!`) — Must be refactored to use environment variables before any production use
 - No sensitive data in frontend code
 - WebGPU requires secure context (HTTPS or localhost)
 

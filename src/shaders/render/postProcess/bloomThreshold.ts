@@ -3,9 +3,7 @@
  * Extracts bright areas for bloom effect
  */
 
-import { UNIFORM_STRUCT } from '../../uniforms.js';
-
-export const BLOOM_THRESHOLD = UNIFORM_STRUCT + /* wgsl */ `
+export const BLOOM_THRESHOLD = /* wgsl */ `
 struct VSOut {
   @builtin(position) pos: vec4f,
   @location(0) uv: vec2f,
