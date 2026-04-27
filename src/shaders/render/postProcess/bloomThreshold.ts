@@ -3,9 +3,7 @@
  * Extracts bright areas for bloom effect
  */
 
-import { UNIFORM_STRUCT } from '../../uniforms.js';
-
-export const BLOOM_THRESHOLD = UNIFORM_STRUCT + /* wgsl */ `
+export const BLOOM_THRESHOLD = /* wgsl */ `
 struct VSOut {
   @builtin(position) pos: vec4f,
   @location(0) uv: vec2f,
@@ -13,18 +11,21 @@ struct VSOut {
 
 @vertex
 fn vs(@builtin(vertex_index) vid: u32) -> VSOut {
+  const pts = array<vec2f, 3>(
+    vec2f(-1.0, -1.0),
+    vec2f( 3.0, -1.0),
+    vec2f(-1.0,  3.0)
+  );
   var out: VSOut;
-  let x = f32(vid % 2u) * 2.0 - 1.0; // 0 -> -1, 1 -> 1
-  let y = f32(vid / 2u) * 2.0 - 1.0; // 0 -> -1, 1 -> 1
-  out.pos = vec4f(x, y, 0.0, 1.0);
-  out.uv = vec4f(x, y, 0.0, 1.0).xy * 0.5 + 0.5;
+  out.pos = vec4f(pts[vid], 0.0, 1.0);
+  out.uv = pts[vid] * 0.5 + 0.5;
   return out;
 }
 
 @group(0) @binding(0) var hdrTex: texture_2d<f32>;
 @group(0) @binding(1) var hdrSamp: sampler;
 
-const BLOOM_THRESHOLD_VAL: f32 = 1.0;
+const BLOOM_THRESHOLD_VAL: f32 = 0.8;
 
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {

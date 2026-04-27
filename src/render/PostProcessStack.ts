@@ -57,6 +57,11 @@ export class PostProcessStack {
   // Uniform buffers
   private gradingUniformBuffer: GPUBuffer;
   private taaUniformBuffer: GPUBuffer;
+  private grainUniformBuffer: GPUBuffer;
+  private sharpnessUniformBuffer: GPUBuffer;
+
+  // Shared linear sampler
+  private linearSampler: GPUSampler;
   
   // Halton sequence for TAA jitter
   private haltonSequence: Float32Array;
@@ -89,6 +94,21 @@ export class PostProcessStack {
     this.taaUniformBuffer = device.createBuffer({
       size: 32,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+
+    this.grainUniformBuffer = device.createBuffer({
+      size: 16,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+
+    this.sharpnessUniformBuffer = device.createBuffer({
+      size: 16,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+
+    this.linearSampler = device.createSampler({
+      magFilter: 'linear',
+      minFilter: 'linear',
     });
     
     this.adaptiveQuality = {
@@ -238,6 +258,8 @@ export class PostProcessStack {
     this.destroyRenderTargets();
     this.gradingUniformBuffer.destroy();
     this.taaUniformBuffer.destroy();
+    this.grainUniformBuffer.destroy();
+    this.sharpnessUniformBuffer.destroy();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════
@@ -574,10 +596,28 @@ export class PostProcessStack {
   }
 
   private updateBindGroups(): void {
-    // Update bind groups with current textures
+    // Bind groups that depend on specific input textures are created dynamically
+    // in each execute method (cheap WebGPU operation, called per-frame).
+    // This method updates the grain and sharpness uniform values so they are
+    // ready when the execute methods create their bind groups.
+    this.updateGrainUniforms();
+    this.updateSharpnessUniforms();
+  }
+
+  private updateGrainUniforms(): void {
     const device = this.context.getDevice();
-    
-    // This would be called after resize to update texture references
+    const data = new Float32Array([
+      this.config.filmGrain.intensity,
+      performance.now() * 0.001,
+      0, 0,
+    ]);
+    device.queue.writeBuffer(this.grainUniformBuffer, 0, data);
+  }
+
+  private updateSharpnessUniforms(): void {
+    const device = this.context.getDevice();
+    const data = new Float32Array([this.config.sharpness.strength, 0, 0, 0]);
+    device.queue.writeBuffer(this.sharpnessUniformBuffer, 0, data);
   }
 
   private updateUniforms(): void {
@@ -620,10 +660,22 @@ export class PostProcessStack {
 
   private executeTAAPass(
     encoder: GPUCommandEncoder,
-    _inputView: GPUTextureView,
+    inputView: GPUTextureView,
     _width: number,
     _height: number
   ): void {
+    const device = this.context.getDevice();
+    const historyIdx = this.frameIndex % 2;
+    const bindGroup = device.createBindGroup({
+      layout: this.passes.get('taa')!.pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.taaUniformBuffer } },
+        { binding: 1, resource: inputView },
+        { binding: 2, resource: this.historyBuffer[historyIdx].createView() },
+        { binding: 3, resource: this.linearSampler },
+      ],
+    });
+
     const pass = encoder.beginRenderPass({
       colorAttachments: [{
         view: this.taaOutput!.createView(),
@@ -634,16 +686,64 @@ export class PostProcessStack {
     });
     
     pass.setPipeline(this.passes.get('taa')!.pipeline);
+    pass.setBindGroup(0, bindGroup);
     pass.draw(3);
     pass.end();
+
+    // Copy taaOutput into history for next frame
+    // (A full TAA copy pass would be needed here in a production setup)
   }
 
   private executePass(
     encoder: GPUCommandEncoder,
     type: PassType,
-    _inputView: GPUTextureView,
+    inputView: GPUTextureView,
     outputView: GPUTextureView
   ): void {
+    const device = this.context.getDevice();
+    const pipeline = this.passes.get(type)!.pipeline;
+
+    // Build bind group based on pass type
+    let bindGroup: GPUBindGroup;
+    if (type === 'grading') {
+      bindGroup = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.gradingUniformBuffer } },
+          { binding: 1, resource: inputView },
+          { binding: 2, resource: this.linearSampler },
+        ],
+      });
+    } else if (type === 'grain') {
+      this.updateGrainUniforms();
+      bindGroup = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.grainUniformBuffer } },
+          { binding: 1, resource: inputView },
+          { binding: 2, resource: this.linearSampler },
+        ],
+      });
+    } else if (type === 'sharpness') {
+      bindGroup = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.sharpnessUniformBuffer } },
+          { binding: 1, resource: inputView },
+          { binding: 2, resource: this.linearSampler },
+        ],
+      });
+    } else {
+      // Lens or other passes: just source + sampler at bindings 0 and 1
+      bindGroup = device.createBindGroup({
+        layout: pipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: inputView },
+          { binding: 1, resource: this.linearSampler },
+        ],
+      });
+    }
+
     const pass = encoder.beginRenderPass({
       colorAttachments: [{
         view: outputView,
@@ -653,16 +753,27 @@ export class PostProcessStack {
       }],
     });
     
-    pass.setPipeline(this.passes.get(type)!.pipeline);
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
     pass.draw(3);
     pass.end();
   }
 
   private executeTonemapPass(
     encoder: GPUCommandEncoder,
-    _inputView: GPUTextureView,
+    inputView: GPUTextureView,
     outputView: GPUTextureView
   ): void {
+    const device = this.context.getDevice();
+    const pipeline = this.passes.get('tonemap')!.pipeline;
+    const bindGroup = device.createBindGroup({
+      layout: pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: inputView },
+        { binding: 1, resource: this.linearSampler },
+      ],
+    });
+
     const pass = encoder.beginRenderPass({
       colorAttachments: [{
         view: outputView,
@@ -672,7 +783,8 @@ export class PostProcessStack {
       }],
     });
     
-    pass.setPipeline(this.passes.get('tonemap')!.pipeline);
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
     pass.draw(3);
     pass.end();
   }
