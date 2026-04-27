@@ -29,6 +29,7 @@ struct VOut {
 const PI: f32 = 3.14159265;
 
 // Pattern mode constants
+const PATTERN_X_LOGO: u32 = 2u;
 const PATTERN_SMILE: u32 = 3u;
 const PATTERN_DIGITAL_RAIN: u32 = 4u;
 const PATTERN_HEARTBEAT: u32 = 5u;
@@ -222,6 +223,73 @@ fn heartbeat_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> vec4f {
   return vec4f(col * total_pulse, total_pulse);
 }
 
+// ── 𝕏 LOGO PATTERN ────────────────────────────────────────────────────────────
+// Projects each satellite to an Earth-facing 2D plane and classifies it as
+// either a logo pixel (two crossing diagonal bars) or background.
+// Features: electric cyan glow, pulsing brightness, smooth reveal animation.
+
+const ORBIT_RADIUS_KM: f32 = 6921.0;  // LEO orbit radius (Earth radius + 550 km altitude)
+const INV_SQRT2: f32 = 0.70710678;    // 1 / sqrt(2), used for 45° diagonal distances
+
+fn x_logo_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, start_time: f32) -> vec4f {
+  let local = to_earth_facing_coords(sat_pos);
+
+  // Normalize to roughly [-1, 1] using orbit radius
+  let px = local.x / ORBIT_RADIUS_KM;
+  let py = local.y / ORBIT_RADIUS_KM;
+
+  // ── SDF for 𝕏 logo ─────────────────────────────────────────────────────────
+  // Two diagonal bars crossing at origin: y = x  and  y = -x
+  let LOGO_HALF: f32 = 0.48;        // half-size of bounding box
+  let STROKE_HALF: f32 = 0.068;     // half-width of each bar
+  let GLOW_HALF: f32  = 0.11;       // soft outer glow band
+
+  let in_box = abs(px) < LOGO_HALF && abs(py) < LOGO_HALF;
+
+  // Perpendicular distances to each diagonal (normalised by sqrt(2))
+  let d1 = abs(py - px) * INV_SQRT2;   // distance to  y = x
+  let d2 = abs(py + px) * INV_SQRT2;   // distance to  y = -x
+  let nearest = min(d1, d2);
+
+  let on_logo  = in_box && nearest < STROKE_HALF;
+  let on_glow  = in_box && !on_logo && nearest < GLOW_HALF;
+
+  // ── Reveal animation ────────────────────────────────────────────────────────
+  let elapsed = time - start_time;
+  let reveal  = smoothstep(0.0, 2.8, elapsed);
+
+  if (on_logo) {
+    // Core logo: bright electric cyan with per-satellite pulse wave
+    let wave     = 0.5 + 0.5 * sin(time * 2.6 + f32(sat_idx % 128u) * 0.049);
+    let pulse    = mix(0.82, 1.0, wave);
+
+    // Gradient: deep blue at far edges, bright cyan at near-axis
+    let edge_frac = nearest / STROKE_HALF;          // 0 = centre, 1 = edge
+    let base_col  = mix(
+      vec3f(0.0, 0.95, 1.0),   // bright cyan on axis
+      vec3f(0.05, 0.45, 1.0),  // deep blue at stroke edge
+      edge_frac
+    );
+
+    let bright = 2.6 * pulse * reveal;
+    return vec4f(base_col, bright);
+
+  } else if (on_glow) {
+    // Soft halo around each bar
+    let glow_frac = (nearest - STROKE_HALF) / (GLOW_HALF - STROKE_HALF);
+    let glow_amt  = (1.0 - glow_frac) * 0.55 * reveal;
+    let glow_col  = vec3f(0.0, 0.65, 1.0);
+    return vec4f(glow_col, glow_amt);
+
+  } else {
+    // Background: very dim, preserves depth cues
+    let bg_mod = 0.038 + 0.015 * hash(sat_idx ^ (u32(time * 4.0) & 255u));
+    let bg_col = sat_color(sat_idx) * bg_mod;
+    return vec4f(bg_col, bg_mod);
+  }
+}
+// ── END 𝕏 LOGO PATTERN ────────────────────────────────────────────────────────
+
 @vertex
 fn vs(
   @builtin(vertex_index)   vi : u32,
@@ -270,11 +338,14 @@ fn vs(
   out.cp = uni.view_proj * vec4f(fpos, 1.0);
   out.uv = (qv + 1.0) * 0.5;
 
-  // Apply animation patterns if active (modes 3-5)
+  // Apply animation patterns if active (modes 2-5)
   if (params.pattern_mode > 0u) {
     let earth_dir = normalize(-wp);
     var pattern_col: vec4f;
     switch params.pattern_mode {
+      case PATTERN_X_LOGO: {
+        pattern_col = x_logo_pattern(ii, wp, uni.time, params.animation_time);
+      }
       case PATTERN_SMILE: {
         pattern_col = smile_pattern(ii, wp, uni.time, earth_dir);
       }
