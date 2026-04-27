@@ -1,10 +1,11 @@
+<!-- From: /root/grok_zephyr/AGENTS.md -->
 # AGENTS.md - Grok Zephyr / Colossus Fleet
 
 ## Project Overview
 
-**Grok Zephyr** (also referred to as **Colossus Fleet**) is a WebGPU-powered orbital simulation featuring 1,048,576 simulated satellites. The project visualizes a massive satellite constellation in Earth orbit at 550km altitude, inspired by the Grok, SpaceX, and Colossus project concepts.
+**Grok Zephyr** (also referred to as **Colossus Fleet**) is a WebGPU-powered orbital simulation featuring 1,048,576 simulated satellites. The project visualizes a massive satellite constellation in Earth orbit at 550 km altitude, inspired by the Grok, SpaceX, and Colossus project concepts.
 
-The simulation renders a real-time light show with RGB beam projections from satellites, viewable from multiple camera perspectives including a 720km horizon vantage point, free-floating "God View", first-person "Fleet POV", immersive "Ground View" with environmental overlays, and a distant "Moon View". It also supports interactive beam patterns (CHAOS, GROK, 𝕏 LOGO), constellation animation patterns (SMILE, DIGITAL RAIN, HEARTBEAT), and selectable physics propagation modes.
+The simulation renders a real-time light show with RGB beam projections from satellites, viewable from multiple camera perspectives including a 720 km horizon vantage point, free-floating "God View", first-person "Fleet POV", immersive "Ground View" with environmental overlays, and a distant "Moon View". It also supports interactive beam patterns (CHAOS, GROK, 𝕏 LOGO), constellation animation patterns (SMILE, DIGITAL RAIN, HEARTBEAT), and selectable physics propagation modes.
 
 ## Technology Stack
 
@@ -12,7 +13,7 @@ The simulation renders a real-time light show with RGB beam projections from sat
 |-----------|------------|
 | Graphics API | WebGPU |
 | Shading Language | WGSL (WebGPU Shading Language) |
-| Frontend | TypeScript 5.3+ |
+| Frontend | TypeScript 5.9+ |
 | Build Tool | Vite 5.0+ |
 | Math Utilities | Custom column-major matrix implementation |
 | Physics | satellite.js 5.0+ (SGP4 dependency, but GPU propagation is custom Keplerian) |
@@ -343,7 +344,7 @@ The central export is `src/shaders/index.ts` which exposes `SHADERS.compute`, `S
 The `vite.config.ts` includes two custom plugins:
 
 1. **wgslPlugin**: Handles `.wgsl` file imports as strings with `#import` preprocessing
-2. **standalonePlugin**: Generates `grok-zephyr.standalone.html` (single-file build with inlined JS/CSS)
+2. **standalonePlugin**: Generates `grok-zephyr.standalone.html` (single-file build with inlined JS/CSS) when `mode === 'standalone'` (triggered by `npm run build:standalone`)
 
 Path aliases configured:
 - `@/*` → `src/*`
@@ -360,12 +361,16 @@ Path aliases configured:
 ## Code Style Guidelines
 
 ### TypeScript
-- Strict mode enabled with full type checking
+- Strict mode enabled with full type checking (`strict: true`)
+- `noUnusedLocals` and `noUnusedParameters` are enforced
+- `noFallthroughCasesInSwitch` is enforced
 - ES2022 target with ESNext modules
+- Module resolution: `bundler`
 - Column-major matrix convention (consistent with WebGPU)
 - Custom math utilities (no external 3D math libraries)
 - Private methods prefixed with `_` (in some files)
 - Explicit return types on public methods
+- Import paths use `.js` extensions (e.g., `@/core/WebGPUContext.js`) — Vite resolves these to `.ts` source files
 
 ### Naming Conventions
 - Classes: `PascalCase`
@@ -379,6 +384,7 @@ Path aliases configured:
 - Workgroup size of 64 for compute shaders
 - Explicit binding layouts with proper visibility flags
 - Shaders are organized in domain subdirectories (`compute/`, `render/`, `animations/`)
+- The Vite WGSL plugin supports `#import "relative/path.wgsl"` for shader includes
 
 ## Browser Requirements
 

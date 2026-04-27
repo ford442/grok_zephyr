@@ -276,10 +276,11 @@ class GrokZephyrApp {
     const ppf32 = new Float32Array(patternParamsData);
     const ppu32 = new Uint32Array(patternParamsData);
 
-    ppf32[0] = performance.now() / 1000;  // animation_time (start of reveal)
-    ppu32[1] = mode === 2 ? 2 : 0;        // pattern_mode: 2=X LOGO, 0=none
-    ppu32[2] = 0;
-    ppu32[3] = 0;
+    // FIXED: Properly aligned to WGSL struct layout
+    ppu32[0] = mode === 2 ? 2 : 0;        // pattern_mode: 2=X LOGO, 0=none
+    ppf32[1] = performance.now() / 1000;  // animation_time (start of reveal)
+    ppu32[2] = 0;                         // seed
+    ppu32[3] = 0;                         // padding
 
     this.context.writeBuffer(this.buffers.getBuffers().patternParams, patternParamsData);
     
@@ -305,10 +306,11 @@ class GrokZephyrApp {
     const f32 = new Float32Array(patternParamsData);
     const u32 = new Uint32Array(patternParamsData);
 
-    f32[0] = performance.now() / 1000;  // animation time
-    u32[1] = mode;                       // pattern mode
-    u32[2] = 0;                          // seed
-    u32[3] = 0;                          // padding
+    // FIXED: Properly aligned to WGSL struct layout
+    u32[0] = mode;                       // pattern mode (WGSL byte 0)
+    f32[1] = performance.now() / 1000;   // animation time (WGSL byte 4)
+    u32[2] = 0;                          // seed (WGSL byte 8)
+    u32[3] = 0;                          // padding (WGSL byte 12)
 
     this.context.writeBuffer(this.buffers.getBuffers().patternParams, patternParamsData);
 
