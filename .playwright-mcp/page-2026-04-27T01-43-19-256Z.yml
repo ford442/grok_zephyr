@@ -1,0 +1,62 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic: ◈ GROK ZEPHYR
+    - generic: "Altitude : 720 km"
+    - generic: "Fleet : 1,048,576"
+    - generic: "FPS : --"
+    - generic: "View : 720km Horizon"
+    - generic: "Visible : --"
+    - generic:
+      - generic:
+        - generic: "Yaw: 0° Pitch: 0°"
+        - button "↺"
+      - generic: "Drag to rotate • Scroll to zoom • Double-click to reset • Fleet POV: WASD to drift"
+  - generic [ref=e3]:
+    - button "720km HORIZON" [ref=e4] [cursor=pointer]
+    - button "GOD VIEW" [ref=e5] [cursor=pointer]
+    - button "FLEET POV" [ref=e6] [cursor=pointer]
+    - button "GROUND VIEW" [ref=e7] [cursor=pointer]
+    - button "MOON VIEW" [ref=e8] [cursor=pointer]
+    - generic [ref=e9]:
+      - generic [ref=e10]: BEAM PATTERN
+      - button "CHAOS" [ref=e11] [cursor=pointer]
+      - button "GROK" [ref=e12] [cursor=pointer]
+      - button "𝕏 LOGO" [ref=e13] [cursor=pointer]
+    - generic [ref=e14]:
+      - generic [ref=e15]: CONSTELLATION PATTERNS
+      - button "😊 SMILE" [ref=e16] [cursor=pointer]
+      - button "💧 MATRIX" [ref=e17] [cursor=pointer]
+      - button "💓 HEARTBEAT" [ref=e18] [cursor=pointer]
+      - generic [ref=e19]:
+        - generic [ref=e20]:
+          - generic [ref=e21]: "Speed:"
+          - slider [ref=e22]: "1"
+          - generic [ref=e23]: 1.0x
+        - generic [ref=e24]:
+          - generic [ref=e25]: "Loop:"
+          - checkbox [checked] [ref=e26] [cursor=pointer]
+    - generic [ref=e27]:
+      - generic [ref=e28]: ⏱ TIME SCALE
+      - generic [ref=e29]: "Sim Time: 0h"
+      - generic [ref=e30]:
+        - slider [ref=e31]: "0"
+        - generic [ref=e32]: 1x
+      - generic [ref=e33]:
+        - button "1x" [ref=e34] [cursor=pointer]
+        - button "1h/s" [ref=e35] [cursor=pointer]
+        - button "1d/s" [ref=e36] [cursor=pointer]
+        - button "1w/s" [ref=e37] [cursor=pointer]
+    - generic [ref=e38]:
+      - generic [ref=e39]: PHYSICS MODE
+      - button "SIMPLE" [ref=e40] [cursor=pointer]
+      - button "KEPLERIAN" [ref=e41] [cursor=pointer]
+      - button "J2" [ref=e42]
+  - generic:
+    - generic: "Earth Radius: 6,371 km"
+    - generic: "Orbit Altitude: 550 km"
+    - generic: "Camera Altitude: 720 km"
+    - generic: "Horizon Distance: ~2,970 km"
+  - generic [ref=e43]:
+    - text: WebGPU Error
+    - text: No WebGPU adapter found. Your GPU may not support WebGPU.
+    - text: Please use a modern browser with WebGPU enabled (Chrome 113+, Edge 113+, or Firefox Nightly).
