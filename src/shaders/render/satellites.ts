@@ -228,13 +228,15 @@ fn heartbeat_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> vec4f {
 // either a logo pixel (two crossing diagonal bars) or background.
 // Features: electric cyan glow, pulsing brightness, smooth reveal animation.
 
+const ORBIT_RADIUS_KM: f32 = 6921.0;  // LEO orbit radius (Earth radius + 550 km altitude)
+const INV_SQRT2: f32 = 0.70710678;    // 1 / sqrt(2), used for 45° diagonal distances
+
 fn x_logo_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, start_time: f32) -> vec4f {
   let local = to_earth_facing_coords(sat_pos);
 
   // Normalize to roughly [-1, 1] using orbit radius
-  let inv_scale = 1.0 / 6921.0;
-  let px = local.x * inv_scale;
-  let py = local.y * inv_scale;
+  let px = local.x / ORBIT_RADIUS_KM;
+  let py = local.y / ORBIT_RADIUS_KM;
 
   // ── SDF for 𝕏 logo ─────────────────────────────────────────────────────────
   // Two diagonal bars crossing at origin: y = x  and  y = -x
@@ -245,8 +247,8 @@ fn x_logo_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, start_time: f32) -> v
   let in_box = abs(px) < LOGO_HALF && abs(py) < LOGO_HALF;
 
   // Perpendicular distances to each diagonal (normalised by sqrt(2))
-  let d1 = abs(py - px) * 0.7071;   // distance to  y = x
-  let d2 = abs(py + px) * 0.7071;   // distance to  y = -x
+  let d1 = abs(py - px) * INV_SQRT2;   // distance to  y = x
+  let d2 = abs(py + px) * INV_SQRT2;   // distance to  y = -x
   let nearest = min(d1, d2);
 
   let on_logo  = in_box && nearest < STROKE_HALF;
