@@ -163,12 +163,13 @@ export class RenderPipeline {
       ],
     });
 
-    // Composite layout
+    // Composite layout (binding 3 = shared Uni uniform for uni.time used in film grain)
     const compositeLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
       ],
     });
 
@@ -539,6 +540,7 @@ export class RenderPipeline {
           { binding: 0, resource: this.renderTargets.hdrView },
           { binding: 1, resource: this.renderTargets.bloomAView },
           { binding: 2, resource: this.linearSampler },
+          { binding: 3, resource: { buffer: this.buffers.uniforms } },
         ],
       }),
     };
