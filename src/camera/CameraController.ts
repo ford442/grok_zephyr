@@ -234,6 +234,9 @@ export class CameraController {
         break;
       case 2:
         this.currentMode = 'sat-pov';
+        // Set a default downward pitch so the user immediately looks at the fleet
+        this.cameraAngles.pitch = -35; 
+        this.cameraAngles.yaw = 0;
         break;
       case 3:
         this.currentMode = 'ground';
@@ -249,6 +252,11 @@ export class CameraController {
     
     if (this.modeChangeCallback) {
       this.modeChangeCallback(this.currentMode, config.name, config.altitude);
+    }
+    
+    // Notify UI of angle change if switching to Fleet POV
+    if (this.currentMode === 'sat-pov' && this.angleChangeCallback) {
+      this.angleChangeCallback(this.cameraAngles.yaw, this.cameraAngles.pitch);
     }
   }
 
@@ -442,7 +450,8 @@ export class CameraController {
     
     // Pitch rotation around lookRight axis
     const cosP = Math.cos(pitch);
-    const sinP = Math.sin(pitch);
+    // INVERT the pitch sin component so negative pitch looks down
+    const sinP = Math.sin(-pitch); 
     lookDir = [
       lookDir[0] * cosP + v3cross(lookRight, lookDir)[0] * sinP + lookRight[0] * v3dot(lookRight, lookDir) * (1 - cosP),
       lookDir[1] * cosP + v3cross(lookRight, lookDir)[1] * sinP + lookRight[1] * v3dot(lookRight, lookDir) * (1 - cosP),
