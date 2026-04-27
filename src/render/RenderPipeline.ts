@@ -137,12 +137,13 @@ export class RenderPipeline {
       ],
     });
 
-    // Satellite layout: uniform + positions + per-satellite color buffer
+    // Satellite layout: uniform + positions + per-satellite color buffer + pattern params
     const satelliteLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
         { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+        { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
       ],
     });
 
@@ -492,6 +493,7 @@ export class RenderPipeline {
           { binding: 0, resource: { buffer: this.buffers.uniforms } },
           { binding: 1, resource: { buffer: posBuffer } },
           { binding: 2, resource: { buffer: this.buffers.colors } },
+          { binding: 3, resource: { buffer: this.buffers.patternParams } },
         ],
       }),
 

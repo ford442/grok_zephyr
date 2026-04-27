@@ -383,6 +383,10 @@ export class CameraController {
    * Full 360° yaw + pitch head look using a proper local coordinate frame
    * derived from the satellite's radial and velocity vectors.
    * WASD for micro-movement, QE for roll-like lateral drift.
+   *
+   * Note: Animation patterns (Smile, Digital Rain, Heartbeat) only affect
+   * satellite color/brightness in the shader, not orbital positions. Fleet POV
+   * remains fully functional regardless of whether a pattern is active.
    */
   private calculateFleetPOV(
     getPosition: (index: number, time: number) => Vec3,

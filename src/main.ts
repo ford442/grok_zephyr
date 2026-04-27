@@ -71,8 +71,11 @@ class GrokZephyrApp {
     this.setupCallbacks();
   }
 
-  /** Current pattern mode (0=chaos, 1=GROK, 2=X, 3=smile, 4=digital_rain, 5=heartbeat) */
+  /** Current beam pattern mode (0=chaos, 1=GROK, 2=X logo) */
   private currentPatternMode = 1;
+
+  /** Current animation pattern mode (0=none, 3=smile, 4=digital_rain, 5=heartbeat) */
+  private currentAnimationPattern = 0;
 
   /** Current physics mode (0=simple, 1=keplerian, 2=J2) */
   private currentPhysicsMode = 0;
@@ -275,20 +278,27 @@ class GrokZephyrApp {
    */
   setAnimationPattern(mode: number): void {
     if (!this.context || !this.buffers) return;
-    
+
+    // Toggle off if clicking the same pattern again
+    if (this.currentAnimationPattern === mode) {
+      mode = 0;
+    }
+
+    this.currentAnimationPattern = mode;
+
     // Update pattern params uniform buffer
     const patternParamsData = new ArrayBuffer(16);
     const f32 = new Float32Array(patternParamsData);
     const u32 = new Uint32Array(patternParamsData);
-    
+
     f32[0] = performance.now() / 1000;  // animation time
     u32[1] = mode;                       // pattern mode
     u32[2] = 0;                          // seed
     u32[3] = 0;                          // padding
-    
+
     this.context.writeBuffer(this.buffers.getBuffers().patternParams, patternParamsData);
-    
-    const modeNames = ['', '', '', '😊 SMILE', '💧 DIGITAL RAIN', '💓 HEARTBEAT'];
+
+    const modeNames = ['OFF', '', '', '😊 SMILE', '💧 DIGITAL RAIN', '💓 HEARTBEAT'];
     console.log(`🎭 Animation pattern: ${modeNames[mode]}`);
   }
   
@@ -682,10 +692,14 @@ class GrokZephyrApp {
     
     // Pass 1: Compute orbital positions
     this.pipeline.encodeComputePass(encoder);
-    
+
     // Pass 1.5: Compute beam positions
     this.pipeline.encodeBeamComputePass(encoder);
-    
+
+    // Note: Animation patterns (Smile, Digital Rain, Heartbeat) are rendered
+    // directly in the satellite vertex shader via patternParams uniform.
+    // No separate compute pass is needed.
+
     // Pass 2: Scene rendering (different for ground view)
     if (this.camera.getViewMode() === 'ground') {
       this.pipeline.encodeGroundScenePass(encoder);
