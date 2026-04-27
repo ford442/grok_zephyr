@@ -322,11 +322,13 @@ export class SatelliteGPUBuffer {
 
     // Create pattern params uniform buffer
     const patternParams = this.context.createUniformBuffer(16);
-    const patternParamsData = new Float32Array(4);
-    patternParamsData[0] = 0;   // animation_time
-    patternParamsData[1] = 0;   // pattern_mode
-    patternParamsData[2] = 0;   // seed
-    patternParamsData[3] = 0;
+    const patternParamsData = new ArrayBuffer(16);
+    const ppU32 = new Uint32Array(patternParamsData);
+    const ppF32 = new Float32Array(patternParamsData);
+    ppU32[0] = 0;   // pattern_mode
+    ppF32[1] = 0;   // animation_time
+    ppF32[2] = 0;   // seed
+    ppF32[3] = 0;   // padding
     this.context.writeBuffer(patternParams, patternParamsData);
 
     // Create per-satellite RGBA color buffer (rgba8unorm packed as u32, 4 MB)

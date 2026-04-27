@@ -11,10 +11,10 @@ export const SATELLITE_SHADER = UNIFORM_STRUCT + /* wgsl */ `
 
 // Pattern parameters (updated from CPU when animation buttons are clicked)
 struct PatternParams {
-  animation_time: f32,
   pattern_mode: u32,
-  seed: u32,
-  padding: u32,
+  animation_time: f32,
+  seed: f32,
+  padding: f32,
 }
 @group(0) @binding(3) var<uniform> params : PatternParams;
 
@@ -91,15 +91,19 @@ fn hash2(n: u32, seed: f32) -> f32 {
   return fract(sin(f32(n) * 12.9898 + seed * 78.233) * 43758.5453);
 }
 
-// Transform satellite position to Earth-facing coordinate system
+// Transform satellite position to a Camera-facing coordinate system
 fn to_earth_facing_coords(sat_pos: vec3f) -> vec3f {
-  let to_earth = normalize(-sat_pos);
+  // Fix: Use the camera position as the global reference axis, not the local sat_pos!
+  let center_dir = normalize(uni.camera_pos.xyz);
   let up = vec3f(0.0, 0.0, 1.0);
-  let right = normalize(cross(to_earth, up));
-  let local_up = cross(right, to_earth);
+  let right = normalize(cross(up, center_dir));
+  let true_up = cross(center_dir, right);
+
+  // Project satellite onto the 2D plane facing the camera
   let local_x = dot(sat_pos, right);
-  let local_y = dot(sat_pos, local_up);
-  let local_z = dot(sat_pos, -to_earth);
+  let local_y = dot(sat_pos, true_up);
+  let local_z = dot(sat_pos, center_dir);
+
   return vec3f(local_x, local_y, local_z);
 }
 
@@ -107,6 +111,10 @@ fn to_earth_facing_coords(sat_pos: vec3f) -> vec3f {
 // Returns: 0=background, 1=left_eye, 2=right_eye, 3=smile_curve
 fn classify_smile_feature(sat_pos: vec3f, earth_dir: vec3f) -> u32 {
   let local = to_earth_facing_coords(sat_pos);
+
+  // Fix: Only render the smile on the hemisphere facing the camera
+  if (local.z < 1000.0) { return 0u; }
+
   let scale = 1.0 / 6921.0;
   let x = local.x * scale;
   let y = local.y * scale;
@@ -188,15 +196,24 @@ fn smile_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, earth_dir: vec3f) -> v
 
 // Digital Rain pattern (Matrix-style)
 fn digital_rain_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> vec4f {
-  let column = floor(sat_pos.x / 50.0);
-  let drop_speed = 2.0 + fract(f32(column) * 0.37) * 3.0;
+  let local = to_earth_facing_coords(sat_pos);
+
+  // Fix: Hide rain on the back face of the constellation
+  if (local.z < 0.0) { return vec4f(0.0); }
+
+  let column = floor(local.x / 100.0); // 100km columns
+  let drop_speed = 1.0 + fract(f32(column) * 0.37) * 2.0;
   let drop_pos = fract(time * drop_speed + f32(column) * 0.1);
 
-  let normalized_height = (sat_pos.y + 1000.0) / 2000.0;
-  let dist_to_drop = abs(normalized_height - drop_pos);
+  // Fix: Map coordinates to top-to-bottom drop
+  let normalized_height = 1.0 - ((local.y + 6921.0) / 13842.0);
+  var dist_to_drop = normalized_height - drop_pos;
 
-  let intensity = 1.0 - smoothstep(0.0, 0.15, dist_to_drop);
-  let trail = smoothstep(0.15, 0.3, dist_to_drop) * 0.3;
+  // Wrap around trail loop
+  if (dist_to_drop < 0.0) { dist_to_drop += 1.0; }
+
+  let intensity = 1.0 - smoothstep(0.0, 0.05, dist_to_drop);
+  let trail = (1.0 - smoothstep(0.0, 0.4, dist_to_drop)) * 0.4;
 
   let final_intensity = max(intensity, trail);
 
@@ -206,17 +223,19 @@ fn digital_rain_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> vec4f {
 
 // Heartbeat pattern
 fn heartbeat_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> vec4f {
+  let local = to_earth_facing_coords(sat_pos);
+
   let beat = time % 0.8;
   let first_beat = smoothstep(0.0, 0.1, beat) * (1.0 - smoothstep(0.1, 0.2, beat));
   let second_beat = smoothstep(0.3, 0.35, beat) * (1.0 - smoothstep(0.35, 0.45, beat));
   let pulse = max(first_beat, second_beat * 0.6);
 
-  let dist_from_center = length(sat_pos.xy);
+  // Radial wave expanding outward from the camera's center axis
+  let dist_from_center = length(local.xy);
   let wave_delay = dist_from_center * 0.0001;
   let wave_pulse = smoothstep(0.0, 0.1, fract((time - wave_delay) * 1.25));
 
   let total_pulse = max(pulse, wave_pulse * 0.3);
-
   let pinkness = 0.3 + 0.4 * total_pulse;
   let col = vec3f(1.0, pinkness, pinkness);
 
@@ -224,9 +243,6 @@ fn heartbeat_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> vec4f {
 }
 
 // ── 𝕏 LOGO PATTERN ────────────────────────────────────────────────────────────
-// Projects each satellite to an Earth-facing 2D plane and classifies it as
-// either a logo pixel (two crossing diagonal bars) or background.
-// Features: electric cyan glow, pulsing brightness, smooth reveal animation.
 
 const ORBIT_RADIUS_KM: f32 = 6921.0;  // LEO orbit radius (Earth radius + 550 km altitude)
 const INV_SQRT2: f32 = 0.70710678;    // 1 / sqrt(2), used for 45° diagonal distances
@@ -234,61 +250,49 @@ const INV_SQRT2: f32 = 0.70710678;    // 1 / sqrt(2), used for 45° diagonal dis
 fn x_logo_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, start_time: f32) -> vec4f {
   let local = to_earth_facing_coords(sat_pos);
 
-  // Normalize to roughly [-1, 1] using orbit radius
+  let bg_mod = 0.038 + 0.015 * hash(sat_idx ^ (u32(time * 4.0) & 255u));
+  let bg_col = sat_color(sat_idx) * bg_mod;
+
+  // Fix: Hide logo overlap from the back side of the Earth
+  if (local.z < 1000.0) { return vec4f(bg_col, bg_mod); }
+
   let px = local.x / ORBIT_RADIUS_KM;
   let py = local.y / ORBIT_RADIUS_KM;
 
-  // ── SDF for 𝕏 logo ─────────────────────────────────────────────────────────
-  // Two diagonal bars crossing at origin: y = x  and  y = -x
-  let LOGO_HALF: f32 = 0.48;        // half-size of bounding box
-  let STROKE_HALF: f32 = 0.068;     // half-width of each bar
-  let GLOW_HALF: f32  = 0.11;       // soft outer glow band
+  let LOGO_HALF: f32 = 0.48;
+  let STROKE_HALF: f32 = 0.068;
+  let GLOW_HALF: f32  = 0.11;
 
   let in_box = abs(px) < LOGO_HALF && abs(py) < LOGO_HALF;
-
-  // Perpendicular distances to each diagonal (normalised by sqrt(2))
-  let d1 = abs(py - px) * INV_SQRT2;   // distance to  y = x
-  let d2 = abs(py + px) * INV_SQRT2;   // distance to  y = -x
+  let d1 = abs(py - px) * INV_SQRT2;
+  let d2 = abs(py + px) * INV_SQRT2;
   let nearest = min(d1, d2);
 
   let on_logo  = in_box && nearest < STROKE_HALF;
   let on_glow  = in_box && !on_logo && nearest < GLOW_HALF;
 
-  // ── Reveal animation ────────────────────────────────────────────────────────
   let elapsed = time - start_time;
   let reveal  = smoothstep(0.0, 2.8, elapsed);
 
   if (on_logo) {
-    // Core logo: bright electric cyan with per-satellite pulse wave
     let wave     = 0.5 + 0.5 * sin(time * 2.6 + f32(sat_idx % 128u) * 0.049);
     let pulse    = mix(0.82, 1.0, wave);
-
-    // Gradient: deep blue at far edges, bright cyan at near-axis
-    let edge_frac = nearest / STROKE_HALF;          // 0 = centre, 1 = edge
-    let base_col  = mix(
-      vec3f(0.0, 0.95, 1.0),   // bright cyan on axis
-      vec3f(0.05, 0.45, 1.0),  // deep blue at stroke edge
-      edge_frac
-    );
+    let edge_frac = nearest / STROKE_HALF;
+    let base_col  = mix(vec3f(0.0, 0.95, 1.0), vec3f(0.05, 0.45, 1.0), edge_frac);
 
     let bright = 2.6 * pulse * reveal;
     return vec4f(base_col, bright);
 
   } else if (on_glow) {
-    // Soft halo around each bar
     let glow_frac = (nearest - STROKE_HALF) / (GLOW_HALF - STROKE_HALF);
     let glow_amt  = (1.0 - glow_frac) * 0.55 * reveal;
     let glow_col  = vec3f(0.0, 0.65, 1.0);
     return vec4f(glow_col, glow_amt);
 
   } else {
-    // Background: very dim, preserves depth cues
-    let bg_mod = 0.038 + 0.015 * hash(sat_idx ^ (u32(time * 4.0) & 255u));
-    let bg_col = sat_color(sat_idx) * bg_mod;
     return vec4f(bg_col, bg_mod);
   }
 }
-// ── END 𝕏 LOGO PATTERN ────────────────────────────────────────────────────────
 
 @vertex
 fn vs(
@@ -360,10 +364,11 @@ fn vs(
       }
     }
     out.color = pattern_col.rgb;
-    out.bright = pattern_col.a * atten;
-    // Boost bright pattern features for visibility
+
+    // Fix: Less aggressive distance attenuation for patterns so they are visible from afar
+    out.bright = pattern_col.a * mix(1.0, atten, 0.3);
     if (pattern_col.a > 0.5) {
-      out.bright *= 1.5;
+      out.bright *= 2.5; // Heavy boost for core shapes (the smile, the matrix drops)
     }
   } else {
     out.color = col;
