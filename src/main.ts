@@ -268,6 +268,20 @@ class GrokZephyrApp {
     u32[3] = 0;                          // padding
     
     this.context.writeBuffer(this.buffers.getBuffers().beamParams, beamParamsData);
+
+    // For 𝕏 LOGO (mode 2), activate the logo satellite pattern via patternParams.
+    // For any other beam pattern, clear any active satellite animation so logos
+    // don't linger when the user switches back to CHAOS or GROK.
+    const patternParamsData = new ArrayBuffer(16);
+    const ppf32 = new Float32Array(patternParamsData);
+    const ppu32 = new Uint32Array(patternParamsData);
+
+    ppf32[0] = performance.now() / 1000;  // animation_time (start of reveal)
+    ppu32[1] = mode === 2 ? 2 : 0;        // pattern_mode: 2=X LOGO, 0=none
+    ppu32[2] = 0;
+    ppu32[3] = 0;
+
+    this.context.writeBuffer(this.buffers.getBuffers().patternParams, patternParamsData);
     
     const modeNames = ['CHAOS', 'GROK', '𝕏 LOGO'];
     console.log(`🔄 Beam pattern switched to: ${modeNames[mode]}`);
