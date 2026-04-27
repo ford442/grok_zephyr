@@ -157,6 +157,11 @@ export class PostProcessStack {
     if (this.adaptiveQuality.enabled) {
       this.updateAdaptiveQuality(deltaTime);
     }
+
+    // Update per-frame grain seed once (avoids repeated performance.now() calls)
+    if (this.config.filmGrain.enabled) {
+      this.updateGrainUniforms();
+    }
     
     // Execute passes in order
     let currentInput = inputView;
@@ -690,8 +695,13 @@ export class PostProcessStack {
     pass.draw(3);
     pass.end();
 
-    // Copy taaOutput into history for next frame
-    // (A full TAA copy pass would be needed here in a production setup)
+    // TODO: Copy taaOutput into the opposing history buffer for the next frame.
+    // A copyTextureToTexture() call here would complete the TAA feedback loop.
+    // e.g.: encoder.copyTextureToTexture(
+    //   { texture: this.taaOutput! },
+    //   { texture: this.historyBuffer[1 - historyIdx] },
+    //   [this.taaOutput!.width, this.taaOutput!.height]
+    // );
   }
 
   private executePass(
@@ -715,7 +725,6 @@ export class PostProcessStack {
         ],
       });
     } else if (type === 'grain') {
-      this.updateGrainUniforms();
       bindGroup = device.createBindGroup({
         layout: pipeline.getBindGroupLayout(0),
         entries: [

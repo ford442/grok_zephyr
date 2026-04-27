@@ -7,6 +7,9 @@
  *   1 — bloomTex  (blurred bloom)
  *   2 — linearSamp
  *   3 — uni       (shared Uni uniform buffer — for uni.time)
+ *
+ * NOTE: The `Uni` struct below MUST match the layout in src/shaders/uniforms.ts exactly.
+ * If fields are added to the shared struct, update this copy to keep the byte offsets aligned.
  */
 
 export const COMPOSITE = /* wgsl */ `

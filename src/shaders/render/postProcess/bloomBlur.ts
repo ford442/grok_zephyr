@@ -4,6 +4,11 @@
  */
 
 export const BLOOM_BLUR = /* wgsl */ `
+// BlurUni layout matches the buffer written by SatelliteGPUBuffer.updateBloomUniforms():
+//   texel.x  = 1 / screen_width   (texel step in X)
+//   texel.y  = 1 / screen_height  (texel step in Y)
+//   horizontal = 1 for horizontal pass, 0 for vertical pass
+//   pad      = 0 (alignment padding to 16 bytes)
 struct BlurUni {
   texel      : vec2f,
   horizontal : u32,
