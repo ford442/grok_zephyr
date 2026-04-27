@@ -234,8 +234,8 @@ export class CameraController {
         break;
       case 2:
         this.currentMode = 'sat-pov';
-        // Set a default downward pitch so the user immediately looks at the fleet
-        this.cameraAngles.pitch = -35; 
+        // Relaxed downward pitch to pair with the higher altitude
+        this.cameraAngles.pitch = -20; 
         this.cameraAngles.yaw = 0;
         break;
       case 3:
@@ -426,8 +426,9 @@ export class CameraController {
     // Dampen offset back toward zero (keeps pilot anchored)
     this.fleetOffset = v3scale(this.fleetOffset, 0.98);
     
-    // Camera position: slightly above satellite + local offset
-    const position = v3add(v3add(satPos, v3scale(radial, 12)), this.fleetOffset);
+    // Camera position: higher above satellite (80km instead of 12km) + local offset
+    // This gives a "balcony view" and gets us out of the blinding lens flares
+    const position = v3add(v3add(satPos, v3scale(radial, 80)), this.fleetOffset);
     
     // Full 360° yaw + wide pitch for head look
     const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
