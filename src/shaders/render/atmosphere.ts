@@ -37,7 +37,7 @@ fn miePhase(cosTheta:f32, g:f32)->f32 {
 @fragment fn fs(in:VOut) -> @location(0) vec4f {
   let N       = normalize(in.n);
   let V       = normalize(uni.camera_pos.xyz - in.wp);
-  let sun_dir = normalize(vec3f(1.0,0.4,0.2));
+  let sun_dir = normalize(uni.sun_position.xyz);
 
   // View-dependent rim for optical depth approximation
   let rim     = 1.0 - abs(dot(N, V));
@@ -70,12 +70,16 @@ fn miePhase(cosTheta:f32, g:f32)->f32 {
   // Combine scattering with sunset
   var atmColor = dayColor * nightFade + sunsetColor * opticalDepth;
 
-  // Limb brightening at atmosphere edge
-  let limb = pow(rim, 3.5);
+  // Limb brightening — wider coverage with exponent 2.8
+  let limb = pow(rim, 2.8);
 
   // Atmospheric haze intensity
-  let intensity = limb * 1.5 + opticalDepth * 0.3;
+  let intensity = limb * 1.8 + opticalDepth * 0.3;
 
-  return vec4f(atmColor * intensity, limb * 0.8);
+  // Subtle sunset-orange tint at the terminator limb
+  let sunsetLimb = pow(rim, 4.0) * smoothstep(-0.15, 0.25, sun_dot) * smoothstep(0.4, 0.05, sun_dot);
+  let sunsetTint = vec3f(1.0, 0.5, 0.12) * sunsetLimb * 1.2;
+
+  return vec4f(atmColor * intensity + sunsetTint, limb * 0.8);
 }
 `;

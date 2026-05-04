@@ -105,14 +105,7 @@ export class CameraController {
   private angleChangeCallback: ((yaw: number, pitch: number) => void) | null = null;
 
   constructor() {
-    this.setupEventListeners();
-  }
-
-  /**
-   * Setup mouse and wheel event listeners
-   */
-  private setupEventListeners(): void {
-    // Will be attached to canvas in setViewTarget
+    // Event listeners are attached lazily via attachToCanvas()
   }
 
   /**
@@ -398,7 +391,7 @@ export class CameraController {
     this.focusDistance = distance;
     this.focusTransition = {
       startTime: time,
-      duration: 0.8,
+      duration: 1.4,
       fromDistance: this.cameraAngles.distance,
     };
   }
@@ -657,9 +650,11 @@ export class CameraController {
 
     if (this.focusTransition) {
       const elapsed = Math.max(0, time - this.focusTransition.startTime);
-      const t = Math.min(1.0, elapsed / this.focusTransition.duration);
+      const tLinear = Math.min(1.0, elapsed / this.focusTransition.duration);
+      // Cubic smoothstep ease-in/out for a cinematic zoom feel
+      const t = tLinear * tLinear * (3 - 2 * tLinear);
       this.cameraAngles.distance = this.focusTransition.fromDistance + (this.focusDistance - this.focusTransition.fromDistance) * t;
-      if (t >= 1.0) {
+      if (tLinear >= 1.0) {
         this.focusTransition = null;
       }
     }

@@ -183,20 +183,7 @@ export class FocusManager {
   private createOverlay(): HTMLDivElement {
     const overlay = document.createElement('div');
     overlay.id = 'satellite-focus-info';
-    overlay.style.position = 'fixed';
-    overlay.style.top = '16px';
-    overlay.style.right = '16px';
-    overlay.style.padding = '10px 14px';
-    overlay.style.borderRadius = '12px';
-    overlay.style.background = 'rgba(0, 0, 0, 0.72)';
-    overlay.style.color = 'white';
-    overlay.style.fontFamily = 'ui-monospace, monospace';
-    overlay.style.fontSize = '13px';
-    overlay.style.lineHeight = '1.4';
-    overlay.style.pointerEvents = 'none';
-    overlay.style.zIndex = '9999';
-    overlay.style.minWidth = '200px';
-    overlay.style.boxShadow = '0 12px 40px rgba(0,0,0,0.35)';
+    overlay.className = 'satellite-focus-overlay';
     document.body.appendChild(overlay);
     return overlay;
   }

@@ -91,7 +91,14 @@ fn biomeColor(height:f32, latitude:f32, slope:f32)->vec3f {
   return color * detail;
 }
 
-// Schlick Fresnel approximation
+// Two-octave animated cloud noise (cheap: 2 octaves only)
+fn cloudNoise(pos: vec3f, time: f32) -> f32 {
+  let p0 = pos * 2.8 + vec3f(time * 0.006, time * 0.004, 0.0);
+  let p1 = pos * 5.6 + vec3f(time * 0.009, 0.0, time * 0.003);
+  return noise3d(p0) * 0.6 + noise3d(p1) * 0.4;
+}
+
+
 fn schlickFresnel(cosTheta:f32, F0:f32)->f32 {
   return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
@@ -153,7 +160,7 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
 
 @fragment fn fs(in:VOut) -> @location(0) vec4f {
   let N       = normalize(in.n);
-  let sun_dir = normalize(vec3f(1.0,0.4,0.2));
+  let sun_dir = normalize(uni.sun_position.xyz);
   let V       = normalize(uni.camera_pos.xyz - in.wp);
   let diff    = max(dot(N,sun_dir),0.0);
 
@@ -201,8 +208,8 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
     surf = mix(surf, vec3f(0.90, 0.92, 0.95), pole);
   }
 
-  // City lights on night side
-  let night = smoothstep(0.12, -0.04, dot(N, sun_dir));
+  // City lights on night side — tighter terminator for crisp day/night boundary
+  let night = smoothstep(0.06, -0.04, dot(N, sun_dir));
   let cityA = 0.5 + 0.5 * sin(lon * 22.0 + lat * 18.0);
   let cityB = 0.5 + 0.5 * sin(lon * 61.0 + lat * 47.0);
   let cityMask = f32(isLand) * cityA * (0.4 + 0.3*cityB);
@@ -210,8 +217,21 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
 
   let viewDir = normalize(uni.camera_pos.xyz - in.wp);
   let horizonFactor = clamp(1.0 - abs(dot(N, viewDir)), 0.0, 1.0);
-  let atmosphereGlow = vec3f(0.35, 0.55, 0.92) * pow(horizonFactor, 2.2) * 0.28;
+  // Stronger Fresnel limb glow with deeper blue
+  let atmosphereGlow = vec3f(0.20, 0.50, 1.0) * pow(horizonFactor, 1.8) * 0.36;
   surf += atmosphereGlow * (1.0 - diff) * 0.7;
+
+  // Procedural animated cloud layer (2-octave, cheap)
+  let cloudSample = cloudNoise(normalize(in.wp), uni.time);
+  let cloudAlpha = smoothstep(0.44, 0.62, cloudSample);
+  // Forward-scatter brightening on cloud edges facing the sun
+  let cloudEdge = smoothstep(0.62, 0.80, cloudSample) * (1.0 - cloudAlpha);
+  let cloudLit = max(dot(N, sun_dir), 0.0);
+  let cloudColor = vec3f(0.92, 0.94, 0.97) * (cloudLit * 0.85 + 0.15);
+  let cloudEdgeColor = cloudColor + vec3f(0.4, 0.35, 0.2) * cloudEdge * cloudLit * 1.4;
+  // Cloud visibility fades to zero on the night side of Earth
+  let cloudVisibility = smoothstep(-0.05, 0.1, dot(N, sun_dir));
+  surf = mix(surf, cloudEdgeColor, cloudAlpha * cloudVisibility);
 
   return vec4f(surf + cityWarm, 1.0);
 }
