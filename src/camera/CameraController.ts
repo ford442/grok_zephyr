@@ -651,7 +651,7 @@ export class CameraController {
     if (this.focusTransition) {
       const elapsed = Math.max(0, time - this.focusTransition.startTime);
       const tLinear = Math.min(1.0, elapsed / this.focusTransition.duration);
-      // Cubic ease-in/out for a smoother, more cinematic zoom
+      // Cubic smoothstep ease-in/out for a cinematic zoom feel
       const t = tLinear * tLinear * (3 - 2 * tLinear);
       this.cameraAngles.distance = this.focusTransition.fromDistance + (this.focusDistance - this.focusTransition.fromDistance) * t;
       if (tLinear >= 1.0) {

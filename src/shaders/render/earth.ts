@@ -229,7 +229,9 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
   let cloudLit = max(dot(N, sun_dir), 0.0);
   let cloudColor = vec3f(0.92, 0.94, 0.97) * (cloudLit * 0.85 + 0.15);
   let cloudEdgeColor = cloudColor + vec3f(0.4, 0.35, 0.2) * cloudEdge * cloudLit * 1.4;
-  surf = mix(surf, cloudEdgeColor, cloudAlpha * smoothstep(-0.05, 0.1, dot(N, sun_dir)));
+  // Cloud visibility fades to zero on the night side of Earth
+  let cloudVisibility = smoothstep(-0.05, 0.1, dot(N, sun_dir));
+  surf = mix(surf, cloudEdgeColor, cloudAlpha * cloudVisibility);
 
   return vec4f(surf + cityWarm, 1.0);
 }

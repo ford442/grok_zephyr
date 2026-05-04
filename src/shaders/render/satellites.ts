@@ -374,9 +374,8 @@ fn vs(
     }
   } else {
     out.color = col;
-    // Extra 1.5× brightness on selected satellite so it pops visually
-    let selectBrightBoost = 1.0 + isHighlighted * 1.5;
-    out.bright = (pattern * atten + glint * atten) * selectionBoost * selectBrightBoost;
+    // selectionBoost already provides the per-satellite brightness lift; no extra multiplier needed
+    out.bright = (pattern * atten + glint * atten) * selectionBoost;
   }
 
   out.shell = f32(shellIdx);
