@@ -74,8 +74,8 @@ fn shellSizeScale(shell: u32) -> f32 {
   }
 }
 
-// Simple hash for glint calculation
-fn hash_u32(n: u32) -> f32 {
+// Canonical integer hash → [0, 1)
+fn hashU32(n: u32) -> f32 {
   var x = n;
   x = x ^ (x >> 16u);
   x = x * 0x45d9f3bu;
@@ -83,12 +83,8 @@ fn hash_u32(n: u32) -> f32 {
   return f32(x & 0xFFFFu) / 65535.0;
 }
 
-// Pattern hash functions
-fn hash(n: u32) -> f32 {
-  return fract(sin(f32(n) * 43758.5453) * 43758.5453);
-}
-
-fn hash2(n: u32, seed: f32) -> f32 {
+// Time-seeded variant for animation patterns
+fn hashAnimated(n: u32, seed: f32) -> f32 {
   return fract(sin(f32(n) * 12.9898 + seed * 78.233) * 43758.5453);
 }
 
@@ -181,7 +177,7 @@ fn smile_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, earth_dir: vec3f) -> v
       col *= pulse;
     }
     case SMILE_PHASE_TWINKLE: {
-      let sparkle = hash2(sat_idx, time * 10.0);
+    let sparkle = hashAnimated(sat_idx, time * 10.0);
       col *= 0.7 + 0.6 * sparkle;
     }
     case SMILE_PHASE_FADE: {
@@ -218,7 +214,7 @@ fn digital_rain_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> vec4f {
 
   let final_intensity = max(intensity, trail);
 
-  let green = 0.5 + 0.5 * hash(sat_idx);
+  let green = 0.5 + 0.5 * hashU32(sat_idx);
   return vec4f(0.0, green * final_intensity, 0.0, final_intensity);
 }
 
@@ -251,7 +247,7 @@ const INV_SQRT2: f32 = 0.70710678;    // 1 / sqrt(2), used for 45° diagonal dis
 fn x_logo_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, start_time: f32) -> vec4f {
   let local = to_earth_facing_coords(sat_pos);
 
-  let bg_mod = 0.038 + 0.015 * hash(sat_idx ^ (u32(time * 4.0) & 255u));
+  let bg_mod = 0.038 + 0.015 * hashU32(sat_idx ^ (u32(time * 4.0) & 255u));
   let bg_col = sat_color(sat_idx) * bg_mod;
 
   // Fix: Hide logo overlap from the back side of the Earth
@@ -328,19 +324,19 @@ fn vs(
 
   let baseColor = sat_color(u32(abs(cdat)) % 7u);
   let shellTint = shellColorShift(shellIdx);
-  let col = baseColor * shellTint;
-  let highlight = select(0.0, 1.0, ii == params.selected_satellite);
-  if (highlight > 0.0) {
+  var col = baseColor * shellTint;
+  let isHighlighted = select(0.0, 1.0, ii == params.selected_satellite);
+  if (isHighlighted > 0.0) {
     col = mix(col, vec3f(1.0, 0.92, 0.6), 0.75);
   }
 
   let phase = cdat * 0.15 + uni.time * 0.8;
   let pattern = 0.35 + 0.65 * (0.5 + 0.5 * sin(phase));
   let atten = 1.0 / (1.0 + dist * 0.00075);
-  let selectionBoost = 1.0 + highlight * 1.5;
+  let selectionBoost = 1.0 + isHighlighted * 1.5;
 
   // Solar panel glint simulation
-  let glintHash = hash_u32(ii);
+  let glintHash = hashU32(ii);
   let glintPhase = fract(uni.time * 0.1 + glintHash * 10.0);
   let glintAlignment = 1.0 - abs(glintPhase - 0.5) * 2.0;
   let glint = pow(glintAlignment, 8.0) * 0.8;
@@ -383,7 +379,7 @@ fn vs(
   }
 
   out.shell = f32(shellIdx);
-  out.highlight = highlight;
+  out.highlight = isHighlighted;
   return out;
 }
 

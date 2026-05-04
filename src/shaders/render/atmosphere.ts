@@ -37,7 +37,7 @@ fn miePhase(cosTheta:f32, g:f32)->f32 {
 @fragment fn fs(in:VOut) -> @location(0) vec4f {
   let N       = normalize(in.n);
   let V       = normalize(uni.camera_pos.xyz - in.wp);
-  let sun_dir = normalize(vec3f(1.0,0.4,0.2));
+  let sun_dir = normalize(uni.sun_position.xyz);
 
   // View-dependent rim for optical depth approximation
   let rim     = 1.0 - abs(dot(N, V));

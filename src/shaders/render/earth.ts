@@ -153,7 +153,7 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
 
 @fragment fn fs(in:VOut) -> @location(0) vec4f {
   let N       = normalize(in.n);
-  let sun_dir = normalize(vec3f(1.0,0.4,0.2));
+  let sun_dir = normalize(uni.sun_position.xyz);
   let V       = normalize(uni.camera_pos.xyz - in.wp);
   let diff    = max(dot(N,sun_dir),0.0);
 
