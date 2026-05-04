@@ -14,7 +14,7 @@ struct PatternParams {
   pattern_mode: u32,
   animation_time: f32,
   seed: f32,
-  padding: f32,
+  selected_satellite: u32,
 }
 @group(0) @binding(3) var<uniform> params : PatternParams;
 
@@ -24,6 +24,7 @@ struct VOut {
   @location(1) color    : vec3f,
   @location(2) bright   : f32,
   @location(3) shell    : f32,
+  @location(4) highlight: f32,
 };
 
 const PI: f32 = 3.14159265;
@@ -319,18 +320,24 @@ fn vs(
   let shellSize = shellSizeScale(shellIdx);
 
   // Increased max distance from 14000 to 150000 to support ground/Moon views
+  let groundScale = select(1.0, 0.72, uni.is_ground_view == 1u);
   let bsize = clamp(1200.0 / max(dist, 50.0), 0.4, 60.0) *
-              select(0.0, 1.0, dist < 150000.0) * shellSize;
+              select(0.0, 1.0, dist < 150000.0) * shellSize * groundScale;
   let offset = (qv.x * right + qv.y * up) * bsize;
   let fpos = wp + offset;
 
   let baseColor = sat_color(u32(abs(cdat)) % 7u);
   let shellTint = shellColorShift(shellIdx);
   let col = baseColor * shellTint;
+  let highlight = select(0.0, 1.0, ii == params.selected_satellite);
+  if (highlight > 0.0) {
+    col = mix(col, vec3f(1.0, 0.92, 0.6), 0.75);
+  }
 
   let phase = cdat * 0.15 + uni.time * 0.8;
   let pattern = 0.35 + 0.65 * (0.5 + 0.5 * sin(phase));
   let atten = 1.0 / (1.0 + dist * 0.00075);
+  let selectionBoost = 1.0 + highlight * 1.5;
 
   // Solar panel glint simulation
   let glintHash = hash_u32(ii);
@@ -366,16 +373,17 @@ fn vs(
     out.color = pattern_col.rgb;
 
     // Fix: Less aggressive distance attenuation for patterns so they are visible from afar
-    out.bright = pattern_col.a * mix(1.0, atten, 0.3);
+    out.bright = pattern_col.a * mix(1.0, atten, 0.3) * selectionBoost;
     if (pattern_col.a > 0.5) {
       out.bright *= 2.5; // Heavy boost for core shapes (the smile, the matrix drops)
     }
   } else {
     out.color = col;
-    out.bright = pattern * atten + glint * atten;
+    out.bright = (pattern * atten + glint * atten) * selectionBoost;
   }
 
   out.shell = f32(shellIdx);
+  out.highlight = highlight;
   return out;
 }
 
@@ -401,10 +409,11 @@ fn fs(in: VOut) -> @location(0) vec4f {
 
   // Outer glow falloff
   let outerGlow = exp(-d * 2.5) * 0.3;
+  let edgeGlow = exp(-pow(d - 0.35, 2.0) * 8.0) * 0.15 * (1.0 + highlight * 0.8);
 
   // Shell-dependent glow width (shells clamped to [0,2] range)
   let shellGlowMod = mix(1.2, 0.7, clamp(in.shell, 0.0, 2.0) / 2.0);
-  let total = (core * 2.0 + halos * shellGlowMod + spike + outerGlow) * in.bright;
+  let total = (core * 2.0 + halos * shellGlowMod + spike + outerGlow + edgeGlow) * in.bright;
 
   // Color: core white-hot, edges colored
   let coreWhite = vec3f(1.0, 1.0, 1.0);

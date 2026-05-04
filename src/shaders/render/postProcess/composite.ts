@@ -25,8 +25,9 @@ struct Uni {
   is_ground_view : u32,
   frustum        : array<vec4f, 6>,
   screen_size    : vec2f,
-  physics_mode   : u32,
-  pad1           : u32,
+  time_scale     : f32,
+  background_mode: u32,
+  sun_position   : vec4f,
 };
 
 struct VSOut {

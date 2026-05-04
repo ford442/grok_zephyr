@@ -7,13 +7,18 @@
 import { WebGPUContext, WebGPUError } from '@/core/WebGPUContext.js';
 import { SatelliteGPUBuffer } from '@/core/SatelliteGPUBuffer.js';
 import { RenderPipeline } from '@/render/RenderPipeline.js';
-import { CameraController } from '@/camera/CameraController.js';
+import { CameraController, type CameraState } from '@/camera/CameraController.js';
 import { GroundObserverCamera, GroundObserverPreset } from '@/camera/GroundObserverCamera.js';
 import { UIManager } from '@/ui/UIManager.js';
 import { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
+import { FocusManager } from '@/focus.js';
+import { TrailRenderer } from '@/render/TrailRenderer.js';
+import { EarthAtmosphereRenderer } from '@/earth.js';
 import { genSphere, extractFrustum } from '@/utils/math.js';
+import { getBeamPatternTitle } from '@/patterns.js';
 import { CONSTANTS, BUFFER_SIZES } from '@/types/constants.js';
 import { TLELoader } from '@/data/TLELoader.js';
+import { getBackgroundModeIndex, resolveBackgroundMode, setBackgroundMode } from '@/background.js';
 
 import './styles.css';
 
@@ -44,6 +49,14 @@ class GrokZephyrApp {
   private groundObserver: GroundObserverCamera;
   private ui: UIManager;
   private profiler: PerformanceProfiler;
+  private focusManager: FocusManager | null = null;
+  private trailRenderer: TrailRenderer | null = null;
+  private earthAtmosphereRenderer: EarthAtmosphereRenderer | null = null;
+  private groundViewEnabled = true;
+  private selectedSatelliteIndex = -1;
+  private patternSeed = 0;
+  private patternAnimationStart = 0;
+  private patternNameDisplay: HTMLElement | null = null;
   
   // Earth geometry
   private earthVertexBuffer: GPUBuffer | null = null;
@@ -66,6 +79,7 @@ class GrokZephyrApp {
     this.groundObserver = new GroundObserverCamera();
     this.ui = new UIManager();
     this.profiler = new PerformanceProfiler();
+    this.patternNameDisplay = document.getElementById('patternName');
     
     // Setup callbacks
     this.setupCallbacks();
@@ -138,6 +152,17 @@ class GrokZephyrApp {
         this.updateAngleDisplay(0, 0);
       });
     }
+
+    // Click to focus satellites
+    this.canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
+    this.canvas.addEventListener('dblclick', () => {
+      this.focusManager?.releaseFocus();
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        this.focusManager?.releaseFocus();
+      }
+    });
   }
 
   /**
@@ -202,6 +227,23 @@ class GrokZephyrApp {
     }
   }
 
+  private handleCanvasClick(event: MouseEvent): void {
+    if (!this.focusManager || !this.buffers || !this.context) return;
+    const time = this.lastTime || performance.now() / 1000;
+    const cameraState = this.camera.calculateCamera(
+      (idx, t) => this.buffers!.calculateSatellitePosition(idx, t),
+      (idx, t) => this.buffers!.calculateSatelliteVelocity(idx, t),
+      time
+    );
+
+    const aspect = this.canvas.clientWidth / this.canvas.clientHeight;
+    const { viewProjection } = this.camera.buildViewProjection(cameraState, aspect);
+    const selection = this.focusManager.raycast(event.clientX, event.clientY, cameraState, viewProjection, time);
+    if (selection) {
+      this.focusManager.selectSatellite(selection);
+    }
+  }
+
   /**
    * Setup pattern switcher buttons
    */
@@ -256,33 +298,21 @@ class GrokZephyrApp {
     if (!this.context || !this.buffers) return;
     
     this.currentPatternMode = mode;
+    this.patternAnimationStart = performance.now() / 1000;
     
     // Update beam params uniform buffer
     const beamParamsData = new ArrayBuffer(16);
     const f32 = new Float32Array(beamParamsData);
     const u32 = new Uint32Array(beamParamsData);
     
-    f32[0] = performance.now() / 1000;  // time
-    u32[1] = mode;                       // patternMode
-    u32[2] = 65536;                      // density
-    u32[3] = 0;                          // padding
+    f32[0] = this.patternAnimationStart;
+    u32[1] = mode;
+    u32[2] = 65536;
+    u32[3] = 0;
     
     this.context.writeBuffer(this.buffers.getBuffers().beamParams, beamParamsData);
-
-    // For 𝕏 LOGO (mode 2), activate the logo satellite pattern via patternParams.
-    // For any other beam pattern, clear any active satellite animation so logos
-    // don't linger when the user switches back to CHAOS or GROK.
-    const patternParamsData = new ArrayBuffer(16);
-    const ppf32 = new Float32Array(patternParamsData);
-    const ppu32 = new Uint32Array(patternParamsData);
-
-    // FIXED: Properly aligned to WGSL struct layout
-    ppu32[0] = mode === 2 ? 2 : 0;        // pattern_mode: 2=X LOGO, 0=none
-    ppf32[1] = performance.now() / 1000;  // animation_time (start of reveal)
-    ppu32[2] = 0;                         // seed
-    ppu32[3] = 0;                         // padding
-
-    this.context.writeBuffer(this.buffers.getBuffers().patternParams, patternParamsData);
+    this.writePatternParamsBuffer();
+    this.updatePatternTitle();
     
     const modeNames = ['CHAOS', 'GROK', '𝕏 LOGO'];
     console.log(`🔄 Beam pattern switched to: ${modeNames[mode]}`);
@@ -300,22 +330,63 @@ class GrokZephyrApp {
     }
 
     this.currentAnimationPattern = mode;
+    this.patternAnimationStart = performance.now() / 1000;
+    this.writePatternParamsBuffer();
 
-    // Update pattern params uniform buffer
+    const modeNames = ['OFF', '', '', '😊 SMILE', '💧 DIGITAL RAIN', '💓 HEARTBEAT'];
+    console.log(`🎭 Animation pattern: ${modeNames[mode]}`);
+  }
+
+  private updateSelectedSatelliteIndex(index: number): void {
+    this.selectedSatelliteIndex = index;
+    this.writePatternParamsBuffer();
+  }
+
+  setGroundViewEnabled(enabled: boolean): void {
+    this.groundViewEnabled = enabled;
+    this.earthAtmosphereRenderer?.setEnabled(enabled);
+  }
+
+  private writePatternParamsBuffer(): void {
+    if (!this.context || !this.buffers) return;
+
     const patternParamsData = new ArrayBuffer(16);
     const f32 = new Float32Array(patternParamsData);
     const u32 = new Uint32Array(patternParamsData);
 
-    // FIXED: Properly aligned to WGSL struct layout
-    u32[0] = mode;                       // pattern mode (WGSL byte 0)
-    f32[1] = performance.now() / 1000;   // animation time (WGSL byte 4)
-    u32[2] = 0;                          // seed (WGSL byte 8)
-    u32[3] = 0;                          // padding (WGSL byte 12)
+    u32[0] = this.currentAnimationPattern;
+    f32[1] = this.patternAnimationStart || performance.now() / 1000;
+    f32[2] = this.patternSeed;
+    u32[3] = this.selectedSatelliteIndex >= 0 ? this.selectedSatelliteIndex : 0xFFFFFFFF;
 
     this.context.writeBuffer(this.buffers.getBuffers().patternParams, patternParamsData);
+  }
 
-    const modeNames = ['OFF', '', '', '😊 SMILE', '💧 DIGITAL RAIN', '💓 HEARTBEAT'];
-    console.log(`🎭 Animation pattern: ${modeNames[mode]}`);
+  private updatePatternTitle(): void {
+    if (this.patternNameDisplay) {
+      this.patternNameDisplay.textContent = getBeamPatternTitle(this.currentPatternMode);
+    }
+  }
+
+  /**
+   * Record sampled trail positions for a sparse subset of satellites.
+   * Keeps performance high by using a coarse 1-in-4096 sampling pattern.
+   */
+  private recordTrailSamples(time: number): void {
+    if (!this.trailRenderer || !this.buffers) return;
+
+    const orbitalData = this.buffers.getOrbitalElementData();
+    const sampleStride = 4096; // 256 trails across 1M satellites
+    const position = new Float32Array(3);
+
+    for (let idx = 0; idx < CONSTANTS.NUM_SATELLITES; idx += sampleStride) {
+      const satPos = this.buffers.calculateSatellitePosition(idx, time);
+      position[0] = satPos[0];
+      position[1] = satPos[1];
+      position[2] = satPos[2];
+      const shellIndex = (orbitalData[idx * 4 + 3] >> 8) & 0xFF;
+      this.trailRenderer.recordPosition(idx, position, time, shellIndex);
+    }
   }
   
   /**
@@ -398,6 +469,14 @@ class GrokZephyrApp {
       // Initialize buffers
       this.buffers = new SatelliteGPUBuffer(this.context);
       const bufferSet = this.buffers.initialize();
+      
+      // Focus manager for click-to-focus satellite selection
+      this.focusManager = new FocusManager(
+        this.canvas,
+        this.camera,
+        this.buffers,
+        (index) => this.updateSelectedSatelliteIndex(index)
+      );
 
       // Load orbital data: TLE if requested via query param, else procedural Walker
       const tleSource = this.getTLESource();
@@ -442,6 +521,24 @@ class GrokZephyrApp {
       
       this.pipeline.initialize(width, height);
       this.buffers.updateBloomUniforms(width, height);
+
+      this.trailRenderer = new TrailRenderer(this.context, {
+        enabled: true,
+        maxLength: 45,
+        fadeOut: 45,
+        colorByShell: true,
+        ribbonWidth: 8.0,
+      });
+      this.trailRenderer.initialize();
+
+      this.earthAtmosphereRenderer = new EarthAtmosphereRenderer(this.context, {
+        enabled: true,
+        cloudSpeed: 0.02,
+        cloudAlpha: 0.38,
+        cloudScale: 1.006,
+        hazeStrength: 0.28,
+      });
+      this.earthAtmosphereRenderer.initialize(this.buffers.getBuffers().uniforms);
       
       // Update UI
       this.ui.setFleetCount(CONSTANTS.NUM_SATELLITES);
@@ -551,20 +648,19 @@ class GrokZephyrApp {
   /**
    * Write uniform buffer data
    */
-  private writeUniforms(time: number, deltaTime: number): void {
+  private writeUniforms(time: number, deltaTime: number, camera: CameraState | null = null): void {
     if (!this.context || !this.buffers) return;
     
     const { width, height } = this.context.getCanvasSize();
     const aspect = width / height;
     
-    // Calculate camera
-    const camera = this.camera.calculateCamera(
+    const cameraState = camera ?? this.camera.calculateCamera(
       (idx, t) => this.buffers!.calculateSatellitePosition(idx, t),
       (idx, t) => this.buffers!.calculateSatelliteVelocity(idx, t),
       time
     );
     
-    const { viewProjection, view } = this.camera.buildViewProjection(camera, aspect);
+    const { viewProjection, view } = this.camera.buildViewProjection(cameraState, aspect);
     const { right, up } = this.camera.getCameraAxes(view);
     
     // Extract frustum planes
@@ -572,9 +668,9 @@ class GrokZephyrApp {
     
     // Calculate camera radius for ground view detection
     const cameraRadius = Math.sqrt(
-      camera.position[0] * camera.position[0] +
-      camera.position[1] * camera.position[1] +
-      camera.position[2] * camera.position[2]
+      cameraState.position[0] * cameraState.position[0] +
+      cameraState.position[1] * cameraState.position[1] +
+      cameraState.position[2] * cameraState.position[2]
     );
     
     // Pack view_flags: view_mode (bits 0-15), is_ground_view (bit 16), physics_mode (bits 17-19)
@@ -595,9 +691,9 @@ class GrokZephyrApp {
     f32.set(viewProjection, 0);
     
     // Camera position (64-79) - f32[16-19]
-    f32[16] = camera.position[0];
-    f32[17] = camera.position[1];
-    f32[18] = camera.position[2];
+    f32[16] = cameraState.position[0];
+    f32[17] = cameraState.position[1];
+    f32[18] = cameraState.position[2];
     f32[19] = 1.0;
     
     // Camera right (80-95) - f32[20-23]
@@ -618,8 +714,8 @@ class GrokZephyrApp {
     f32[29] = deltaTime;
     // View flags (120-123) - u32[30]
     u32[30] = viewFlags;
-    // Sim time (124-127) - f32[31]
-    f32[31] = this.simTime;
+    // is_ground_view (124-127) - u32[31]
+    u32[31] = isGroundView;
     
     // Frustum planes (128-223) - 6 planes * 4 floats each - f32[32-55]
     for (let p = 0; p < 6; p++) {
@@ -634,8 +730,8 @@ class GrokZephyrApp {
     f32[57] = height;
     // Time scale (232-235) - f32[58]
     f32[58] = this.timeScale;
-    // Padding (236-239) - u32[59]
-    u32[59] = 0;
+    // Background mode (236-239) - u32[59]
+    u32[59] = getBackgroundModeIndex();
     
     // Sun position (240-255) - vec4f - f32[60-63]
     f32[60] = sunPos[0];
@@ -692,6 +788,9 @@ class GrokZephyrApp {
     // Update scaled simulation time based on timeScale
     this.simTime += deltaTime * this.timeScale;
     
+    // Sync background mode from the current camera view
+    setBackgroundMode(resolveBackgroundMode(this.camera.getViewMode()));
+    
     // Update profiler
     this.profiler.beginFrame(timestamp);
     
@@ -699,10 +798,26 @@ class GrokZephyrApp {
     if (this.camera.getViewMode() === 'ground') {
       this.groundObserver.update();
     }
-    
-    // Write uniforms
-    this.writeUniforms(time, deltaTime);
-    
+
+    // Update any active click focus state
+    if (this.focusManager) {
+      this.focusManager.update(time);
+    }
+
+    // Record and update short orbital trails
+    this.recordTrailSamples(this.simTime);
+    if (this.trailRenderer) {
+      const cameraState = this.camera.calculateCamera(
+        (idx, t) => this.buffers!.calculateSatellitePosition(idx, t),
+        (idx, t) => this.buffers!.calculateSatelliteVelocity(idx, t),
+        time
+      );
+      this.trailRenderer.updateGeometry(this.simTime, new Float32Array(cameraState.position));
+      this.writeUniforms(time, deltaTime, cameraState);
+    } else {
+      this.writeUniforms(time, deltaTime);
+    }
+
     // Create command encoder
     const encoder = this.context.createCommandEncoder('frame');
     
@@ -718,7 +833,14 @@ class GrokZephyrApp {
 
     // Pass 2: Scene rendering (different for ground view)
     if (this.camera.getViewMode() === 'ground') {
-      this.pipeline.encodeGroundScenePass(encoder);
+      const groundRenderer = this.groundViewEnabled ? this.earthAtmosphereRenderer : null;
+      this.pipeline.encodeGroundScenePass(
+        encoder,
+        groundRenderer ?? undefined,
+        this.earthVertexBuffer ?? undefined,
+        this.earthIndexBuffer ?? undefined,
+        this.earthIndexCount
+      );
     } else {
       this.pipeline.encodeScenePass(
         encoder,
@@ -726,6 +848,11 @@ class GrokZephyrApp {
         this.earthIndexBuffer,
         this.earthIndexCount
       );
+    }
+
+    // Pass 2.5: Trails rendered additively onto HDR target
+    if (this.trailRenderer) {
+      this.pipeline.encodeTrailPass(encoder, this.trailRenderer);
     }
     
     // Passes 3-5: Bloom

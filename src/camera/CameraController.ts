@@ -10,7 +10,7 @@
 
 import type { Vec3, ViewMode } from '@/types/index.js';
 import { CONSTANTS, CAMERA, MATH, VIEW_MODES } from '@/types/constants.js';
-import { v3add, v3scale, v3norm, v3cross, v3dot, mat4lookAt, mat4persp } from '@/utils/math.js';
+import { v3add, v3scale, v3norm, v3sub, v3cross, v3dot, mat4lookAt, mat4persp } from '@/utils/math.js';
 
 /** Camera state for each view mode */
 export interface CameraState {
@@ -90,6 +90,16 @@ export class CameraController {
   // Fleet POV local offset (for WASD micro-movement)
   private fleetOffset: Vec3 = [0, 0, 0];
   
+  // Camera panning state
+  private panOffset: Vec3 = [0, 0, 0];
+  private mouseMode: 'rotate' | 'pan' | null = null;
+  private panSensitivity = 1.0;
+
+  // Focus orbit state
+  private focusSatelliteIndex: number | null = null;
+  private focusDistance = 70000;
+  private focusTransition: { startTime: number; duration: number; fromDistance: number } | null = null;
+  
   // Callbacks
   private modeChangeCallback: ((mode: ViewMode, name: string, altitude: string) => void) | null = null;
   private angleChangeCallback: ((yaw: number, pitch: number) => void) | null = null;
@@ -114,55 +124,66 @@ export class CameraController {
     
     // Mouse down - start dragging
     canvas.addEventListener('mousedown', (e) => {
-      if (e.button === 0) { // Left click only
-        this.mouse.down = true;
-        this.mouse.lastX = e.clientX;
-        this.mouse.lastY = e.clientY;
-        canvas.style.cursor = 'grabbing';
+      if (e.button === 0 && !e.altKey) {
+        this.mouseMode = 'rotate';
+      } else if (e.button === 2 || e.button === 1 || (e.button === 0 && e.altKey)) {
+        this.mouseMode = 'pan';
+      } else {
+        return;
       }
+
+      this.mouse.down = true;
+      this.mouse.lastX = e.clientX;
+      this.mouse.lastY = e.clientY;
+      canvas.style.cursor = 'grabbing';
     });
 
     // Mouse up - stop dragging
     window.addEventListener('mouseup', () => {
       this.mouse.down = false;
+      this.mouseMode = null;
       if (this.canvas) {
         this.canvas.style.cursor = 'grab';
       }
     });
 
-    // Mouse move - update angles for ALL modes
+    // Prevent right-click menu while panning
+    canvas.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
+
+    // Mouse move - update angles or pan depending on button
     window.addEventListener('mousemove', (e) => {
-      if (!this.mouse.down) return;
+      if (!this.mouse.down || !this.mouseMode) return;
       
       const dx = e.movementX || (e.clientX - this.mouse.lastX);
       const dy = e.movementY || (e.clientY - this.mouse.lastY);
-      
-      // Update yaw (left/right)
-      this.cameraAngles.yaw -= dx * this.MOUSE_SENSITIVITY;
-      this.cameraAngles.yaw = ((this.cameraAngles.yaw % 360) + 360) % 360;
-      
-      // Update pitch (up/down) - inverted so dragging up looks up
-      this.cameraAngles.pitch += dy * this.MOUSE_SENSITIVITY;
-      // Fleet POV allows wider pitch range for full head look
-      const pitchLimit = this.currentMode === 'sat-pov' ? 89 : this.PITCH_LIMIT;
-      this.cameraAngles.pitch = Math.max(
-        -pitchLimit,
-        Math.min(pitchLimit, this.cameraAngles.pitch)
-      );
-      
-      // Also update godView for backwards compatibility
-      if (this.currentMode === 'god') {
-        this.godView.yaw = this.cameraAngles.yaw * Math.PI / 180;
-        this.godView.pitch = this.cameraAngles.pitch * Math.PI / 180;
+
+      if (this.mouseMode === 'rotate') {
+        this.cameraAngles.yaw -= dx * this.MOUSE_SENSITIVITY;
+        this.cameraAngles.yaw = ((this.cameraAngles.yaw % 360) + 360) % 360;
+
+        this.cameraAngles.pitch += dy * this.MOUSE_SENSITIVITY;
+        const pitchLimit = this.currentMode === 'sat-pov' ? 89 : this.PITCH_LIMIT;
+        this.cameraAngles.pitch = Math.max(
+          -pitchLimit,
+          Math.min(pitchLimit, this.cameraAngles.pitch)
+        );
+
+        if (this.currentMode === 'god') {
+          this.godView.yaw = this.cameraAngles.yaw * Math.PI / 180;
+          this.godView.pitch = this.cameraAngles.pitch * Math.PI / 180;
+        }
+
+        if (this.angleChangeCallback) {
+          this.angleChangeCallback(this.cameraAngles.yaw, this.cameraAngles.pitch);
+        }
+      } else {
+        this.panBy(-dx, dy);
       }
       
       this.mouse.lastX = e.clientX;
       this.mouse.lastY = e.clientY;
-      
-      // Notify UI of angle change
-      if (this.angleChangeCallback) {
-        this.angleChangeCallback(this.cameraAngles.yaw, this.cameraAngles.pitch);
-      }
     });
 
     // Wheel - zoom distance (works in all modes)
@@ -204,21 +225,113 @@ export class CameraController {
     this.cameraAngles.yaw = 0;
     this.cameraAngles.pitch = 0;
     this.cameraAngles.distance = 25000;
-    
+
+    this.panOffset = [0, 0, 0];
     this.godView.yaw = 0;
     this.godView.pitch = 0.35;
     this.godView.distance = CAMERA.GOD_VIEW_DISTANCE;
-    
+
     console.log('🔄 Camera angle reset');
-    
+
     if (this.angleChangeCallback) {
       this.angleChangeCallback(0, 0);
     }
   }
 
-  /**
-   * Set view mode by index
-   */
+  update(deltaTime: number): void {
+    this.applyKeyboardPanning(deltaTime);
+  }
+
+  setPanSensitivity(value: number): void {
+    this.panSensitivity = Math.max(0.2, Math.min(4.0, value));
+  }
+
+  private applyKeyboardPanning(deltaTime: number): void {
+    const right = (this.keys['arrowright'] ? 1 : 0) - (this.keys['arrowleft'] ? 1 : 0);
+    const up = (this.keys['arrowup'] ? 1 : 0) - (this.keys['arrowdown'] ? 1 : 0);
+    const shiftRight = this.keys['shift'] ? ((this.keys['d'] ? 1 : 0) - (this.keys['a'] ? 1 : 0)) : 0;
+    const shiftUp = this.keys['shift'] ? ((this.keys['w'] ? 1 : 0) - (this.keys['s'] ? 1 : 0)) : 0;
+
+    const panX = right + shiftRight;
+    const panY = up + shiftUp;
+
+    if (panX !== 0 || panY !== 0) {
+      const keyboardScale = 180 * deltaTime;
+      this.panBy(panX * keyboardScale, panY * keyboardScale);
+    }
+  }
+
+  private panBy(dx: number, dy: number): void {
+    const basis = this.getPanBasis();
+    const distance = Math.max(500, this.cameraAngles.distance);
+    const scale = this.panSensitivity * Math.max(0.000005, distance * 0.000009);
+
+    const worldOffset = v3add(
+      v3scale(basis.right, dx * scale),
+      v3scale(basis.up, dy * scale)
+    );
+
+    this.panOffset = v3add(this.panOffset, worldOffset);
+  }
+
+  private getPanBasis(): { right: Vec3; up: Vec3 } {
+    const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
+    const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
+    const forward: Vec3 = [
+      Math.cos(pitch) * Math.cos(yaw),
+      Math.cos(pitch) * Math.sin(yaw),
+      Math.sin(pitch),
+    ];
+
+    const worldUp: Vec3 = this.currentMode === 'ground'
+      ? [Math.cos(yaw), Math.sin(yaw), 0]
+      : [0, 0, 1];
+
+    let right = v3norm(v3cross(forward, worldUp));
+    if (Math.abs(right[0]) + Math.abs(right[1]) + Math.abs(right[2]) < 1e-4) {
+      right = [1, 0, 0];
+    }
+    const up = v3norm(v3cross(right, forward));
+    return { right, up };
+  }
+
+  private applyPanOffset(camera: CameraState): CameraState {
+    if (this.panOffset[0] === 0 && this.panOffset[1] === 0 && this.panOffset[2] === 0) {
+      return camera;
+    }
+
+    if (this.currentMode === 'ground') {
+      const surfaceRadius = CONSTANTS.EARTH_RADIUS_KM + 0.1;
+      const pannedPosition = v3add(camera.position, this.panOffset);
+      const newPosition = v3scale(v3norm(pannedPosition), surfaceRadius);
+
+      const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
+      const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
+      const lookPitch = -pitch;
+      const cosP = Math.cos(lookPitch);
+      const sinP = Math.sin(lookPitch);
+
+      const newTarget: Vec3 = [
+        newPosition[0] + Math.cos(yaw) * cosP * 10000,
+        newPosition[1] + Math.sin(yaw) * cosP * 10000,
+        newPosition[2] + sinP * 10000,
+      ];
+
+      return {
+        ...camera,
+        position: newPosition,
+        target: newTarget,
+        up: v3norm(newPosition),
+      };
+    }
+
+    return {
+      ...camera,
+      position: v3add(camera.position, this.panOffset),
+      target: v3add(camera.target, this.panOffset),
+    };
+  }
+
   setViewMode(index: number): void {
     this.modeIndex = index;
     
@@ -240,6 +353,8 @@ export class CameraController {
         break;
       case 3:
         this.currentMode = 'ground';
+        this.cameraAngles.pitch = 18; // look slightly above the horizon for an immersive surface feel
+        this.cameraAngles.yaw = 0;
         break;
       case 4:
         this.currentMode = 'moon';
@@ -275,6 +390,42 @@ export class CameraController {
   }
 
   /**
+   * Focus camera on a satellite while preserving the previous mode.
+   */
+  setFocusSatellite(index: number, distance: number, time: number = performance.now() / 1000): void {
+    if (this.focusSatelliteIndex === index) return;
+    this.focusSatelliteIndex = index;
+    this.focusDistance = distance;
+    this.focusTransition = {
+      startTime: time,
+      duration: 0.8,
+      fromDistance: this.cameraAngles.distance,
+    };
+  }
+
+  /**
+   * Clear active satellite focus.
+   */
+  clearFocus(): void {
+    this.focusSatelliteIndex = null;
+    this.focusTransition = null;
+  }
+
+  /**
+   * Returns true when the camera is locked to a focused satellite.
+   */
+  hasFocus(): boolean {
+    return this.focusSatelliteIndex !== null;
+  }
+
+  /**
+   * Get the currently focused satellite index, or null if none.
+   */
+  getFocusSatelliteIndex(): number | null {
+    return this.focusSatelliteIndex;
+  }
+
+  /**
    * Calculate camera state for current frame
    */
   calculateCamera(
@@ -282,20 +433,33 @@ export class CameraController {
     satelliteVelocity: (index: number, time: number) => Vec3,
     time: number
   ): CameraState {
-    switch (this.currentMode) {
-      case 'horizon-720':
-        return this.calculateHorizonView();
-      case 'god':
-        return this.calculateGodView();
-      case 'sat-pov':
-        return this.calculateFleetPOV(satellitePosition, satelliteVelocity, time);
-      case 'ground':
-        return this.calculateGroundView();
-      case 'moon':
-        return this.calculateMoonView();
-      default:
-        return this.calculateHorizonView();
+    let cameraState: CameraState;
+
+    if (this.focusSatelliteIndex !== null) {
+      cameraState = this.calculateFocusedView(satellitePosition, time);
+    } else {
+      switch (this.currentMode) {
+        case 'horizon-720':
+          cameraState = this.calculateHorizonView();
+          break;
+        case 'god':
+          cameraState = this.calculateGodView();
+          break;
+        case 'sat-pov':
+          cameraState = this.calculateFleetPOV(satellitePosition, satelliteVelocity, time);
+          break;
+        case 'ground':
+          cameraState = this.calculateGroundView();
+          break;
+        case 'moon':
+          cameraState = this.calculateMoonView();
+          break;
+        default:
+          cameraState = this.calculateHorizonView();
+      }
     }
+
+    return this.applyPanOffset(cameraState);
   }
 
   /**
@@ -487,6 +651,52 @@ export class CameraController {
    * Camera positioned at lunar distance with Earth as the primary target.
    * Shows the satellite constellation as a shimmering swarm around Earth.
    */
+  private calculateFocusedView(satellitePosition: (index: number, time: number) => Vec3, time: number): CameraState {
+    const satIndex = this.focusSatelliteIndex!;
+    const satPos = satellitePosition(satIndex, time);
+
+    if (this.focusTransition) {
+      const elapsed = Math.max(0, time - this.focusTransition.startTime);
+      const t = Math.min(1.0, elapsed / this.focusTransition.duration);
+      this.cameraAngles.distance = this.focusTransition.fromDistance + (this.focusDistance - this.focusTransition.fromDistance) * t;
+      if (t >= 1.0) {
+        this.focusTransition = null;
+      }
+    }
+
+    const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
+    const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
+    const cosP = Math.cos(pitch);
+    const sinP = Math.sin(pitch);
+    const cosY = Math.cos(yaw);
+    const sinY = Math.sin(yaw);
+
+    const distance = this.cameraAngles.distance;
+    const orbitOffset: Vec3 = [
+      cosP * cosY * distance,
+      cosP * sinY * distance,
+      sinP * distance,
+    ];
+
+    const position = v3add(satPos, orbitOffset);
+    const viewDir = v3norm(v3sub(satPos, position));
+    let worldUp: Vec3 = [0, 0, 1];
+    if (Math.abs(v3dot(viewDir, worldUp)) > 0.98) {
+      worldUp = [1, 0, 0];
+    }
+    const right = v3norm(v3cross(worldUp, viewDir));
+    const up = v3cross(viewDir, right);
+
+    return {
+      position,
+      target: satPos,
+      up,
+      fov: CAMERA.DEFAULT_FOV,
+      near: CAMERA.NEAR_PLANE,
+      far: CAMERA.FAR_PLANE,
+    };
+  }
+
   private calculateMoonView(): CameraState {
     const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
     const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;

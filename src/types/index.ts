@@ -85,10 +85,12 @@ export interface UniformData {
   frustum: Float32Array;
   /** Screen size in pixels (offset 224, 8 bytes) */
   screenSize: [number, number];
-  /** Physics mode (offset 232, 4 bytes) */
-  physicsMode: number;
-  /** Padding (offset 236, 4 bytes) */
-  pad1: number;
+  /** Time scale (offset 232, 4 bytes) */
+  timeScale: number;
+  /** Background mode (offset 236, 4 bytes) */
+  backgroundMode: number;
+  /** Sun position in world space (offset 240, 16 bytes) */
+  sunPosition: Float32Array;
 }
 
 /** Bloom uniform data for blur passes */

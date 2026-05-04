@@ -15,8 +15,8 @@ const SHELL_COLORS: Float32Array = new Float32Array([
   1.0, 0.78, 0.28,  // Shell 2 (1150km): Gold
 ]);
 
-/** Trail vertex format: [pos_x, pos_y, pos_z, intensity, age] */
-const VERTEX_STRIDE = 5;
+/** Trail vertex format: [pos_x, pos_y, pos_z, intensity, age, shell_idx] */
+const VERTEX_STRIDE = 6;
 
 /**
  * Trail Renderer
@@ -48,7 +48,7 @@ export class TrailRenderer {
   private activeTrails = 0;
   
   // Maximum trail segments per satellite
-  private maxTrailSegments = 100;
+  private maxTrailSegments = 12;
 
   constructor(context: WebGPUContext, config: TrailConfig) {
     this.context = context;
@@ -68,7 +68,7 @@ export class TrailRenderer {
    */
   setConfig(config: TrailConfig): void {
     this.config = config;
-    this.maxTrailSegments = Math.max(10, Math.floor(config.maxLength * 30)); // 30 fps assumption
+    this.maxTrailSegments = Math.min(12, Math.max(8, Math.ceil(config.maxLength / 4)));
   }
 
   /**
@@ -77,20 +77,21 @@ export class TrailRenderer {
   recordPosition(satelliteIndex: number, position: Float32Array, timestamp: number, shellIndex: number): void {
     if (!this.config.enabled) return;
     
-    // Use satelliteIndex to vary the sampling pattern
-    const _satIdx = satelliteIndex;
-    
-    // Limit history size - store sparse samples for performance
-    // Only record every Nth satellite for trails (sparse sampling)
-    if (_satIdx % 256 !== 0) return; // 1 in 256 satellites
-    
+    // Sparse sampling keeps trail updates lightweight for 1M satellites.
+    if (satelliteIndex % 4096 !== 0) return; // ~256 trails total
+
     let trail = this.trailHistory.get(satelliteIndex);
     if (!trail) {
       trail = [];
       this.trailHistory.set(satelliteIndex, trail);
     }
+
+    const recordInterval = Math.max(3.0, this.config.maxLength / 10.0);
+    if (trail.length > 0 && timestamp - trail[trail.length - 1].timestamp < recordInterval) {
+      return;
+    }
     
-    // Add new point
+    // Add new point with compact history
     trail.push({
       position: [position[0], position[1], position[2]],
       timestamp,
@@ -114,7 +115,11 @@ export class TrailRenderer {
    * Update trail geometry (call before rendering)
    */
   updateGeometry(currentTime: number, cameraPosition: Float32Array): void {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled) {
+      this.vertexCount = 0;
+      this.indexCount = 0;
+      return;
+    }
     
     // Build vertex and index buffers from trail history
     const vertices: number[] = [];
@@ -122,8 +127,10 @@ export class TrailRenderer {
     
     let indexOffset = 0;
     this.activeTrails = 0;
+    this.vertexCount = 0;
+    this.indexCount = 0;
     
-    for (const [satIndex, trail] of this.trailHistory) {
+    for (const [, trail] of this.trailHistory) {
       if (trail.length < 2) continue;
       
       // LOD: skip distant trails
@@ -230,12 +237,12 @@ export class TrailRenderer {
         @location(0) pos: vec3f,
         @location(1) intensity: f32,
         @location(2) age: f32,
-        @location(3) shell_idx: u32,
+        @location(3) shell_idx: f32,
       ) -> VertexOut {
         var out: VertexOut;
         
         // Get shell color
-        let shell_color = trail_uni.shell_colors[shell_idx % 3u];
+        let shell_color = trail_uni.shell_colors[u32(shell_idx) % 3u];
         
         // Fade based on age
         let fade = 1.0 - smoothstep(0.0, trail_uni.fade_duration, age);
@@ -266,7 +273,7 @@ export class TrailRenderer {
         { shaderLocation: 0, offset: 0, format: 'float32x3' },  // position
         { shaderLocation: 1, offset: 12, format: 'float32' },   // intensity
         { shaderLocation: 2, offset: 16, format: 'float32' },   // age
-        { shaderLocation: 3, offset: 20, format: 'uint32' },    // shell index
+        { shaderLocation: 3, offset: 20, format: 'float32' },   // shell index
       ],
     };
     

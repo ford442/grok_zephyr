@@ -208,6 +208,11 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
   let cityMask = f32(isLand) * cityA * (0.4 + 0.3*cityB);
   let cityWarm = vec3f(1.0, 0.78, 0.28) * cityMask * night * 0.12;
 
+  let viewDir = normalize(uni.camera_pos.xyz - in.wp);
+  let horizonFactor = clamp(1.0 - abs(dot(N, viewDir)), 0.0, 1.0);
+  let atmosphereGlow = vec3f(0.35, 0.55, 0.92) * pow(horizonFactor, 2.2) * 0.28;
+  surf += atmosphereGlow * (1.0 - diff) * 0.7;
+
   return vec4f(surf + cityWarm, 1.0);
 }
 `;

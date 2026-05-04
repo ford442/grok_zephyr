@@ -14,6 +14,7 @@ export function mat4_invert(a: Float32Array | Float64Array | number[]) { let a00
 
 import type WebGPUContext from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
+import type { EarthAtmosphereRenderer } from '@/earth.js';
 import { SmileV2Pipeline } from './SmileV2Pipeline.js';
 import { SHADERS } from '@/shaders/index.js';
 import { CONSTANTS, RENDER } from '@/types/constants.js';
@@ -677,9 +678,34 @@ export class RenderPipeline {
   }
 
   /**
+   * Execute additive trail render pass onto the HDR target.
+   */
+  encodeTrailPass(encoder: GPUCommandEncoder, trailRenderer: { encodeRenderPass(pass: GPURenderPassEncoder, uniformBuffer: GPUBuffer): void } | null): void {
+    if (!this.renderTargets || !trailRenderer) return;
+
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: this.renderTargets.hdrView,
+        loadOp: 'load',
+        storeOp: 'store',
+      }],
+    });
+
+    pass.setViewport(0, 0, this.width, this.height, 0, 1);
+    trailRenderer.encodeRenderPass(pass, this.buffers.uniforms);
+    pass.end();
+  }
+
+  /**
    * Execute ground view scene render pass (mountains, lake, satellites, beams)
    */
-  encodeGroundScenePass(encoder: GPUCommandEncoder): void {
+  encodeGroundScenePass(
+    encoder: GPUCommandEncoder,
+    earthAtmosphereRenderer?: EarthAtmosphereRenderer,
+    earthVertexBuffer?: GPUBuffer,
+    earthIndexBuffer?: GPUBuffer,
+    earthIndexCount?: number
+  ): void {
     if (!this.pipelines || !this.bindGroups || !this.renderTargets) return;
 
     const pass = encoder.beginRenderPass({
@@ -697,23 +723,29 @@ export class RenderPipeline {
       },
     });
 
-    // Set full canvas viewport to ensure entire framebuffer is rendered
     pass.setViewport(0, 0, this.width, this.height, 0, 1);
 
-    // Satellites first (in the sky)
+    if (earthAtmosphereRenderer && earthAtmosphereRenderer.getEnabled() && earthVertexBuffer && earthIndexBuffer && earthIndexCount) {
+      pass.setPipeline(this.pipelines.earth);
+      pass.setBindGroup(0, this.bindGroups.earth);
+      pass.setVertexBuffer(0, earthVertexBuffer);
+      pass.setIndexBuffer(earthIndexBuffer, 'uint32');
+      pass.drawIndexed(earthIndexCount);
+
+      earthAtmosphereRenderer.encode(pass, earthVertexBuffer, earthIndexBuffer, earthIndexCount);
+    } else {
+      pass.setPipeline(this.pipelines.groundTerrain);
+      pass.setBindGroup(0, this.bindGroups.groundTerrain);
+      pass.draw(6);
+    }
+
     pass.setPipeline(this.pipelines.satellites);
     pass.setBindGroup(0, this.bindGroups.satellites);
     pass.draw(6, CONSTANTS.NUM_SATELLITES);
 
-    // Laser beams from satellites to Earth surface
     pass.setPipeline(this.pipelines.beam);
     pass.setBindGroup(0, this.bindGroups.beam);
     pass.draw(4, MAX_BEAMS);
-
-    // Ground terrain (fullscreen quad) rendered on top to occlude foreground
-    pass.setPipeline(this.pipelines.groundTerrain);
-    pass.setBindGroup(0, this.bindGroups.groundTerrain);
-    pass.draw(6);  // Draw full quad (6 vertices), not just 3
 
     pass.end();
   }

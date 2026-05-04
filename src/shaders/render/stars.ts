@@ -1,6 +1,6 @@
 /**
  * Starfield Background Shader
- * Blackbody star colors, magnitude-based distribution, Milky Way band
+ * High-quality procedural starfield with atmospheric horizon glow.
  */
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
@@ -77,12 +77,10 @@ fn blackbodyColor(temp:f32)->vec3f {
 }
 
 fn renderMilkyWay(uv: vec2f) -> vec3f {
-  // Convert UV to approximate view direction
   let theta = (uv.x - 0.5) * 2.0 * PI;
   let phi = (uv.y - 0.5) * PI;
   let viewDir = normalize(vec3f(cos(phi)*cos(theta), sin(phi), cos(phi)*sin(theta)));
 
-  // Approximate galactic coordinates
   let galacticNorth = normalize(vec3f(-0.0548, 0.4941, 0.8677));
   let galacticCenter = normalize(vec3f(-0.0558, -0.8744, 0.4821));
 
@@ -91,75 +89,73 @@ fn renderMilkyWay(uv: vec2f) -> vec3f {
   let galacticLon = atan2(dot(projGC, cross(galacticNorth, galacticCenter)),
                           dot(projGC, galacticCenter));
 
-  // Vertical profile: Gaussian band
   let verticalProfile = exp(-galacticLat * galacticLat / (2.0 * 0.15 * 0.15));
-
-  // Radial profile: brighter toward center
   let r = length(vec2f(cos(galacticLon) - 0.1, sin(galacticLon)));
   let radialProfile = 0.3 * exp(-r * 3.0) + 0.7 * exp(-r * 0.8);
 
-  // Noise modulation for cloud structure
   let noiseCoord = viewDir * 8.0 + vec3f(100.0);
   let detail = fbm(noiseCoord) * 0.4 + 0.6;
 
-  // Color: yellow-white center, blue-white arms
   let color = mix(vec3f(0.9, 0.85, 0.7), vec3f(0.75, 0.8, 1.0), clamp(r, 0.0, 1.0));
-
-  let intensity = verticalProfile * radialProfile * detail * 0.15;
+  let intensity = verticalProfile * radialProfile * detail * 0.16;
   return color * intensity;
 }
 
+fn renderNebula(uv: vec2f) -> vec3f {
+  let pink = vec3f(0.28, 0.14, 0.32);
+  let blue = vec3f(0.18, 0.20, 0.40);
+  let p = vec3f(uv * 3.4, uni.time * 0.04);
+  let n = fbm(p + vec3f(12.1, 21.4, 0.0)) * 0.55 + fbm(p * 2.2 + vec3f(9.3, 5.7, 0.0)) * 0.35;
+  let band = smoothstep(0.1, 0.6, fract(uv.x * 1.7 + uv.y * 0.28));
+  let cloud = smoothstep(0.35, 0.72, n + 0.28 - pow(abs(uv.y - 0.55), 1.8));
+  return mix(blue, pink, band) * cloud * 0.25;
+}
+
+fn horizonFog(uv: vec2f, mode: u32) -> vec3f {
+  let glow = pow(max(0.0, 0.38 - uv.y), 2.8);
+  let horizonColor = vec3f(0.26, 0.16, 0.08);
+  let warm = vec3f(0.20, 0.12, 0.06);
+  let cold = vec3f(0.07, 0.09, 0.16);
+
+  let horizonScale = select(0.0, 0.42, mode == 1u) + select(0.0, 0.88, mode == 2u);
+  let glowLayer = horizonColor * glow * horizonScale;
+  let scatter = mix(cold, warm, smoothstep(0.55, 0.90, uv.y));
+  let scatterStrength = pow(clamp(1.0 - uv.y * 1.2, 0.0, 1.0), 2.6) * select(0.18, 0.32, mode == 1u) + select(0.0, 0.22, mode == 2u);
+  return scatter * scatterStrength + glowLayer;
+}
+
+fn starLayer(uv: vec2f, scale: f32, density: f32, twinklePower: f32) -> vec3f {
+  let cell = floor(uv * scale);
+  let a = hash2(cell);
+  let b = hash2(cell + vec2f(1.0, 0.0));
+  let c = hash2(cell + vec2f(0.0, 1.0));
+  let mag = mix(1.8, 6.2, a);
+  let prob = pow(2.512, -mag) * density;
+  let starMask = f32(b < prob);
+  let radius = pow(c, 2.4) * 0.9 + 0.05;
+  let intensity = starMask * pow(c, 3.0) * radius;
+  let temperature = mix(2800.0, 18000.0, a);
+  let color = blackbodyColor(temperature);
+  let twinkle = 0.82 + twinklePower * sin(uni.time * (1.2 + b * 3.5) + a * 19.0)
+                 + 0.09 * sin(uni.time * (4.3 + c * 5.1) + b * 23.0);
+  return color * intensity * twinkle;
+}
+
 @fragment fn fs(in:VSOut) -> @location(0) vec4f {
-  var total = vec3f(0.0);
+  var sky = mix(vec3f(0.01, 0.02, 0.05), vec3f(0.06, 0.08, 0.15), pow(in.uv.y, 1.7));
+  var stars = vec3f(0.0);
 
-  // Milky Way background (deepest layer)
-  total += renderMilkyWay(in.uv);
+  stars += renderMilkyWay(in.uv) * 1.5;
+  stars += renderNebula(in.uv);
+  stars += starLayer(in.uv, 512.0, 0.16, 0.14);
+  stars += starLayer(in.uv + vec2f(0.001, 0.003), 196.0, 0.09, 0.09);
+  stars += starLayer(in.uv + vec2f(0.006, 0.004), 78.0, 0.02, 0.05);
 
-  // Layer 1: Distant fine stars with blackbody colors and magnitude distribution
-  let cell1  = floor(in.uv * 512.0);
-  let h1     = hash2(cell1);
-  let h1b    = hash2(cell1 + vec2f(1.0,0.0));
-  let h1c    = hash2(cell1 + vec2f(0.0,1.0));
-  // Magnitude-based probability (Pogson's law: more dim stars)
-  let mag1   = h1 * 7.0;
-  let prob1  = pow(2.512, -mag1) * 2.0;
-  let star1  = f32(h1b < prob1 * 0.3) * pow(h1b, 4.0);
-  // Blackbody color from temperature
-  let temp1  = mix(3000.0, 12000.0, h1c);
-  let color1 = blackbodyColor(temp1);
-  // Multi-octave twinkling (chaotic, not periodic)
-  let twinkle1 = 0.7 + 0.15 * sin(uni.time * (1.5 + h1b*3.0) + h1*20.0)
-               + 0.1 * sin(uni.time * (4.0 + h1c*5.0) + h1b*30.0)
-               + 0.05 * sin(uni.time * (8.0 + h1*7.0) + h1c*40.0);
-  total += color1 * star1 * twinkle1 * 1.5;
-
-  // Layer 2: Mid-range brighter stars
-  let cell2  = floor(in.uv * 200.0);
-  let h2     = hash2(cell2 + vec2f(43.0,17.0));
-  let h2b    = hash2(cell2 + vec2f(71.0,53.0));
-  let h2c    = hash2(cell2 + vec2f(97.0,23.0));
-  let mag2   = h2 * 5.0;
-  let prob2  = pow(2.512, -mag2) * 1.5;
-  let star2  = f32(h2b < prob2 * 0.15) * pow(h2b, 3.0);
-  let temp2  = mix(3500.0, 20000.0, h2c);
-  let color2 = blackbodyColor(temp2);
-  let twinkle2 = 0.8 + 0.1 * sin(uni.time * (0.8 + h2b*1.5) + h2*15.0)
-               + 0.07 * sin(uni.time * (3.5 + h2c*3.0) + h2b*25.0)
-               + 0.03 * sin(uni.time * (7.0 + h2*5.0) + h2c*35.0);
-  total += color2 * star2 * twinkle2 * 2.5;
-
-  // Layer 3: Bright foreground stars (sparse, vivid colors)
-  let cell3  = floor(in.uv * 80.0);
-  let h3     = hash2(cell3 + vec2f(13.0, 91.0));
-  let h3b    = hash2(cell3 + vec2f(37.0, 67.0));
-  let h3c    = hash2(cell3 + vec2f(59.0, 41.0));
-  let star3  = f32(h3 > 0.998) * pow(h3b, 2.0);
-  let temp3  = mix(2500.0, 30000.0, h3c);
-  let color3 = blackbodyColor(temp3);
-  let twinkle3 = 0.85 + 0.1 * sin(uni.time * (0.5 + h3b*0.8) + h3*10.0)
-               + 0.05 * sin(uni.time * (2.0 + h3c*2.0) + h3b*20.0);
-  total += color3 * star3 * twinkle3 * 3.5;
-
-  return vec4f(total, 1.0);
+  let atmosphere = horizonFog(in.uv, uni.background_mode);
+  let modeBoost = select(0.88, select(1.02, 1.18, uni.background_mode == 1u), uni.background_mode == 2u);
+  var color = sky * 0.92 + stars * 1.05 + atmosphere;
+  color = mix(sky, color, 0.88) * modeBoost;
+  color = pow(color, vec3f(0.96, 0.97, 0.99));
+  return vec4f(clamp(color, vec3f(0.0), vec3f(1.0)), 1.0);
 }
 `;

@@ -30,44 +30,42 @@ fn hash(n: u32) -> u32 {
   return x;
 }
 
-// Map satellite positions to the camera's flat perspective
+fn hashf(n: u32) -> f32 {
+  return f32(hash(n) & 0xFFFFu) / 65535.0;
+}
+
 fn to_earth_facing_coords(sat_pos: vec3f) -> vec3f {
   let center_dir = normalize(uni.camera_pos.xyz);
   let up = vec3f(0.0, 0.0, 1.0);
   let right = normalize(cross(up, center_dir));
   let true_up = cross(center_dir, right);
-  
+
   let local_x = dot(sat_pos, right);
   let local_y = dot(sat_pos, true_up);
   let local_z = dot(sat_pos, center_dir);
-  
+
   return vec3f(local_x, local_y, local_z);
 }
 
-// Smile Boundary Check
-fn is_in_smile(sat_pos: vec3f) -> bool {
+fn is_in_grok(sat_pos: vec3f) -> bool {
   let local = to_earth_facing_coords(sat_pos);
-  if (local.z < 1000.0) { return false; } // Hide backside
-  
-  let scale = 1.0 / 6921.0;
+  if (local.z < 1000.0) { return false; }
+
+  let scale = 1.0 / ORBIT_RADIUS_KM;
   let x = local.x * scale;
   let y = local.y * scale;
 
-  let left_eye_dist = length(vec2f(x - (-0.3), y - 0.3));
-  let right_eye_dist = length(vec2f(x - 0.3, y - 0.3));
-  let smile_y = -0.5 * x * x - 0.2;
-  let smile_curve = abs(y - smile_y);
+  let left_stem = abs(x + 0.45) < 0.14 && abs(y) < 0.45;
+  let right_stem = abs(x - 0.45) < 0.14 && abs(y) < 0.45;
+  let center_bar = abs(x) < 0.22 && abs(y) < 0.12;
+  let star = abs(x) < 0.08 && abs(y) < 0.08;
 
-  if (left_eye_dist < 0.08 || right_eye_dist < 0.08 || (smile_curve < 0.05 && y < -0.1)) {
-    return true;
-  }
-  return false;
+  return left_stem || right_stem || center_bar || star;
 }
 
-// 𝕏 Logo Boundary Check
 fn is_in_x_logo(sat_pos: vec3f) -> bool {
   let local = to_earth_facing_coords(sat_pos);
-  if (local.z < 1000.0) { return false; } // Hide backside
+  if (local.z < 1000.0) { return false; }
 
   let px = local.x / ORBIT_RADIUS_KM;
   let py = local.y / ORBIT_RADIUS_KM;
@@ -83,85 +81,80 @@ fn is_in_x_logo(sat_pos: vec3f) -> bool {
   return in_box && nearest < STROKE_HALF;
 }
 
-// Route to correct pattern logic
 fn is_active_node(sat_pos: vec3f, mode: u32) -> bool {
-  if (mode == 3u) { return is_in_smile(sat_pos); }
+  if (mode == 1u) { return is_in_grok(sat_pos); }
   if (mode == 2u) { return is_in_x_logo(sat_pos); }
   return false;
+}
+
+fn surface_target(pos: vec3f) -> vec3f {
+  var target = vec3f(pos.x, pos.y, 0.0);
+  if (length(target) < 1.0) {
+    target = vec3f(1.0, 0.0, 0.0);
+  }
+  return normalize(target) * 6371.0;
 }
 
 @compute @workgroup_size(256,1,1)
 fn main(@builtin(global_invocation_id) gid : vec3u) {
   let beam_idx = gid.x;
   if (beam_idx >= MAX_BEAMS) { return; }
-  
-  // Spread beam assignment across the constellation
-  let sat_a_idx = beam_idx * 5u; 
+
+  let sat_a_idx = beam_idx * 5u;
   let pos_a = sat_pos[sat_a_idx].xyz;
-  
-  var is_active = false;
+
+  var active = false;
   var intensity = 0.0;
-  
-  // STEP 1: Determine if Node A is in the pattern
-  if (params.mode == 2u || params.mode == 3u) {
-     if (is_active_node(pos_a, params.mode)) {
-         is_active = true;
-         intensity = 1.0;
-     }
-  } else if (params.mode == 1u) {
-     // CHAOS/GROK Mode: Random nodes
-     if ((hash(beam_idx + u32(params.time * 0.1)) % 30u) == 0u) {
-         is_active = true;
-         intensity = 0.6;
-     }
+
+  if (params.mode == 0u) {
+    active = true;
+    intensity = 1.0;
+  } else {
+    if (is_active_node(pos_a, params.mode)) {
+      active = true;
+      intensity = 1.0;
+    }
   }
 
-  // If node A is not active, kill the beam
-  if (!is_active) {
+  if (!active) {
     beams[beam_idx * 2u] = vec4f(pos_a, 0.0);
     beams[beam_idx * 2u + 1u] = vec4f(pos_a, 0.0);
     return;
   }
-  
+
   var pos_b = pos_a;
   var found = false;
-  
-  // STEP 2: Find a partner node (Node B)
-  if (params.mode == 2u || params.mode == 3u) {
-      // Search loop: Check up to 40 surrounding indices
-      for (var j = 1u; j <= 40u; j++) {
-          // Use prime offset (17) to jump around local orbit space
-          let candidate_idx = (sat_a_idx + j * 17u) % NUM_SATS; 
-          let c_pos = sat_pos[candidate_idx].xyz;
-          
-          if (is_active_node(c_pos, params.mode)) {
-              // Prevent ultra-short or ultra-long beams
-              let dist = length(c_pos - pos_a);
-              if (dist > 50.0 && dist < 2000.0) { 
-                  pos_b = c_pos;
-                  found = true;
-                  break;
-              }
-          }
-      }
+
+  if (params.mode == 0u) {
+    pos_b = surface_target(pos_a);
+    let angle = hashf(beam_idx * 13u) * 6.2831853;
+    let jitter = vec3f(cos(angle), sin(angle), 0.0) * 6.0;
+    pos_b += jitter;
+    found = true;
   } else {
-      // Chaos mode: just grab a random neighbor
-      let neighbor_offset = (hash(beam_idx) % 150u) + 1u;
-      pos_b = sat_pos[(sat_a_idx + neighbor_offset) % NUM_SATS].xyz;
-      found = true;
+    for (var j = 1u; j <= 40u; j++) {
+      let candidate_idx = (sat_a_idx + j * 17u) % NUM_SATS;
+      let c_pos = sat_pos[candidate_idx].xyz;
+      if (is_active_node(c_pos, params.mode)) {
+        let dist = length(c_pos - pos_a);
+        if (dist > 90.0 && dist < 2100.0) {
+          pos_b = c_pos;
+          found = true;
+          break;
+        }
+      }
+    }
   }
-  
+
   if (!found) {
     beams[beam_idx * 2u] = vec4f(pos_a, 0.0);
     beams[beam_idx * 2u + 1u] = vec4f(pos_a, 0.0);
     return;
   }
-  
-  // STEP 3: Connect them
-  // Add a rapid flicker to the lasers
-  let pulse = 0.4 + 0.6 * sin(params.time * 12.0 + f32(beam_idx));
+
+  let pulse = 0.52 + 0.48 * sin(params.time * 8.6 + f32(beam_idx) * 0.12);
   let final_intensity = intensity * pulse;
-  
+
   beams[beam_idx * 2u] = vec4f(pos_a, final_intensity);
   beams[beam_idx * 2u + 1u] = vec4f(pos_b, f32(params.mode));
 }
