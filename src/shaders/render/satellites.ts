@@ -345,7 +345,6 @@ fn vs(
   out.cp = uni.view_proj * vec4f(fpos, 1.0);
   out.uv = (qv + 1.0) * 0.5;
 
-  // Apply animation patterns if active (modes 2-5)
   if (params.pattern_mode > 0u) {
     let earth_dir = normalize(-wp);
     var pattern_col: vec4f;
@@ -375,7 +374,9 @@ fn vs(
     }
   } else {
     out.color = col;
-    out.bright = (pattern * atten + glint * atten) * selectionBoost;
+    // Extra 1.5× brightness on selected satellite so it pops visually
+    let selectBrightBoost = 1.0 + isHighlighted * 1.5;
+    out.bright = (pattern * atten + glint * atten) * selectionBoost * selectBrightBoost;
   }
 
   out.shell = f32(shellIdx);
@@ -398,18 +399,24 @@ fn fs(in: VOut) -> @location(0) vec4f {
   var halos = 0.0;
   halos += exp(-pow((d - 0.25) / 0.08, 2.0)) * 0.4;
   halos += exp(-pow((d - 0.50) / 0.06, 2.0)) * 0.2;
+  // Shell-tinted mid ring
+  halos += exp(-pow((d - 0.60) / 0.04, 2.0)) * 0.15;
   halos += exp(-pow((d - 0.75) / 0.05, 2.0)) * 0.1;
 
   // 4-point diffraction spikes
   let spike = pow(abs(cos(angle * 2.0)), 16.0) * exp(-d * 3.0) * 0.4;
 
-  // Outer glow falloff
-  let outerGlow = exp(-d * 2.5) * 0.3;
-  let edgeGlow = exp(-pow(d - 0.35, 2.0) * 8.0) * 0.15 * (1.0 + highlight * 0.8);
+  // Outer glow — softer, wider falloff (exponent 1.8 vs old 2.5)
+  let outerGlow = exp(-d * 1.8) * 0.3;
+  let edgeGlow = exp(-pow(d - 0.35, 2.0) * 8.0) * 0.15 * (1.0 + in.highlight * 0.8);
+
+  // Animated pulsing focus ring for selected satellites
+  let focusPulse = 0.65 + 0.35 * sin(uni.time * 6.0);
+  let focusRing = exp(-pow((d - 0.85) / 0.05, 2.0)) * focusPulse * 1.8 * in.highlight;
 
   // Shell-dependent glow width (shells clamped to [0,2] range)
   let shellGlowMod = mix(1.2, 0.7, clamp(in.shell, 0.0, 2.0) / 2.0);
-  let total = (core * 2.0 + halos * shellGlowMod + spike + outerGlow + edgeGlow) * in.bright;
+  let total = (core * 2.0 + halos * shellGlowMod + spike + outerGlow + edgeGlow + focusRing) * in.bright;
 
   // Color: core white-hot, edges colored
   let coreWhite = vec3f(1.0, 1.0, 1.0);

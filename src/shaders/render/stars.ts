@@ -108,7 +108,7 @@ fn renderNebula(uv: vec2f) -> vec3f {
   let n = fbm(p + vec3f(12.1, 21.4, 0.0)) * 0.55 + fbm(p * 2.2 + vec3f(9.3, 5.7, 0.0)) * 0.35;
   let band = smoothstep(0.1, 0.6, fract(uv.x * 1.7 + uv.y * 0.28));
   let cloud = smoothstep(0.35, 0.72, n + 0.28 - pow(abs(uv.y - 0.55), 1.8));
-  return mix(blue, pink, band) * cloud * 0.25;
+  return mix(blue, pink, band) * cloud * 0.35;
 }
 
 fn horizonFog(uv: vec2f, mode: u32) -> vec3f {
@@ -145,10 +145,11 @@ fn starLayer(uv: vec2f, scale: f32, density: f32, twinklePower: f32) -> vec3f {
   var sky = mix(vec3f(0.01, 0.02, 0.05), vec3f(0.06, 0.08, 0.15), pow(in.uv.y, 1.7));
   var stars = vec3f(0.0);
 
-  stars += renderMilkyWay(in.uv) * 1.5;
+  stars += renderMilkyWay(in.uv) * 2.0;
   stars += renderNebula(in.uv);
-  stars += starLayer(in.uv, 512.0, 0.16, 0.14);
-  stars += starLayer(in.uv + vec2f(0.001, 0.003), 196.0, 0.09, 0.09);
+  stars += starLayer(in.uv, 1024.0, 0.22, 0.22);
+  stars += starLayer(in.uv + vec2f(0.002, 0.007), 512.0, 0.16, 0.14);
+  stars += starLayer(in.uv + vec2f(0.001, 0.003), 256.0, 0.11, 0.10);
   stars += starLayer(in.uv + vec2f(0.006, 0.004), 78.0, 0.02, 0.05);
 
   let atmosphere = horizonFog(in.uv, uni.background_mode);
