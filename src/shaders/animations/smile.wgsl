@@ -11,8 +11,8 @@
  * 
  * Animation Phases (8 seconds each, adjustable):
  * 1. EMERGE:   Satellites fade from constellation colors to smile colors
- * 2. GLOW:     Warm pulse (0.8→1.2 brightness), eyes blink alternately
- * 3. TWINKLE:  Random sparkle on smile curve, traveling wave left→right
+ * 2. GLOW:     Warm pulse (0.81.2 brightness), eyes blink alternately
+ * 3. TWINKLE:  Random sparkle on smile curve, traveling wave leftright
  * 4. FADE:     Dissolve back to original pattern over 2 seconds
  */
 

@@ -74,7 +74,7 @@ fn shellSizeScale(shell: u32) -> f32 {
   }
 }
 
-// Canonical integer hash =Üí [0, 1)
+// Canonical integer hash = [0, 1)
 fn hashU32(n: u32) -> f32 {
   var x = n;
   x = x ^ (x >> 16u);
@@ -239,7 +239,7 @@ fn heartbeat_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> vec4f {
   return vec4f(col * total_pulse, total_pulse);
 }
 
-// ====== ù=è LOGO PATTERN ====================================================================================================================================================================================
+// ====== = LOGO PATTERN ====================================================================================================================================================================================
 
 const ORBIT_RADIUS_KM: f32 = 6921.0;  // LEO orbit radius (Earth radius + 550 km altitude)
 const INV_SQRT2: f32 = 0.70710678;    // 1 / sqrt(2), used for 45deg diagonal distances

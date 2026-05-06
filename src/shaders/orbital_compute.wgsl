@@ -199,7 +199,7 @@ fn floatBitsToUint(f: f32) -> u32 {
  * Calculate J2 perturbation acceleration at a position
  * 
  * The J2 perturbation accounts for Earth's oblateness:
- * a_j2 = 3/2 * J2 * mu * Re^2 / r⁵ * [
+ * a_j2 = 3/2 * J2 * mu * Re^2 / r * [
  *   x * (5z^2/r^2 - 1),
  *   y * (5z^2/r^2 - 1),
  *   z * (5z^2/r^2 - 3)
@@ -266,9 +266,9 @@ fn totalAcceleration(pos: vec3f) -> vec3f {
  *   - Depends on cos(i) - zero at equatorial, max at polar (but sign flips)
  * 
  * Expected rates for Starlink shells:
- *   - Shell 1 (550km, 53deg): Omega ≈ -0.057deg/day, period ≈ 17 years for 360deg
- *   - Shell 2 (540km, 53deg): Omega ≈ -0.058deg/day, period ≈ 17 years
- *   - Shell 3 (570km, 53deg): Omega ≈ -0.055deg/day, period ≈ 18 years
+ *   - Shell 1 (550km, 53deg): Omega  -0.057deg/day, period  17 years for 360deg
+ *   - Shell 2 (540km, 53deg): Omega  -0.058deg/day, period  17 years
+ *   - Shell 3 (570km, 53deg): Omega  -0.055deg/day, period  18 years
  * 
  * For circular orbits: p = a
  */
@@ -329,7 +329,7 @@ fn solveKepler(M: f32, e: f32) -> f32 {
 
 /**
  * Convert Keplerian elements to position using mean anomaly
- * For circular orbits (e ≈ 0), mean anomaly ≈ true anomaly
+ * For circular orbits (e  0), mean anomaly  true anomaly
  */
 fn keplerianToPosition(
   a: f32,

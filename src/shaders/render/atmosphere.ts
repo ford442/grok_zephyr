@@ -12,7 +12,7 @@ struct VOut { @builtin(position) cp:vec4f, @location(0) wp:vec3f, @location(1) n
 const ATM_SCALE : f32 = 6471.0/6371.0;
 const PI: f32 = 3.14159265;
 
-// Rayleigh scattering coefficients (artistic approximation of Î»=»=´ dependence for RGB wavelengths)
+// Rayleigh scattering coefficients (artistic approximation of == dependence for RGB wavelengths)
 const RAYLEIGH_COEFF = vec3f(5.8e-3, 13.5e-3, 33.1e-3);
 
 @vertex fn vs(v:VIn) -> VOut {

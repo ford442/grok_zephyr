@@ -18,7 +18,7 @@ const RAYLEIGH_SCALE_HEIGHT: f32 = 8.0;    // km - Rayleigh scattering scale hei
 const MIE_SCALE_HEIGHT: f32 = 1.2;          // km - Mie scattering scale height
 
 // Scattering strengths (tuned for visual appeal)
-const RAYLEIGH_SCATTERING: vec3f = vec3f(0.0058, 0.0135, 0.0331); // λ^-4 dependence
+const RAYLEIGH_SCATTERING: vec3f = vec3f(0.0058, 0.0135, 0.0331); // ^-4 dependence
 const MIE_SCATTERING: f32 = 0.003996;       // Mie scattering coefficient
 const MIE_ABSORPTION: f32 = 0.000444;       // Mie absorption
 const MIE_G: f32 = 0.8;                     // Mie scattering phase asymmetry

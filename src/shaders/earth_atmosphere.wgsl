@@ -225,8 +225,8 @@ fn fs_atm(in: VertexOutput) -> @location(0) vec4f {
   let V = normalize(uni.camera_pos.xyz - in.world_pos);
   
   // Rim factor based on view angle
-  // At horizon: N·V ≈ 0, rim ≈ 1
-  // At center: N·V ≈ 1, rim ≈ 0
+  // At horizon: NV  0, rim  1
+  // At center: NV  1, rim  0
   let cos_view = dot(N, V);
   let rim = 1.0 - abs(cos_view);
   
