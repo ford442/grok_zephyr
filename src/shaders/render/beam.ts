@@ -47,7 +47,7 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) instance: u32) ->
   let worldPos = center + offsetDir * sideSign * thickness;
 
   out.cp = uni.view_proj * vec4f(worldPos, 1.0);
-  out.uv = vec2f(t, (sideSign > 0.0) ? 1.0 : 0.0);
+  out.uv = vec2f(t, select(0.0, 1.0, sideSign > 0.0));
   out.intensity = start.w;
   out.mode = end.w;
   return out;
