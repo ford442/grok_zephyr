@@ -147,9 +147,9 @@ fn fs(in: VSOut) -> @location(0) vec4f {
   return vec4f(blended, 1.0);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
+// =================================================================================
 // Halton Sequence Generator (CPU-side helper functions)
-// ═══════════════════════════════════════════════════════════════════════════════
+// =================================================================================
 // These would be called from TypeScript to generate jitter values:
 //
 // function halton(index: number, base: number): number {
