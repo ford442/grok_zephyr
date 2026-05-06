@@ -29,7 +29,7 @@ const SUN_ANGULAR_RADIUS: f32 = 0.00465;    // ~0.266 degrees in radians
 
 // City lights
 const CITY_LIGHTS_INTENSITY: f32 = 0.5;
-const CITY_LIGHTS_THRESHOLD: f32 = -0.1;    // cos(90° + small angle)
+const CITY_LIGHTS_THRESHOLD: f32 = -0.1;    // cos(90deg + small angle)
 
 // =================================================================================
 // ATMOSPHERE DENSITY FUNCTIONS

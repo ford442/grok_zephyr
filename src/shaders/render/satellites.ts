@@ -74,7 +74,7 @@ fn shellSizeScale(shell: u32) -> f32 {
   }
 }
 
-// Canonical integer hash → [0, 1)
+// Canonical integer hash =�� [0, 1)
 fn hashU32(n: u32) -> f32 {
   var x = n;
   x = x ^ (x >> 16u);
@@ -239,10 +239,10 @@ fn heartbeat_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> vec4f {
   return vec4f(col * total_pulse, total_pulse);
 }
 
-// ── 𝕏 LOGO PATTERN ────────────────────────────────────────────────────────────
+// ====== �=� LOGO PATTERN ====================================================================================================================================================================================
 
 const ORBIT_RADIUS_KM: f32 = 6921.0;  // LEO orbit radius (Earth radius + 550 km altitude)
-const INV_SQRT2: f32 = 0.70710678;    // 1 / sqrt(2), used for 45° diagonal distances
+const INV_SQRT2: f32 = 0.70710678;    // 1 / sqrt(2), used for 45deg diagonal distances
 
 fn x_logo_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, start_time: f32) -> vec4f {
   let local = to_earth_facing_coords(sat_pos);
@@ -405,7 +405,7 @@ fn fs(in: VOut) -> @location(0) vec4f {
   // 4-point diffraction spikes
   let spike = pow(abs(cos(angle * 2.0)), 16.0) * exp(-d * 3.0) * 0.4;
 
-  // Outer glow — softer, wider falloff (exponent 1.8 vs old 2.5)
+  // Outer glow === softer, wider falloff (exponent 1.8 vs old 2.5)
   let outerGlow = exp(-d * 1.8) * 0.3;
   let edgeGlow = exp(-pow(d - 0.35, 2.0) * 8.0) * 0.15 * (1.0 + in.highlight * 0.8);
 

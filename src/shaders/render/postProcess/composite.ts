@@ -3,10 +3,10 @@
  * Final tone mapping, vignetting, chromatic aberration, film grain, anamorphic streak
  *
  * Bindings:
- *   0 — sceneTex  (HDR scene)
- *   1 — bloomTex  (blurred bloom)
- *   2 — linearSamp
- *   3 — uni       (shared Uni uniform buffer — for uni.time)
+ *   0 === sceneTex  (HDR scene)
+ *   1 === bloomTex  (blurred bloom)
+ *   2 === linearSamp
+ *   3 === uni       (shared Uni uniform buffer === for uni.time)
  *
  * NOTE: The `Uni` struct below MUST match the layout in src/shaders/uniforms.ts exactly.
  * If fields are added to the shared struct, update this copy to keep the byte offsets aligned.
@@ -37,7 +37,7 @@ struct VSOut {
 
 @vertex
 fn vs(@builtin(vertex_index) vid: u32) -> VSOut {
-  // Full-screen triangle — single large triangle that covers the entire viewport
+  // Full-screen triangle === single large triangle that covers the entire viewport
   const pts = array<vec2f, 3>(
     vec2f(-1.0, -1.0),
     vec2f( 3.0, -1.0),
@@ -74,7 +74,7 @@ fn acesToneMapping(hdr: vec3f) -> vec3f {
 }
 
 fn applyVignette(color: vec3f, uv: vec2f) -> vec3f {
-  // sqrt(2) ≈ 1.414 normalises distance so screen corners = 1.0
+  // sqrt(2) =�� 1.414 normalises distance so screen corners = 1.0
   let dist = length((uv - 0.5) * 1.414);
   let vignette = 1.0 - smoothstep(VIGNETTE_INNER, VIGNETTE_OUTER, dist);
   let naturalVignette = pow(vignette, 4.0);
@@ -97,7 +97,7 @@ fn filmGrain(uv: vec2f, time: f32) -> f32 {
   return hash * 2.0 - 1.0;
 }
 
-// Anamorphic horizontal streak — simulates anamorphic lens flare on bright pixels
+// Anamorphic horizontal streak === simulates anamorphic lens flare on bright pixels
 fn anamorphicStreak(uv: vec2f) -> vec3f {
   var streak = vec3f(0.0);
   let tx = 1.0 / f32(textureDimensions(bloomTex, 0).x);

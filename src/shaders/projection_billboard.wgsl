@@ -169,7 +169,7 @@ fn vs(
 // =================================================================================
 //
 // PSF model: Gaussian core + Moffat halo
-//   I(r) = 0.7 × exp(-r²/(2×0.08²)) + 0.3 / (1 + (r/0.15)²)^2.5
+//   I(r) = 0.7 × exp(-r^2/(2×0.08^2)) + 0.3 / (1 + (r/0.15)^2)^2.5
 //
 // This matches the Kolmogorov atmospheric turbulence PSF for a
 // diffraction-limited point source at V=5.0.
@@ -208,7 +208,7 @@ fn fs_lod(in: VOut) -> @location(0) vec4f {
   if (r > 1.0) { discard; }
 
   // Simple Gaussian only (skip Moffat for perf)
-  let psf = exp(-r * r / 0.0128);  // σ=0.08, 2σ²=0.0128
+  let psf = exp(-r * r / 0.0128);  // σ=0.08, 2σ^2=0.0128
   let hdr = in.color.rgb * psf * in.bright * 2.0;
   return vec4f(hdr, psf * in.bright);
 }

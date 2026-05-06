@@ -17,7 +17,7 @@
  *   S = T/P = 1024 sats per plane
  *
  * In-plane angular separation:
- *   Δν = 2π / S = 2π / 1024 ≈ 0.006136 rad = 0.3516°
+ *   Δν = 2pi / S = 2pi / 1024 ≈ 0.006136 rad = 0.3516deg
  *
  * In-plane linear spacing at each shell:
  *   Shell 0 (340km, a=6711km): Δs = 6711 × 0.006136 ≈ 41.18 km
@@ -25,30 +25,30 @@
  *   Shell 2 (1150km,a=7521km): Δs = 7521 × 0.006136 ≈ 46.15 km
  *
  * Cross-plane RAAN separation:
- *   ΔΩ = 2π / P = 2π / 1024 ≈ 0.006136 rad = 0.3516°
- *   At equator: Δx ≈ a × sin(ΔΩ) ≈ a × ΔΩ ≈ same as in-plane
+ *   ΔOmega = 2pi / P = 2pi / 1024 ≈ 0.006136 rad = 0.3516deg
+ *   At equator: Δx ≈ a × sin(ΔOmega) ≈ a × ΔOmega ≈ same as in-plane
  *
  * Angular separation as seen from camera (r_cam = 7091 km):
  *   θ_apparent(d) = Δs / d   where d = range to satellite
  *
  *   Closest approach ranges:
- *     Shell 0: d_min = |7091 - 6711| = 380 km → θ = 41.18/380 = 0.1084 rad = 6.21°
- *     Shell 1: d_min = |7091 - 6921| = 170 km → θ = 42.47/170 = 0.2498 rad = 14.31°
- *     Shell 2: d_min = |7521 - 7091| = 430 km → θ = 46.15/430 = 0.1073 rad = 6.15°
+ *     Shell 0: d_min = |7091 - 6711| = 380 km → θ = 41.18/380 = 0.1084 rad = 6.21deg
+ *     Shell 1: d_min = |7091 - 6921| = 170 km → θ = 42.47/170 = 0.2498 rad = 14.31deg
+ *     Shell 2: d_min = |7521 - 7091| = 430 km → θ = 46.15/430 = 0.1073 rad = 6.15deg
  *
- *   At typical range 2000 km: θ ≈ 42/2000 = 0.021 rad = 1.2°
- *   At max render 14000 km:   θ ≈ 42/14000 = 0.003 rad = 0.17°
+ *   At typical range 2000 km: θ ≈ 42/2000 = 0.021 rad = 1.2deg
+ *   At max render 14000 km:   θ ≈ 42/14000 = 0.003 rad = 0.17deg
  *
  * =================================================================================
  * 5TH-MAGNITUDE BLOOM PSF
  * =================================================================================
  *
  * Apparent magnitude of a satellite panel:
- *   m_sat ≈ m_sun - 2.5 × log10(A × ρ / (π × d²))
- *   For 1m² panel, ρ=0.5, at 500km: m ≈ 5.0
+ *   m_sat ≈ m_sun - 2.5 × log10(A × ρ / (pi × d^2))
+ *   For 1m^2 panel, ρ=0.5, at 500km: m ≈ 5.0
  *
  * PSF model: Gaussian core + power-law halo
- *   I(r) = I_core × exp(-r²/(2σ²)) + I_halo / (1 + (r/r_h)²)²
+ *   I(r) = I_core × exp(-r^2/(2σ^2)) + I_halo / (1 + (r/r_h)^2)^2
  *
  * For V=5.0, the bloom extent (where I drops to 1% of peak) is
  * approximately 4 arcminutes ≈ 1.16e-3 rad.
@@ -76,7 +76,7 @@ const CAMERA_RADIUS: f32 = 7091.0;  // 720 km altitude
 // Walker constellation parameters
 const SATS_PER_PLANE: f32 = 1024.0;
 const NUM_PLANES: f32 = 1024.0;
-const IN_PLANE_ANGULAR_SEP: f32 = 0.006136;  // 2π/1024 rad = 0.3516°
+const IN_PLANE_ANGULAR_SEP: f32 = 0.006136;  // 2pi/1024 rad = 0.3516deg
 
 // Bloom PSF parameters for magnitude-5 artificial star
 const MAG5_BLOOM_HALFANGLE: f32 = 0.00116;   // 4 arcmin in radians
