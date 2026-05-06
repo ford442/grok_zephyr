@@ -19,7 +19,7 @@
 
 const NUM_SAT: u32 = 1048576u;           // 2^20 satellites
 const EARTH_R: f32 = 6371.0;             // km
-const MU: f32 = 398600.4418;             // km³/s²
+const MU: f32 = 398600.4418;             // km^3/s^2
 const J2: f32 = 0.00108263;              // Earth's oblateness
 const J4: f32 = -0.000002370912;         // Higher-order J4 term (optional)
 
@@ -34,7 +34,7 @@ const SHELL_2_ALT: f32 = 540.0;
 const SHELL_3_ALT: f32 = 570.0;
 
 // Precomputed mean motion for each shell (rad/s)
-// n = sqrt(μ / a³) where a = EARTH_R + altitude
+// n = sqrt(mu / a^3) where a = EARTH_R + altitude
 const SHELL_1_N: f32 = 0.001131;         // 550km
 const SHELL_2_N: f32 = 0.001143;         // 540km  
 const SHELL_3_N: f32 = 0.001103;         // 570km
@@ -103,14 +103,14 @@ fn getLodDistance() -> f32 {
 // =================================================================================
 
 /**
- * Pack angle [0, 2π) into u8 [0, 255]
+ * Pack angle [0, 2pi) into u8 [0, 255]
  */
 fn packAngleU8(angle_rad: f32) -> u32 {
   return u32(fract(angle_rad / (2.0 * 3.14159265359)) * 255.0);
 }
 
 /**
- * Unpack u8 [0, 255] to angle [0, 2π)
+ * Unpack u8 [0, 255] to angle [0, 2pi)
  */
 fn unpackAngleU8(packed: u32) -> f32 {
   return f32(packed & 0xFFu) / 255.0 * 2.0 * 3.14159265359;
@@ -199,10 +199,10 @@ fn floatBitsToUint(f: f32) -> u32 {
  * Calculate J2 perturbation acceleration at a position
  * 
  * The J2 perturbation accounts for Earth's oblateness:
- * a_j2 = 3/2 * J2 * μ * Re² / r⁵ * [
- *   x * (5z²/r² - 1),
- *   y * (5z²/r² - 1),
- *   z * (5z²/r² - 3)
+ * a_j2 = 3/2 * J2 * mu * Re^2 / r * [
+ *   x * (5z^2/r^2 - 1),
+ *   y * (5z^2/r^2 - 1),
+ *   z * (5z^2/r^2 - 3)
  * ]
  */
 fn j2Acceleration(pos: vec3f) -> vec3f {
@@ -214,7 +214,7 @@ fn j2Acceleration(pos: vec3f) -> vec3f {
   
   let z2 = pos.z * pos.z;
   
-  // J2 factor: 3/2 * J2 * μ * Re²
+  // J2 factor: 3/2 * J2 * mu * Re^2
   let j2_factor = 1.5 * J2 * MU * EARTH_R * EARTH_R;
   
   let z2r2 = z2 / r2;
@@ -249,26 +249,26 @@ fn totalAcceleration(pos: vec3f) -> vec3f {
  * equatorial bulge (J2 perturbation) exerts a torque on the orbital plane.
  * 
  * The formula is:
- *   Ω̇ = -3/2 * J2 * (Re/a)² * n * cos(i)
+ *   Omega = -3/2 * J2 * (Re/a)^2 * n * cos(i)
  * 
  * Where:
  *   - J2 = 0.00108263 (Earth's oblateness coefficient)
  *   - Re = 6371 km (Earth's equatorial radius)
  *   - a = semi-major axis (km)
- *   - n = mean motion = sqrt(μ/a³) (rad/s)
+ *   - n = mean motion = sqrt(mu/a^3) (rad/s)
  *   - i = inclination (rad)
  * 
  * Key properties:
- *   - Negative for prograde orbits (i < 90°): westward precession
- *   - Positive for retrograde orbits (i > 90°): eastward precession
- *   - Zero for polar orbits (i = 90°)
+ *   - Negative for prograde orbits (i < 90deg): westward precession
+ *   - Positive for retrograde orbits (i > 90deg): eastward precession
+ *   - Zero for polar orbits (i = 90deg)
  *   - Faster at lower altitudes (stronger J2 effect)
  *   - Depends on cos(i) - zero at equatorial, max at polar (but sign flips)
  * 
  * Expected rates for Starlink shells:
- *   - Shell 1 (550km, 53°): Ω̇ ≈ -0.057°/day, period ≈ 17 years for 360°
- *   - Shell 2 (540km, 53°): Ω̇ ≈ -0.058°/day, period ≈ 17 years
- *   - Shell 3 (570km, 53°): Ω̇ ≈ -0.055°/day, period ≈ 18 years
+ *   - Shell 1 (550km, 53deg): Omega  -0.057deg/day, period  17 years for 360deg
+ *   - Shell 2 (540km, 53deg): Omega  -0.058deg/day, period  17 years
+ *   - Shell 3 (570km, 53deg): Omega  -0.055deg/day, period  18 years
  * 
  * For circular orbits: p = a
  */
@@ -282,11 +282,11 @@ fn nodalPrecessionRate(a: f32, i: f32) -> f32 {
  * Calculate J2 perigee precession rate (argument of perigee dot)
  * 
  * The argument of perigee also precesses due to Earth's oblateness:
- *   ω̇ = 3/4 * J2 * (Re/a)² * n * (5cos²(i) - 1)
+ *   omega = 3/4 * J2 * (Re/a)^2 * n * (5cos^2(i) - 1)
  * 
- * Critical inclination at i = 63.4° where ω̇ = 0 (frozen orbits).
- * For i < 63.4°, perigee precesses in the direction of motion.
- * For i > 63.4°, perigee precesses opposite to motion.
+ * Critical inclination at i = 63.4deg where omega = 0 (frozen orbits).
+ * For i < 63.4deg, perigee precesses in the direction of motion.
+ * For i > 63.4deg, perigee precesses opposite to motion.
  */
 fn perigeePrecessionRate(a: f32, i: f32) -> f32 {
   let n = sqrt(MU / (a * a * a));
@@ -304,10 +304,10 @@ fn perigeePrecessionRate(a: f32, i: f32) -> f32 {
  * Uses Newton-Raphson iteration
  */
 fn solveKepler(M: f32, e: f32) -> f32 {
-  // Normalize M to [0, 2π]
+  // Normalize M to [0, 2pi]
   var E = M;
   if (e > 0.8) {
-    E = 3.14159265359; // π for high eccentricity
+    E = 3.14159265359; // pi for high eccentricity
   }
   
   // Newton-Raphson iteration (max 10 iterations for GPU)
@@ -329,7 +329,7 @@ fn solveKepler(M: f32, e: f32) -> f32 {
 
 /**
  * Convert Keplerian elements to position using mean anomaly
- * For circular orbits (e ≈ 0), mean anomaly ≈ true anomaly
+ * For circular orbits (e  0), mean anomaly  true anomaly
  */
 fn keplerianToPosition(
   a: f32,
@@ -355,19 +355,19 @@ fn keplerianToPosition(
   let y_orb = a * sqrt1me2 * sinE;
   
   // Rotation to inertial frame
-  let cosΩ = cos(raan);
-  let sinΩ = sin(raan);
-  let cosω = cos(argPerigee);
-  let sinω = sin(argPerigee);
+  let cosOmega = cos(raan);
+  let sinOmega = sin(raan);
+  let cosomega = cos(argPerigee);
+  let sinomega = sin(argPerigee);
   let cosI = cos(i);
   let sinI = sin(i);
   
   // Transform to ECI
-  let x = (cosΩ * cosω - sinΩ * sinω * cosI) * x_orb + 
-          (-cosΩ * sinω - sinΩ * cosω * cosI) * y_orb;
-  let y = (sinΩ * cosω + cosΩ * sinω * cosI) * x_orb + 
-          (-sinΩ * sinω + cosΩ * cosω * cosI) * y_orb;
-  let z = (sinω * sinI) * x_orb + (cosω * sinI) * y_orb;
+  let x = (cosOmega * cosomega - sinOmega * sinomega * cosI) * x_orb + 
+          (-cosOmega * sinomega - sinOmega * cosomega * cosI) * y_orb;
+  let y = (sinOmega * cosomega + cosOmega * sinomega * cosI) * x_orb + 
+          (-sinOmega * sinomega + cosOmega * cosomega * cosI) * y_orb;
+  let z = (sinomega * sinI) * x_orb + (cosomega * sinI) * y_orb;
   
   return vec3f(x, y, z);
 }
@@ -551,19 +551,19 @@ fn updateSatellites(@builtin(global_invocation_id) id: vec3u) {
       // Unpack angles from compact storage
       let i = getInclinationFromPacked(packed_angles);
       let initial_raan = getInitialRAANFromPacked(packed_angles);
-      let ω = getArgPerigeeFromPacked(packed_angles);
+      let omega = getArgPerigeeFromPacked(packed_angles);
       
       // For precession, we update current_raan incrementally each frame
-      let Ωdot = nodalPrecessionRate(a, i);
-      let new_raan = current_raan + Ωdot * uni.delta_time;
+      let Omegadot = nodalPrecessionRate(a, i);
+      let new_raan = current_raan + Omegadot * uni.delta_time;
       
       // Perigee precession (can also be updated incrementally if needed)
-      let ωdot = perigeePrecessionRate(a, i);
-      let ω_current = ω + ωdot * physics_time;
+      let omegadot = perigeePrecessionRate(a, i);
+      let omega_current = omega + omegadot * physics_time;
       
       let M_current = M0 + n * uni.sim_time;
       
-      position = keplerianToPosition(a, e, i, new_raan, ω_current, M_current);
+      position = keplerianToPosition(a, e, i, new_raan, omega_current, M_current);
       
       // Store updated current_raan for next frame (position not stored in ext_elem)
       ext_elem[extIdx + 4u] = new_raan;
@@ -586,13 +586,13 @@ fn updateSatellites(@builtin(global_invocation_id) id: vec3u) {
       
       // Unpack angles
       let i = getInclinationFromPacked(packed_angles);
-      let ω = getArgPerigeeFromPacked(packed_angles);
+      let omega = getArgPerigeeFromPacked(packed_angles);
       
       // Current mean anomaly
       let M_current = M0 + n * uni.sim_time;
       
       // Initial position from Keplerian elements
-      state.pos = keplerianToPosition(a, e, i, current_raan, ω, M_current);
+      state.pos = keplerianToPosition(a, e, i, current_raan, omega, M_current);
       
       // Calculate initial velocity vector properly
       let r = length(state.pos);
@@ -634,17 +634,17 @@ fn updateSatellites(@builtin(global_invocation_id) id: vec3u) {
       
       // Unpack angles
       let i = getInclinationFromPacked(packed_angles);
-      let ω = getArgPerigeeFromPacked(packed_angles);
+      let omega = getArgPerigeeFromPacked(packed_angles);
       
       // Apply J2 precession using delta_time for incremental update
-      let Ωdot = nodalPrecessionRate(a, i);
-      let new_raan = current_raan + Ωdot * uni.delta_time;
+      let Omegadot = nodalPrecessionRate(a, i);
+      let new_raan = current_raan + Omegadot * uni.delta_time;
       
-      let ωdot = perigeePrecessionRate(a, i);
-      let ω_current = ω + ωdot * physics_time;
+      let omegadot = perigeePrecessionRate(a, i);
+      let omega_current = omega + omegadot * physics_time;
       let M_current = M0 + n * uni.sim_time;
       
-      position = keplerianToPosition(a, e, i, new_raan, ω_current, M_current);
+      position = keplerianToPosition(a, e, i, new_raan, omega_current, M_current);
       
       // Store updated current_raan only (position not stored in ext_elem)
       ext_elem[extIdx + 4u] = new_raan;
@@ -704,11 +704,11 @@ fn hsv2rgb(h: f32, s: f32, v: f32) -> vec3f {
 
 /**
  * Generate color based on RAAN for precession visualization
- * Satellites in the same orbital plane (same Ω) will have the same color
+ * Satellites in the same orbital plane (same Omega) will have the same color
  */
 fn getPrecessionColor(raan: f32) -> vec3f {
   // Normalize RAAN to [0, 1] and use as hue
-  // RAAN ranges from 0 to 2π, so we divide by 2π to get a hue
+  // RAAN ranges from 0 to 2pi, so we divide by 2pi to get a hue
   let hue = fract(raan / (2.0 * 3.14159265359));
   return hsv2rgb(hue, 1.0, 1.0);
 }

@@ -117,7 +117,7 @@ fn calculateShadowFactor(satPos: vec3f, sunDir: vec3f) -> f32 {
   // The shadow cone expands linearly from Earth's night side
   // At distance d from Earth's center along shadow axis, shadow radius is:
   // r_shadow = Earth_radius + d * tan(umbra_angle)
-  // where tan(umbra_angle) ≈ (Sun_radius - Earth_radius) / Sun_distance
+  // where tan(umbra_angle)  (Sun_radius - Earth_radius) / Sun_distance
   
   // Simplified: use the closest approach distance to determine shadow
   

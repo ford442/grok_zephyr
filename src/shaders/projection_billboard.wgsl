@@ -16,7 +16,7 @@
 @group(0) @binding(1) var<storage, read> sat_pos : array<vec4f>;
 
 // Per-satellite RGBA color (packed u32, rgba8unorm)
-// 1,048,576 × 4 bytes = 4 MB
+// 1,048,576  4 bytes = 4 MB
 @group(0) @binding(2) var<storage, read> sat_color_packed : array<u32>;
 
 struct VOut {
@@ -33,21 +33,21 @@ struct VOut {
 //
 // For a 5th-magnitude artificial star:
 //   Visual magnitude V = 5.0
-//   Apparent bloom FWHM ≈ 3-4 arcminutes (atmospheric seeing + optics)
-//   Bloom half-extent (to 1% intensity) ≈ 4 arcmin = 1.16e-3 rad
+//   Apparent bloom FWHM  3-4 arcminutes (atmospheric seeing + optics)
+//   Bloom half-extent (to 1% intensity)  4 arcmin = 1.16e-3 rad
 //
-// Billboard angular half-size = θ_bloom × HDR_scale
-//   = 1.16e-3 × 5.0 = 5.8e-3 rad
+// Billboard angular half-size = _bloom  HDR_scale
+//   = 1.16e-3  5.0 = 5.8e-3 rad
 //
-// Billboard world size = distance × angular_size
+// Billboard world size = distance  angular_size
 //   At 1000km: 5.8 km
 //   At 170km (closest 550km shell): 0.99 km
-//   At 14000km (max render): 81.2 km → clamped to 40 km
+//   At 14000km (max render): 81.2 km  clamped to 40 km
 // =================================================================================
 
 const MAG5_BLOOM_ANGLE: f32 = 0.00116;    // 4 arcmin in radians
 const BLOOM_HDR_SCALE: f32 = 5.0;         // overdrive for HDR bloom pass
-const BILLBOARD_ANGULAR_SIZE: f32 = 0.0058; // MAG5_BLOOM_ANGLE × BLOOM_HDR_SCALE
+const BILLBOARD_ANGULAR_SIZE: f32 = 0.0058; // MAG5_BLOOM_ANGLE  BLOOM_HDR_SCALE
 const BILLBOARD_MIN: f32 = 0.3;           // km, prevents sub-pixel quads
 const BILLBOARD_MAX: f32 = 40.0;          // km, prevents overdraw at distance
 
@@ -86,15 +86,15 @@ fn unpack_rgba8(packed: u32) -> vec4f {
 //   A point source should subtend constant angular size.
 //
 // CORRECTED formula:
-//   bsize = dist × BILLBOARD_ANGULAR_SIZE
-//   = dist × 0.0058
+//   bsize = dist  BILLBOARD_ANGULAR_SIZE
+//   = dist  0.0058
 //
 // This means the billboard GROWS with distance to maintain constant
-// angular extent on screen — exactly how a real PSF behaves.
+// angular extent on screen  exactly how a real PSF behaves.
 //
-// At 170 km:   0.99 km billboard → 0.0058 rad on screen ✓
-// At 1000 km:  5.8 km billboard  → 0.0058 rad on screen ✓
-// At 14000 km: 81.2 km → clamped to 40 km = 0.0029 rad (fades anyway)
+// At 170 km:   0.99 km billboard  0.0058 rad on screen 
+// At 1000 km:  5.8 km billboard   0.0058 rad on screen 
+// At 14000 km: 81.2 km  clamped to 40 km = 0.0029 rad (fades anyway)
 // =================================================================================
 
 fn corrected_billboard_size(dist: f32) -> f32 {
@@ -165,11 +165,11 @@ fn vs(
 }
 
 // =================================================================================
-// FRAGMENT SHADER — Magnitude-5 PSF Profile
+// FRAGMENT SHADER  Magnitude-5 PSF Profile
 // =================================================================================
 //
 // PSF model: Gaussian core + Moffat halo
-//   I(r) = 0.7 × exp(-r²/(2×0.08²)) + 0.3 / (1 + (r/0.15)²)^2.5
+//   I(r) = 0.7  exp(-r^2/(20.08^2)) + 0.3 / (1 + (r/0.15)^2)^2.5
 //
 // This matches the Kolmogorov atmospheric turbulence PSF for a
 // diffraction-limited point source at V=5.0.
@@ -180,7 +180,7 @@ fn fs(in: VOut) -> @location(0) vec4f {
   let r = length(in.uv - 0.5) * 2.0;
   if (r > 1.0) { discard; }
 
-  // Gaussian core (σ = 0.08 of billboard radius)
+  // Gaussian core ( = 0.08 of billboard radius)
   let sigma = 0.08;
   let gauss = exp(-r * r / (2.0 * sigma * sigma));
 
@@ -199,7 +199,7 @@ fn fs(in: VOut) -> @location(0) vec4f {
 }
 
 // =================================================================================
-// LOD VARIANT — Simplified PSF for distant satellites
+// LOD VARIANT  Simplified PSF for distant satellites
 // =================================================================================
 
 @fragment
@@ -208,7 +208,7 @@ fn fs_lod(in: VOut) -> @location(0) vec4f {
   if (r > 1.0) { discard; }
 
   // Simple Gaussian only (skip Moffat for perf)
-  let psf = exp(-r * r / 0.0128);  // σ=0.08, 2σ²=0.0128
+  let psf = exp(-r * r / 0.0128);  // =0.08, 2^2=0.0128
   let hdr = in.color.rgb * psf * in.bright * 2.0;
   return vec4f(hdr, psf * in.bright);
 }

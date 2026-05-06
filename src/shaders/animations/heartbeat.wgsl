@@ -1,7 +1,7 @@
 /**
  * Heartbeat Animation Shader
  * 
- * Lub-dub pulse with red→pink color shift.
+ * Lub-dub pulse with redpink color shift.
  * Satellites form a giant pulsing heart shape facing Earth.
  */
 

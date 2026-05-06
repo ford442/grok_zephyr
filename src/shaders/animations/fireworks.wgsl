@@ -94,7 +94,7 @@ fn randomVec3(seed: u32) -> vec3f {
 fn generateFireworkCenter(seed: u32) -> vec3f {
   // Generate random position within constellation bounds
   let angle = randomFloat(seed) * 6.28318;
-  let height = (randomFloat(seed + 1u) - 0.5) * 1000.0; // ±500km vertical
+  let height = (randomFloat(seed + 1u) - 0.5) * 1000.0; // 500km vertical
   let radius = 6500.0 + randomFloat(seed + 2u) * 1000.0; // 6500-7500km radius
   
   return vec3f(

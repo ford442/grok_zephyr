@@ -18,7 +18,7 @@ const RAYLEIGH_SCALE_HEIGHT: f32 = 8.0;    // km - Rayleigh scattering scale hei
 const MIE_SCALE_HEIGHT: f32 = 1.2;          // km - Mie scattering scale height
 
 // Scattering strengths (tuned for visual appeal)
-const RAYLEIGH_SCATTERING: vec3f = vec3f(0.0058, 0.0135, 0.0331); // λ^-4 dependence
+const RAYLEIGH_SCATTERING: vec3f = vec3f(0.0058, 0.0135, 0.0331); // ^-4 dependence
 const MIE_SCATTERING: f32 = 0.003996;       // Mie scattering coefficient
 const MIE_ABSORPTION: f32 = 0.000444;       // Mie absorption
 const MIE_G: f32 = 0.8;                     // Mie scattering phase asymmetry
@@ -29,7 +29,7 @@ const SUN_ANGULAR_RADIUS: f32 = 0.00465;    // ~0.266 degrees in radians
 
 // City lights
 const CITY_LIGHTS_INTENSITY: f32 = 0.5;
-const CITY_LIGHTS_THRESHOLD: f32 = -0.1;    // cos(90° + small angle)
+const CITY_LIGHTS_THRESHOLD: f32 = -0.1;    // cos(90deg + small angle)
 
 // =================================================================================
 // ATMOSPHERE DENSITY FUNCTIONS

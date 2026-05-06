@@ -208,7 +208,7 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
     surf = mix(surf, vec3f(0.90, 0.92, 0.95), pole);
   }
 
-  // City lights on night side — tighter terminator for crisp day/night boundary
+  // City lights on night side === tighter terminator for crisp day/night boundary
   let night = smoothstep(0.06, -0.04, dot(N, sun_dir));
   let cityA = 0.5 + 0.5 * sin(lon * 22.0 + lat * 18.0);
   let cityB = 0.5 + 0.5 * sin(lon * 61.0 + lat * 47.0);
