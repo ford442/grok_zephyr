@@ -53,7 +53,7 @@ struct SmileV2Params {
   speed_multiplier: f32,
   _pad0: f32,
   transition_alpha: f32,
-  target_mode: f32,
+  morph_target: f32,
   transition_duration: f32,
   _pad1: f32,
   ref_nadir: vec3f,
@@ -189,27 +189,27 @@ fn phase_idle(base_color: vec3f, base_bright: f32, progress: f32, global_time: f
 
 fn phase_emerge(base_color: vec3f, base_bright: f32, progress: f32, feature: u32, sat_idx: u32) -> vec4f {
   let t = 1.0 - pow(1.0 - progress, 3.0);
-  var target_color: vec3f;
-  var target_bright: f32;
+  var dest_color: vec3f;
+  var dest_bright: f32;
   switch (feature) {
     case FEATURE_LEFT_EYE: {
-      target_color = COLOR_AMBER;
-      target_bright = 1.2;
+      dest_color = COLOR_AMBER;
+      dest_bright = 1.2;
     }
     case FEATURE_RIGHT_EYE: {
-      target_color = COLOR_AMBER;
-      target_bright = 1.2;
+      dest_color = COLOR_AMBER;
+      dest_bright = 1.2;
     }
     case FEATURE_SMILE_CURVE: {
-      target_color = COLOR_GOLDEN;
-      target_bright = 1.0;
+      dest_color = COLOR_GOLDEN;
+      dest_bright = 1.0;
     }
     default: {
-      target_color = base_color * 0.7;
-      target_bright = base_bright * 0.8;
+      dest_color = base_color * 0.7;
+      dest_bright = base_bright * 0.8;
     }
   }
-  let color = mix(base_color * base_bright, target_color * target_bright, t);
+  let color = mix(base_color * base_bright, dest_color * dest_bright, t);
   return vec4f(color, 1.0);
 }
 
@@ -323,35 +323,35 @@ fn phase_morph(base_color: vec3f, base_bright: f32, progress: f32, feature: u32,
 
 fn phase_fade(base_color: vec3f, base_bright: f32, progress: f32, feature: u32, sat_idx: u32) -> vec4f {
   let t = progress * progress;
-  var target_color: vec3f;
-  var target_bright: f32;
+  var dest_color: vec3f;
+  var dest_bright: f32;
   switch (feature) {
     case FEATURE_LEFT_EYE: {
-      target_color = COLOR_AMBER;
-      target_bright = 1.2;
+      dest_color = COLOR_AMBER;
+      dest_bright = 1.2;
     }
     case FEATURE_RIGHT_EYE: {
-      target_color = COLOR_AMBER;
-      target_bright = 1.2;
+      dest_color = COLOR_AMBER;
+      dest_bright = 1.2;
     }
     case FEATURE_SMILE_CURVE: {
-      target_color = COLOR_GOLDEN;
-      target_bright = 1.0;
+      dest_color = COLOR_GOLDEN;
+      dest_bright = 1.0;
     }
     case FEATURE_MORPH_TARGET: {
       if (params.morph_mode == 0u) {
-        target_color = COLOR_X_LOGO;
+        dest_color = COLOR_X_LOGO;
       } else {
-        target_color = COLOR_GROK_GLOW;
+        dest_color = COLOR_GROK_GLOW;
       }
-      target_bright = 1.5;
+      dest_bright = 1.5;
     }
     default: {
-      target_color = base_color * 0.7;
-      target_bright = base_bright * 0.8;
+      dest_color = base_color * 0.7;
+      dest_bright = base_bright * 0.8;
     }
   }
-  let color = mix(target_color * target_bright, base_color * base_bright, t);
+  let color = mix(dest_color * dest_bright, base_color * base_bright, t);
   return vec4f(color, 1.0);
 }
 
@@ -434,7 +434,7 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   let smile_output = smile_pattern(sat_pos, sat_idx, base_color, base_bright, params.cycle_time, params.global_time);
   let chaos_output = chaos_mode(sat_pos, sat_idx, base_color, base_bright, params.global_time);
   var final_output: vec4f;
-  if (params.target_mode < 0.5) {
+  if (params.morph_target < 0.5) {
     final_output = apply_transition(smile_output, chaos_output, params.transition_alpha);
   } else {
     final_output = apply_transition(smile_output, chaos_output, params.transition_alpha);

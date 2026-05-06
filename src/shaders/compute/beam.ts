@@ -87,12 +87,12 @@ fn is_active_node(sat_pos: vec3f, mode: u32) -> bool {
   return false;
 }
 
-fn surface_target(pos: vec3f) -> vec3f {
-  var target = vec3f(pos.x, pos.y, 0.0);
-  if (length(target) < 1.0) {
-    target = vec3f(1.0, 0.0, 0.0);
+fn earth_surface_point(pos: vec3f) -> vec3f {
+  var point = vec3f(pos.x, pos.y, 0.0);
+  if (length(point) < 1.0) {
+    point = vec3f(1.0, 0.0, 0.0);
   }
-  return normalize(target) * 6371.0;
+  return normalize(point) * 6371.0;
 }
 
 @compute @workgroup_size(256,1,1)
@@ -103,20 +103,20 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
   let sat_a_idx = beam_idx * 5u;
   let pos_a = sat_pos[sat_a_idx].xyz;
 
-  var active = false;
+  var is_active = false;
   var intensity = 0.0;
 
   if (params.mode == 0u) {
-    active = true;
+    is_active = true;
     intensity = 1.0;
   } else {
     if (is_active_node(pos_a, params.mode)) {
-      active = true;
+      is_active = true;
       intensity = 1.0;
     }
   }
 
-  if (!active) {
+  if (!is_active) {
     beams[beam_idx * 2u] = vec4f(pos_a, 0.0);
     beams[beam_idx * 2u + 1u] = vec4f(pos_a, 0.0);
     return;
@@ -126,7 +126,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
   var found = false;
 
   if (params.mode == 0u) {
-    pos_b = surface_target(pos_a);
+    pos_b = earth_surface_point(pos_a);
     let angle = hashf(beam_idx * 13u) * 6.2831853;
     let jitter = vec3f(cos(angle), sin(angle), 0.0) * 6.0;
     pos_b += jitter;
