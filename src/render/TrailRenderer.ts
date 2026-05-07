@@ -307,11 +307,7 @@ export class TrailRenderer {
       primitive: {
         topology: 'triangle-list',
       },
-      depthStencil: {
-        format: 'depth24plus',
-        depthWriteEnabled: false,
-        depthCompare: 'less',
-      },
+
     });
   }
 

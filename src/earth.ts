@@ -78,7 +78,7 @@ fn fs(in: VOut) -> @location(0) vec4f {
   let cloudStripes = sin(n.x * 45.0 + uni.time * 0.12) * 0.5 + 0.5;
   let coverage = smoothstep(0.38, 0.58, cloudNoise + 0.25 * cloudStripes);
   let edge = pow(clamp(1.0 - abs(dot(n, in.viewDir)), 0.0, 1.0), 2.4);
-  let alpha = coverage * 0.45 + edge * 0.15;
+  var alpha = coverage * 0.45 + edge * 0.15;
   alpha *= 0.85;
 
   let color = vec3f(1.0, 1.02, 1.08) * 0.92;
