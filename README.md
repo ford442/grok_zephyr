@@ -121,6 +121,18 @@ Typical performance on modern GPUs:
 
 **Important**: WebGPU requires a secure context (HTTPS or localhost). Most features require dedicated GPU hardware.
 
+### WebGPU feature and fallback notes
+
+- `timestamp-query` is requested when the adapter supports it, which enables GPU timing in `PerformanceProfiler`
+- The app validates critical adapter limits up front before allocating the 1,048,576-satellite storage buffers
+- If the browser or GPU cannot satisfy the required buffer/workgroup limits, the app now fails fast with an on-page compatibility message instead of continuing into a broken initialization path
+- Resize is handled both by an explicit `window.resize` listener and a render-loop safety check to catch DPR/layout changes
+
+### Current validation status
+
+- `npm run build` is the main verified repository validation command today
+- There is currently no dedicated automated WebGPU test suite in the repository yet
+
 ## 📝 Data & Configuration
 
 The project includes sample Starlink TLE (Two-Line Element) data in `/public/tle/`. You can:

@@ -74,6 +74,9 @@ class GrokZephyrApp {
   private animationId = 0;
   private isRunning = false;
   private lastTime = 0;
+  private readonly resizeListener = () => {
+    this.handleResize();
+  };
 
   constructor() {
     const canvas = document.getElementById('gpu-canvas') as HTMLCanvasElement;
@@ -615,6 +618,7 @@ class GrokZephyrApp {
       
       this.pipeline.initialize(width, height);
       this.buffers.updateBloomUniforms(width, height);
+      window.addEventListener('resize', this.resizeListener);
 
       this.trailRenderer = new TrailRenderer(this.context, {
         enabled: true,
@@ -718,6 +722,7 @@ class GrokZephyrApp {
     const dpr = window.devicePixelRatio || 1;
     const width = Math.floor(this.canvas.clientWidth * dpr);
     const height = Math.floor(this.canvas.clientHeight * dpr);
+    if (width === 0 || height === 0) return;
     
     // Explicitly set canvas dimensions
     this.canvas.width = width;
@@ -889,7 +894,8 @@ class GrokZephyrApp {
       return;
     }
     
-    // Handle resize
+    // Keep the render-loop resize check as a fallback for DPR/layout changes
+    // that may not arrive through a window resize event.
     const dpr = window.devicePixelRatio || 1;
     const width = Math.floor(this.canvas.clientWidth * dpr);
     const height = Math.floor(this.canvas.clientHeight * dpr);
@@ -1066,6 +1072,7 @@ class GrokZephyrApp {
    */
   destroy(): void {
     this.stop();
+    window.removeEventListener('resize', this.resizeListener);
     this.pipeline?.destroy();
     this.buffers?.destroy();
     this.context?.destroy();
