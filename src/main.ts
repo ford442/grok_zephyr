@@ -19,6 +19,13 @@ import { getBeamPatternTitle } from '@/patterns.js';
 import { CONSTANTS, BUFFER_SIZES } from '@/types/constants.js';
 import { TLELoader } from '@/data/TLELoader.js';
 import { getBackgroundModeIndex, resolveBackgroundMode, setBackgroundMode } from '@/background.js';
+import {
+  type QualityLevel,
+  QUALITY_PRESETS,
+  loadSavedQualityLevel,
+  saveQualityLevel,
+  parseQualityParam,
+} from '@/core/QualityPresets.js';
 
 import './styles.css';
 
@@ -94,6 +101,9 @@ class GrokZephyrApp {
   /** Current physics mode (0=simple, 1=keplerian, 2=J2) */
   private currentPhysicsMode = 0;
 
+  /** Current quality preset level */
+  private currentQualityLevel: QualityLevel = 'high';
+
   /** Time scale for simulation (1.0 = real-time) */
   private timeScale: number = 1.0;
 
@@ -137,6 +147,11 @@ class GrokZephyrApp {
     this.ui.createTimeScaleControl();
     this.ui.onTimeScaleChange((scale) => {
       this.setTimeScale(scale);
+    });
+    
+    // Quality preset buttons
+    this.ui.onQualityChange((level) => {
+      this.applyQualityPreset(level);
     });
     
     // Camera angle change updates UI
@@ -450,6 +465,85 @@ class GrokZephyrApp {
   }
 
   /**
+   * Get current quality preset level.
+   */
+  getQualityLevel(): QualityLevel {
+    return this.currentQualityLevel;
+  }
+
+  /**
+   * Apply a quality preset to all affected renderers.
+   *
+   * Quality levels control trail rendering, earth atmosphere, and other
+   * visual settings without requiring shader recompilation.
+   */
+  applyQualityPreset(level: QualityLevel): void {
+    const preset = QUALITY_PRESETS[level];
+    this.currentQualityLevel = level;
+
+    // Apply trail settings
+    if (this.trailRenderer) {
+      this.trailRenderer.setConfig({
+        enabled: preset.trail.enabled,
+        maxLength: preset.trail.maxLength,
+        fadeOut: preset.trail.fadeOut,
+        ribbonWidth: preset.trail.ribbonWidth,
+        colorByShell: true,
+      });
+    }
+
+    // Apply atmosphere settings
+    if (this.earthAtmosphereRenderer) {
+      this.earthAtmosphereRenderer.setConfig({
+        enabled: preset.atmosphere.enabled,
+        cloudAlpha: preset.atmosphere.cloudAlpha,
+        cloudSpeed: preset.atmosphere.cloudSpeed,
+        cloudScale: preset.atmosphere.cloudScale,
+        hazeStrength: preset.atmosphere.hazeStrength,
+      });
+    }
+
+    // Update UI
+    this.ui.setActiveQualityButton(level);
+    saveQualityLevel(level);
+
+    console.log(`🎨 Quality preset: ${preset.label} — ${preset.description}`);
+  }
+
+  /**
+   * Parse initial-state URL parameters and return resolved values.
+   *
+   * Supported params:
+   *   ?mode=0-4            view mode index
+   *   ?preset=low|balanced|high|cinematic   quality preset
+   *   ?physics=0-2         physics mode
+   *   ?pattern=0-2         beam pattern mode
+   */
+  private parseURLParams(): {
+    viewMode: number | null;
+    qualityLevel: QualityLevel | null;
+    physicsMode: number | null;
+    patternMode: number | null;
+  } {
+    const params = new URLSearchParams(window.location.search);
+
+    const parseIntParam = (key: string, min: number, max: number): number | null => {
+      const raw = params.get(key);
+      if (!raw) return null;
+      const val = parseInt(raw, 10);
+      if (isNaN(val) || val < min || val > max) return null;
+      return val;
+    };
+
+    return {
+      viewMode:     parseIntParam('mode',    0, 4),
+      qualityLevel: parseQualityParam(params.get('preset')),
+      physicsMode:  parseIntParam('physics', 0, 2),
+      patternMode:  parseIntParam('pattern', 0, 2),
+    };
+  }
+
+  /**
    * Initialize the application
    */
   async initialize(): Promise<void> {
@@ -544,9 +638,29 @@ class GrokZephyrApp {
       this.ui.setFleetCount(CONSTANTS.NUM_SATELLITES);
       this.ui.setDataSource(dataSourceLabel);
       this.ui.hideError();
-      
-      // Set initial view mode
-      this.camera.setViewMode(0);
+
+      // Parse URL params for initial state
+      const urlParams = this.parseURLParams();
+
+      // Determine initial quality level: URL param → localStorage → default 'high'
+      const initialQuality = urlParams.qualityLevel ?? loadSavedQualityLevel();
+      this.currentQualityLevel = initialQuality;
+
+      // Apply initial quality preset (this also updates the UI buttons)
+      this.applyQualityPreset(initialQuality);
+
+      // Apply URL param overrides for view mode, physics, and beam pattern
+      const initialViewMode = urlParams.viewMode ?? 0;
+      this.camera.setViewMode(initialViewMode);
+
+      if (urlParams.physicsMode !== null) {
+        this.setPhysicsMode(urlParams.physicsMode);
+        this.ui.setActivePhysicsButton(urlParams.physicsMode);
+      }
+
+      if (urlParams.patternMode !== null) {
+        this.setPatternMode(urlParams.patternMode);
+      }
       
       // Start render loop
       this.start();

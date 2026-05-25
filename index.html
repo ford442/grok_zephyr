@@ -42,6 +42,7 @@
     <div class="stat" id="s-fps">FPS      : --</div>
     <div class="stat" id="s-view">View     : 720km Horizon</div>
     <div class="stat" id="s-visible">Visible  : --</div>
+    <div class="stat" id="s-quality">Quality  : HIGH</div>
     
     <div id="camera-controls">
       <div class="angle-display">
@@ -79,6 +80,14 @@
       <button class="physics-btn active" id="phys0" data-physics="0">SIMPLE</button>
       <button class="physics-btn" id="phys1" data-physics="1">KEPLERIAN</button>
       <button class="physics-btn disabled" id="phys2" data-physics="2" title="Not yet implemented">J2</button>
+    </div>
+
+    <div id="quality-controls">
+      <div class="quality-label">QUALITY</div>
+      <button class="quality-btn" id="qlow"  data-quality="low"       title="Minimal effects — best for low-end devices">LOW</button>
+      <button class="quality-btn" id="qbal"  data-quality="balanced"  title="Good performance/quality trade-off">BALANCED</button>
+      <button class="quality-btn active" id="qhigh" data-quality="high" title="Full quality for modern GPUs">HIGH</button>
+      <button class="quality-btn" id="qcine" data-quality="cinematic" title="Maximum fidelity — demos and screenshots">CINEMATIC</button>
     </div>
   </div>
   

@@ -114,6 +114,14 @@ export class EarthAtmosphereRenderer {
     this.config.enabled = enabled;
   }
 
+  /**
+   * Update atmosphere rendering configuration.
+   * Changes take effect on the next rendered frame.
+   */
+  setConfig(config: Partial<GroundViewConfig>): void {
+    this.config = { ...this.config, ...config };
+  }
+
   getEnabled(): boolean {
     return this.config.enabled;
   }

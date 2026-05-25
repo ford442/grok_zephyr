@@ -6,6 +6,8 @@
 
 import type { PerformanceStats } from '@/types/index.js';
 import type { AnimationPattern } from '@/types/animation.js';
+import type { QualityLevel } from '@/core/QualityPresets.js';
+import { QUALITY_PRESETS } from '@/core/QualityPresets.js';
 
 /** UI element references */
 export interface UIElements {
@@ -14,12 +16,14 @@ export interface UIElements {
   fps: HTMLElement;
   viewMode: HTMLElement;
   visible: HTMLElement;
+  quality: HTMLElement;
   error: HTMLElement;
   controls: HTMLElement;
   buttons: HTMLButtonElement[];
   patternButtons: HTMLButtonElement[];
   animationButtons: HTMLButtonElement[];
   physicsButtons: HTMLButtonElement[];
+  qualityButtons: HTMLButtonElement[];
   horizonIndicator: HTMLElement;
   angleInfo: HTMLElement;
   resetAngleBtn: HTMLElement;
@@ -54,6 +58,7 @@ export class UIManager {
   private onPatternChangeCallback: ((mode: number) => void) | null = null;
   private onAnimationChangeCallback: ((pattern: AnimationPattern) => void) | null = null;
   private onPhysicsChangeCallback: ((mode: number) => void) | null = null;
+  private onQualityChangeCallback: ((level: QualityLevel) => void) | null = null;
   private onSpeedChangeCallback: ((speed: number) => void) | null = null;
   private onLoopToggleCallback: ((loop: boolean) => void) | null = null;
   
@@ -82,6 +87,7 @@ export class UIManager {
       fps: getEl('s-fps'),
       viewMode: getEl('s-view'),
       visible: getEl('s-visible'),
+      quality: getEl('s-quality'),
       error: getEl('error'),
       controls: getEl('controls'),
       buttons: [
@@ -105,6 +111,12 @@ export class UIManager {
         document.getElementById('phys0') as HTMLButtonElement,
         document.getElementById('phys1') as HTMLButtonElement,
         document.getElementById('phys2') as HTMLButtonElement,
+      ],
+      qualityButtons: [
+        document.getElementById('qlow')  as HTMLButtonElement,
+        document.getElementById('qbal')  as HTMLButtonElement,
+        document.getElementById('qhigh') as HTMLButtonElement,
+        document.getElementById('qcine') as HTMLButtonElement,
       ],
       horizonIndicator: getEl('horizon-indicator'),
       angleInfo: getEl('angleInfo'),
@@ -171,6 +183,18 @@ export class UIManager {
         this.setActivePhysicsButton(mode);
         if (this.onPhysicsChangeCallback) {
           this.onPhysicsChangeCallback(mode);
+        }
+      });
+    });
+
+    // Quality preset buttons
+    this.elements.qualityButtons.forEach((btn) => {
+      btn?.addEventListener('click', (e) => {
+        const target = e.target as HTMLButtonElement;
+        const level = (target.dataset.quality || 'high') as QualityLevel;
+        this.setActiveQualityButton(level);
+        if (this.onQualityChangeCallback) {
+          this.onQualityChangeCallback(level);
         }
       });
     });
@@ -256,6 +280,27 @@ export class UIManager {
       const btnMode = parseInt(btn?.dataset.physics || '-1');
       btn?.classList.toggle('active', btnMode === mode);
     });
+  }
+
+  /**
+   * Set the active quality button
+   */
+  setActiveQualityButton(level: QualityLevel): void {
+    this.elements.qualityButtons.forEach((btn) => {
+      const btnLevel = btn?.dataset.quality as QualityLevel | undefined;
+      btn?.classList.toggle('active', btnLevel === level);
+    });
+    this.setQualityDisplay(level);
+  }
+
+  /**
+   * Update the quality stat display in the HUD
+   */
+  setQualityDisplay(level: QualityLevel): void {
+    const preset = QUALITY_PRESETS[level];
+    if (this.elements.quality) {
+      this.elements.quality.textContent = `Quality  : ${preset.label}`;
+    }
   }
 
   /**
@@ -400,6 +445,13 @@ export class UIManager {
    */
   onPhysicsChange(callback: (mode: number) => void): void {
     this.onPhysicsChangeCallback = callback;
+  }
+
+  /**
+   * Register quality preset change callback
+   */
+  onQualityChange(callback: (level: QualityLevel) => void): void {
+    this.onQualityChangeCallback = callback;
   }
 
   /**
