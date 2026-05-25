@@ -155,7 +155,7 @@ export class WebGPUContext {
       console.log('[WebGPU] Context initialized successfully');
       console.log(`[WebGPU] Format: ${this.format}`);
       console.log(`[WebGPU] Max storage buffer: ${this.device.limits.maxStorageBufferBindingSize} bytes`);
-      const enabledFeatures = Array.from(this.device.features.values()) as GPUFeatureName[];
+      const enabledFeatures = Array.from(this.device.features) as GPUFeatureName[];
       console.log('[WebGPU] Enabled features:', enabledFeatures.join(', ') || 'none');
 
       return {
@@ -203,9 +203,7 @@ export class WebGPUContext {
   }
 
   private getRequiredFeatures(): GPUFeatureName[] {
-    return (this.options.requiredFeatures ?? []).filter((feature, index, features) => (
-      features.indexOf(feature) === index
-    ));
+    return [...new Set(this.options.requiredFeatures ?? [])];
   }
 
   private getOptionalFeatures(): GPUFeatureName[] {
@@ -213,8 +211,8 @@ export class WebGPUContext {
       return [];
     }
 
-    return (this.options.optionalFeatures ?? []).filter((feature, index, features) => (
-      features.indexOf(feature) === index && this.adapter!.features.has(feature)
+    return [...new Set(this.options.optionalFeatures ?? [])].filter((feature) => (
+      this.adapter!.features.has(feature)
     ));
   }
 
