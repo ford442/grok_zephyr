@@ -111,9 +111,7 @@ export class WebGPUContext {
         const unavailable = (this.options.optionalFeatures ?? []).filter(
           (feature) => !optionalFeatures.includes(feature)
         );
-        if (unavailable.length > 0) {
-          console.warn('[WebGPU] Optional features unavailable:', unavailable.join(', '));
-        }
+        console.warn('[WebGPU] Optional features unavailable:', unavailable.join(', '));
       }
 
       // Request device with required limits plus supported optional features
@@ -233,16 +231,15 @@ export class WebGPUContext {
       );
     }
 
-    const adapterLimits = this.adapter.limits as unknown as Record<string, number>;
     const limitFailures = Object.entries(requiredLimits).filter(([limit, value]) => {
-      const supportedValue = adapterLimits[limit];
+      const supportedValue = Reflect.get(adapter.limits, limit);
       return typeof supportedValue !== 'number' || supportedValue < value;
     });
 
     if (limitFailures.length > 0) {
       const details = limitFailures
         .map(([limit, value]) => {
-          const supported = adapterLimits[limit];
+          const supported = Reflect.get(adapter.limits, limit);
           return `${limit} requires ${value.toLocaleString()} but adapter reports ${(supported ?? 0).toLocaleString()}`;
         })
         .join('; ');
