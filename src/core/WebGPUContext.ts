@@ -207,12 +207,13 @@ export class WebGPUContext {
   }
 
   private getOptionalFeatures(): GPUFeatureName[] {
-    if (!this.adapter) {
+    const adapter = this.adapter;
+    if (!adapter) {
       return [];
     }
 
     return [...new Set(this.options.optionalFeatures ?? [])].filter((feature) => (
-      this.adapter!.features.has(feature)
+      adapter.features.has(feature)
     ));
   }
 
@@ -224,7 +225,8 @@ export class WebGPUContext {
       throw new WebGPUError('No WebGPU adapter found. Your GPU may not support WebGPU.');
     }
 
-    const missingFeatures = requiredFeatures.filter((feature) => !this.adapter!.features.has(feature));
+    const adapter = this.adapter;
+    const missingFeatures = requiredFeatures.filter((feature) => !adapter.features.has(feature));
     if (missingFeatures.length > 0) {
       throw new WebGPUError(
         `This browser/GPU is missing required WebGPU features: ${missingFeatures.join(', ')}.`
