@@ -511,7 +511,7 @@ class GrokZephyrApp {
   }
 
   /**
-   * Parse initial-state URL parameters and return resolved values.
+   * Parse initial-state URL parameters for the application.
    *
    * Supported params:
    *   ?mode=0-4            view mode index
@@ -519,7 +519,7 @@ class GrokZephyrApp {
    *   ?physics=0-2         physics mode
    *   ?pattern=0-2         beam pattern mode
    */
-  private parseURLParams(): {
+  private parseInitialStateFromURL(): {
     viewMode: number | null;
     qualityLevel: QualityLevel | null;
     physicsMode: number | null;
@@ -640,9 +640,12 @@ class GrokZephyrApp {
       this.ui.hideError();
 
       // Parse URL params for initial state
-      const urlParams = this.parseURLParams();
+      const urlParams = this.parseInitialStateFromURL();
 
-      // Determine initial quality level: URL param → localStorage → default 'high'
+      // Determine initial quality level using the precedence:
+      //   1. ?preset= URL parameter (highest priority — explicit user request)
+      //   2. localStorage saved value (user's last session choice)
+      //   3. 'high' (built-in default)
       const initialQuality = urlParams.qualityLevel ?? loadSavedQualityLevel();
       this.currentQualityLevel = initialQuality;
 
