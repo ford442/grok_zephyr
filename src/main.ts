@@ -713,16 +713,22 @@ class GrokZephyrApp {
     this.context.writeBuffer(this.earthIndexBuffer, sphere.indices);
   }
 
+  private getDrawableSize(): { width: number; height: number } | null {
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.floor(this.canvas.clientWidth * dpr);
+    const height = Math.floor(this.canvas.clientHeight * dpr);
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+
   /**
    * Handle window resize
    */
   private handleResize(): void {
     if (!this.context || !this.buffers || !this.pipeline) return;
-    
-    const dpr = window.devicePixelRatio || 1;
-    const width = Math.floor(this.canvas.clientWidth * dpr);
-    const height = Math.floor(this.canvas.clientHeight * dpr);
-    if (width === 0 || height === 0) return;
+
+    const size = this.getDrawableSize();
+    if (!size) return;
+    const { width, height } = size;
     
     // Explicitly set canvas dimensions
     this.canvas.width = width;
@@ -896,9 +902,12 @@ class GrokZephyrApp {
     
     // Keep the render-loop resize check as a fallback for DPR/layout changes
     // that may not arrive through a window resize event.
-    const dpr = window.devicePixelRatio || 1;
-    const width = Math.floor(this.canvas.clientWidth * dpr);
-    const height = Math.floor(this.canvas.clientHeight * dpr);
+    const size = this.getDrawableSize();
+    if (!size) {
+      this.animationId = requestAnimationFrame(this.render);
+      return;
+    }
+    const { width, height } = size;
     if (width !== this.canvas.width || height !== this.canvas.height) {
       this.handleResize();
     }

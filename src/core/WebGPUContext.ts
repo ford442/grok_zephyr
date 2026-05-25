@@ -28,6 +28,7 @@ export interface WebGPUContextOptions {
 
 const MAX_BEAMS = 65536;
 const TRAIL_HISTORY_FRAMES = 2;
+const ORBITAL_COMPUTE_WORKGROUP_SIZE = 64;
 
 /**
  * WebGPU Context Manager
@@ -186,7 +187,9 @@ export class WebGPUContext {
       trailBufferSize,
       beamBufferSize
     );
-    const requiredComputeWorkgroups = Math.ceil(CONSTANTS.NUM_SATELLITES / RENDER.WORKGROUP_SIZE);
+    const requiredComputeWorkgroups = Math.ceil(
+      CONSTANTS.NUM_SATELLITES / ORBITAL_COMPUTE_WORKGROUP_SIZE
+    );
     const mergedLimits: Record<string, number> = {
       maxStorageBufferBindingSize: requiredStorageBufferSize,
       maxBufferSize: requiredStorageBufferSize,
@@ -232,15 +235,18 @@ export class WebGPUContext {
     }
 
     const limitFailures = Object.entries(requiredLimits).filter(([limit, value]) => {
-      const supportedValue = Reflect.get(adapter.limits, limit);
+      const supportedValue = limit in adapter.limits ? Reflect.get(adapter.limits, limit) : undefined;
       return typeof supportedValue !== 'number' || supportedValue < value;
     });
 
     if (limitFailures.length > 0) {
       const details = limitFailures
         .map(([limit, value]) => {
-          const supported = Reflect.get(adapter.limits, limit);
-          return `${limit} requires ${value.toLocaleString()} but adapter reports ${(supported ?? 0).toLocaleString()}`;
+          const supported = limit in adapter.limits ? Reflect.get(adapter.limits, limit) : undefined;
+          const supportedLabel = typeof supported === 'number'
+            ? supported.toLocaleString()
+            : 'unsupported';
+          return `${limit} requires ${value.toLocaleString()} but adapter reports ${supportedLabel}`;
         })
         .join('; ');
       throw new WebGPUError(
