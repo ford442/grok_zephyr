@@ -14,14 +14,21 @@ export interface WebGPUInitResult {
   context: GPUCanvasContext;
   format: GPUTextureFormat;
   presentationFormat: GPUTextureFormat;
+  enabledFeatures: GPUFeatureName[];
+  optionalFeatures: GPUFeatureName[];
 }
 
 /** WebGPU context options */
 export interface WebGPUContextOptions {
   powerPreference?: GPUPowerPreference;
   requiredFeatures?: GPUFeatureName[];
+  optionalFeatures?: GPUFeatureName[];
   requiredLimits?: Record<string, number>;
 }
+
+const MAX_BEAMS = 65536;
+const TRAIL_HISTORY_FRAMES = 2;
+const ORBITAL_COMPUTE_WORKGROUP_SIZE = 64;
 
 /**
  * WebGPU Context Manager
@@ -45,6 +52,7 @@ export class WebGPUContext {
     this.options = {
       powerPreference: 'high-performance',
       requiredFeatures: [],
+      optionalFeatures: ['timestamp-query'],
       ...options,
     };
   }
@@ -94,23 +102,23 @@ export class WebGPUContext {
         console.log('[WebGPU] Adapter:', adapterInfo.vendor, adapterInfo.architecture);
       }
 
-      // Calculate required buffer sizes for 1M satellites
-      const requiredStorageSize = CONSTANTS.NUM_SATELLITES * 16 + 16;
+      const requiredLimits = this.buildRequiredLimits();
+      const requiredFeatures = this.getRequiredFeatures();
+      const optionalFeatures = this.getOptionalFeatures();
 
-      // Request device with appropriate limits
+      this.validateAdapterRequirements(requiredLimits, requiredFeatures);
+
+      if (optionalFeatures.length !== (this.options.optionalFeatures?.length ?? 0)) {
+        const unavailable = (this.options.optionalFeatures ?? []).filter(
+          (feature) => !optionalFeatures.includes(feature)
+        );
+        console.warn('[WebGPU] Optional features unavailable:', unavailable.join(', '));
+      }
+
+      // Request device with required limits plus supported optional features
       this.device = await this.adapter.requestDevice({
-        requiredFeatures: this.options.requiredFeatures,
-        requiredLimits: {
-          maxStorageBufferBindingSize: Math.min(
-            this.adapter.limits.maxStorageBufferBindingSize,
-            requiredStorageSize
-          ),
-          maxBufferSize: Math.min(
-            this.adapter.limits.maxBufferSize,
-            requiredStorageSize
-          ),
-          ...this.options.requiredLimits,
-        },
+        requiredFeatures: [...requiredFeatures, ...optionalFeatures],
+        requiredLimits,
       });
 
       // Handle device loss
@@ -146,6 +154,8 @@ export class WebGPUContext {
       console.log('[WebGPU] Context initialized successfully');
       console.log(`[WebGPU] Format: ${this.format}`);
       console.log(`[WebGPU] Max storage buffer: ${this.device.limits.maxStorageBufferBindingSize} bytes`);
+      const enabledFeatures = Array.from(this.device.features) as GPUFeatureName[];
+      console.log('[WebGPU] Enabled features:', enabledFeatures.join(', ') || 'none');
 
       return {
         device: this.device,
@@ -153,6 +163,8 @@ export class WebGPUContext {
         context: this.context,
         format: this.format,
         presentationFormat: this.format,
+        enabledFeatures,
+        optionalFeatures,
       };
     } catch (error) {
       if (error instanceof WebGPUError) {
@@ -160,6 +172,87 @@ export class WebGPUContext {
       }
       throw new WebGPUError(
         `Failed to initialize WebGPU: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  private buildRequiredLimits(): Record<string, number> {
+    const perSatelliteBufferSize = CONSTANTS.NUM_SATELLITES * 16;
+    const extendedElementBufferSize = CONSTANTS.NUM_SATELLITES * 32;
+    const trailBufferSize = CONSTANTS.NUM_SATELLITES * 16 * TRAIL_HISTORY_FRAMES;
+    const beamBufferSize = MAX_BEAMS * 32;
+    const requiredStorageBufferSize = Math.max(
+      perSatelliteBufferSize,
+      extendedElementBufferSize,
+      trailBufferSize,
+      beamBufferSize
+    );
+    const requiredComputeWorkgroups = Math.ceil(
+      CONSTANTS.NUM_SATELLITES / ORBITAL_COMPUTE_WORKGROUP_SIZE
+    );
+    const mergedLimits: Record<string, number> = {
+      maxStorageBufferBindingSize: requiredStorageBufferSize,
+      maxBufferSize: requiredStorageBufferSize,
+      maxComputeWorkgroupsPerDimension: requiredComputeWorkgroups,
+    };
+
+    for (const [limit, value] of Object.entries(this.options.requiredLimits ?? {})) {
+      mergedLimits[limit] = Math.max(mergedLimits[limit] ?? 0, value);
+    }
+
+    return mergedLimits;
+  }
+
+  private getRequiredFeatures(): GPUFeatureName[] {
+    return [...new Set(this.options.requiredFeatures ?? [])];
+  }
+
+  private getOptionalFeatures(): GPUFeatureName[] {
+    const adapter = this.adapter;
+    if (!adapter) {
+      return [];
+    }
+
+    return [...new Set(this.options.optionalFeatures ?? [])].filter((feature) => (
+      adapter.features.has(feature)
+    ));
+  }
+
+  private validateAdapterRequirements(
+    requiredLimits: Record<string, number>,
+    requiredFeatures: GPUFeatureName[]
+  ): void {
+    if (!this.adapter) {
+      throw new WebGPUError('No WebGPU adapter found. Your GPU may not support WebGPU.');
+    }
+
+    const adapter = this.adapter;
+    const missingFeatures = requiredFeatures.filter((feature) => !adapter.features.has(feature));
+    if (missingFeatures.length > 0) {
+      throw new WebGPUError(
+        `This browser/GPU is missing required WebGPU features: ${missingFeatures.join(', ')}.`
+      );
+    }
+
+    const limitFailures = Object.entries(requiredLimits).filter(([limit, value]) => {
+      const supportedValue = limit in adapter.limits ? Reflect.get(adapter.limits, limit) : undefined;
+      return typeof supportedValue !== 'number' || supportedValue < value;
+    });
+
+    if (limitFailures.length > 0) {
+      const details = limitFailures
+        .map(([limit, value]) => {
+          const supported = limit in adapter.limits ? Reflect.get(adapter.limits, limit) : undefined;
+          const supportedLabel = typeof supported === 'number'
+            ? supported.toLocaleString()
+            : 'unsupported';
+          return `${limit} requires ${value.toLocaleString()} but adapter reports ${supportedLabel}`;
+        })
+        .join('; ');
+      throw new WebGPUError(
+        'This GPU cannot run the full 1,048,576-satellite WebGPU path. ' +
+        'Grok Zephyr stopped before allocating large buffers. ' +
+        `${details}. Try a newer browser, a more capable GPU, or a device with fuller WebGPU support.`
       );
     }
   }

@@ -74,6 +74,9 @@ class GrokZephyrApp {
   private animationId = 0;
   private isRunning = false;
   private lastTime = 0;
+  private readonly resizeListener = () => {
+    this.handleResize();
+  };
 
   constructor() {
     const canvas = document.getElementById('gpu-canvas') as HTMLCanvasElement;
@@ -615,6 +618,7 @@ class GrokZephyrApp {
       
       this.pipeline.initialize(width, height);
       this.buffers.updateBloomUniforms(width, height);
+      window.addEventListener('resize', this.resizeListener);
 
       this.trailRenderer = new TrailRenderer(this.context, {
         enabled: true,
@@ -709,15 +713,22 @@ class GrokZephyrApp {
     this.context.writeBuffer(this.earthIndexBuffer, sphere.indices);
   }
 
+  private getDrawableSize(): { width: number; height: number } | null {
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.floor(this.canvas.clientWidth * dpr);
+    const height = Math.floor(this.canvas.clientHeight * dpr);
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+
   /**
    * Handle window resize
    */
   private handleResize(): void {
     if (!this.context || !this.buffers || !this.pipeline) return;
-    
-    const dpr = window.devicePixelRatio || 1;
-    const width = Math.floor(this.canvas.clientWidth * dpr);
-    const height = Math.floor(this.canvas.clientHeight * dpr);
+
+    const size = this.getDrawableSize();
+    if (!size) return;
+    const { width, height } = size;
     
     // Explicitly set canvas dimensions
     this.canvas.width = width;
@@ -889,10 +900,14 @@ class GrokZephyrApp {
       return;
     }
     
-    // Handle resize
-    const dpr = window.devicePixelRatio || 1;
-    const width = Math.floor(this.canvas.clientWidth * dpr);
-    const height = Math.floor(this.canvas.clientHeight * dpr);
+    // Keep the render-loop resize check as a fallback for DPR/layout changes
+    // that may not arrive through a window resize event.
+    const size = this.getDrawableSize();
+    if (!size) {
+      this.animationId = requestAnimationFrame(this.render);
+      return;
+    }
+    const { width, height } = size;
     if (width !== this.canvas.width || height !== this.canvas.height) {
       this.handleResize();
     }
@@ -1066,6 +1081,7 @@ class GrokZephyrApp {
    */
   destroy(): void {
     this.stop();
+    window.removeEventListener('resize', this.resizeListener);
     this.pipeline?.destroy();
     this.buffers?.destroy();
     this.context?.destroy();
