@@ -44,6 +44,13 @@ export class PostProcessStack {
   private config: PostProcessConfig;
   private taaConfig: TAAConfig;
   private adaptiveQuality: AdaptiveQuality;
+
+  /**
+   * When true the final output step is a passthrough blit instead of ACES
+   * tonemapping.  Use this when the input is already tonemapped (e.g. the
+   * frame was piped through the existing composite pass first).
+   */
+  private readonly skipFinalTonemap: boolean;
   
   // Render targets
   private historyBuffer: GPUTexture[] = []; // For TAA
@@ -75,8 +82,10 @@ export class PostProcessStack {
   constructor(
     context: WebGPUContext,
     config: Partial<PostProcessConfig> = {},
-    taaConfig: Partial<TAAConfig> = {}
+    taaConfig: Partial<TAAConfig> = {},
+    skipFinalTonemap = false
   ) {
+    this.skipFinalTonemap = skipFinalTonemap;
     this.context = context;
     this.config = { ...DEFAULT_POSTPROCESS_CONFIG, ...config };
     this.taaConfig = { ...DEFAULT_TAA_CONFIG, ...taaConfig };
@@ -150,6 +159,9 @@ export class PostProcessStack {
     height: number,
     deltaTime: number
   ): void {
+    // Reset ping-pong index so every frame starts deterministically.
+    this.currentPass = 0;
+
     // Update TAA jitter
     this.updateTAAJitter(width, height);
     
@@ -202,6 +214,21 @@ export class PostProcessStack {
     
     // Final tonemapping to output
     this.executeTonemapPass(encoder, currentInput, outputView);
+  }
+
+  /**
+   * Enable/disable TAA
+   */
+  enableTAA(enabled: boolean): void {
+    this.taaConfig = { ...this.taaConfig, enabled };
+    this.updatePassStates();
+  }
+
+  /**
+   * Get current TAA enabled state
+   */
+  isTAAEnabled(): boolean {
+    return this.taaConfig.enabled;
   }
 
   /**
@@ -279,7 +306,7 @@ export class PostProcessStack {
       this.historyBuffer.push(device.createTexture({
         size: [width, height],
         format: 'rgba16float',
-        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
       }));
     }
     
@@ -287,7 +314,7 @@ export class PostProcessStack {
     this.taaOutput = device.createTexture({
       size: [width, height],
       format: 'rgba16float',
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
     });
     
     // Ping-pong buffers for intermediate passes
@@ -539,8 +566,9 @@ export class PostProcessStack {
   }
 
   private createTonemapPipeline(device: GPUDevice): void {
-    const shader = device.createShaderModule({
-      code: /* wgsl */ `
+    const surfaceFormat = this.context.getFormat();
+
+    const acesShaderCode = /* wgsl */ `
         @group(0) @binding(0) var sourceTexture: texture_2d<f32>;
         @group(0) @binding(1) var linearSampler: sampler;
         
@@ -582,13 +610,35 @@ export class PostProcessStack {
           
           return vec4f(saturated, 1.0);
         }
-      `,
+      `;
+
+    // When skipFinalTonemap is true the input is already tonemapped LDR —
+    // use a simple passthrough to avoid double-tonemapping.
+    const passthroughShaderCode = /* wgsl */ `
+        @group(0) @binding(0) var sourceTexture: texture_2d<f32>;
+        @group(0) @binding(1) var linearSampler: sampler;
+
+        @vertex
+        fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
+          const pts = array<vec2f, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
+          return vec4f(pts[vi], 0, 1);
+        }
+
+        @fragment
+        fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+          let uv = pos.xy / vec2f(textureDimensions(sourceTexture));
+          return textureSample(sourceTexture, linearSampler, uv);
+        }
+      `;
+
+    const shader = device.createShaderModule({
+      code: this.skipFinalTonemap ? passthroughShaderCode : acesShaderCode,
     });
     
     const pipeline = device.createRenderPipeline({
       layout: 'auto',
       vertex: { module: shader, entryPoint: 'vs' },
-      fragment: { module: shader, entryPoint: 'fs', targets: [{ format: 'bgra8unorm' }] },
+      fragment: { module: shader, entryPoint: 'fs', targets: [{ format: surfaceFormat }] },
       primitive: { topology: 'triangle-list' },
     });
     
@@ -695,13 +745,13 @@ export class PostProcessStack {
     pass.draw(3);
     pass.end();
 
-    // TODO: Copy taaOutput into the opposing history buffer for the next frame.
-    // A copyTextureToTexture() call here would complete the TAA feedback loop.
-    // e.g.: encoder.copyTextureToTexture(
-    //   { texture: this.taaOutput! },
-    //   { texture: this.historyBuffer[1 - historyIdx] },
-    //   [this.taaOutput!.width, this.taaOutput!.height]
-    // );
+    // Copy taaOutput into the opposing history buffer for the next frame,
+    // completing the TAA feedback loop.
+    encoder.copyTextureToTexture(
+      { texture: this.taaOutput! },
+      { texture: this.historyBuffer[1 - historyIdx] },
+      [this.taaOutput!.width, this.taaOutput!.height]
+    );
   }
 
   private executePass(

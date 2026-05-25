@@ -7,6 +7,7 @@
 import { WebGPUContext, WebGPUError } from '@/core/WebGPUContext.js';
 import { SatelliteGPUBuffer } from '@/core/SatelliteGPUBuffer.js';
 import { RenderPipeline } from '@/render/RenderPipeline.js';
+import { PostProcessStack } from '@/render/PostProcessStack.js';
 import { CameraController, type CameraState } from '@/camera/CameraController.js';
 import { GroundObserverCamera, GroundObserverPreset } from '@/camera/GroundObserverCamera.js';
 import { UIManager } from '@/ui/UIManager.js';
@@ -52,6 +53,7 @@ class GrokZephyrApp {
   private context: WebGPUContext | null = null;
   private buffers: SatelliteGPUBuffer | null = null;
   private pipeline: RenderPipeline | null = null;
+  private postProcessStack: PostProcessStack | null = null;
   private camera: CameraController;
   private groundObserver: GroundObserverCamera;
   private ui: UIManager;
@@ -107,6 +109,9 @@ class GrokZephyrApp {
   /** Current quality preset level */
   private currentQualityLevel: QualityLevel = 'high';
 
+  /** Whether TAA (Temporal Anti-Aliasing) is currently active */
+  private taaEnabled = true;
+
   /** Time scale for simulation (1.0 = real-time) */
   private timeScale: number = 1.0;
 
@@ -157,6 +162,9 @@ class GrokZephyrApp {
       this.applyQualityPreset(level);
     });
     
+    // TAA toggle button
+    this.setupTAAToggle();
+    
     // Camera angle change updates UI
     this.camera.onAngleChange((yaw, pitch) => {
       this.updateAngleDisplay(yaw, pitch);
@@ -181,6 +189,24 @@ class GrokZephyrApp {
         this.focusManager?.releaseFocus();
       }
     });
+  }
+
+  /**
+   * Setup TAA toggle button
+   */
+  private setupTAAToggle(): void {
+    const btn = document.getElementById('taaToggle');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      this.taaEnabled = !this.taaEnabled;
+      this.postProcessStack?.enableTAA(this.taaEnabled);
+      btn.textContent = this.taaEnabled ? 'TAA ON' : 'TAA OFF';
+      btn.classList.toggle('active', this.taaEnabled);
+      console.log(`🔲 TAA: ${this.taaEnabled ? 'enabled' : 'disabled'}`);
+    });
+    // Reflect initial state
+    btn.textContent = this.taaEnabled ? 'TAA ON' : 'TAA OFF';
+    btn.classList.toggle('active', this.taaEnabled);
   }
 
   /**
@@ -506,6 +532,19 @@ class GrokZephyrApp {
       });
     }
 
+    // Apply TAA setting from quality preset
+    if (this.postProcessStack) {
+      const taaEnabled = preset.taaEnabled ?? true;
+      this.taaEnabled = taaEnabled;
+      this.postProcessStack.enableTAA(taaEnabled);
+      // Sync the UI button label
+      const btn = document.getElementById('taaToggle');
+      if (btn) {
+        btn.textContent = taaEnabled ? 'TAA ON' : 'TAA OFF';
+        btn.classList.toggle('active', taaEnabled);
+      }
+    }
+
     // Update UI
     this.ui.setActiveQualityButton(level);
     saveQualityLevel(level);
@@ -619,6 +658,16 @@ class GrokZephyrApp {
       this.pipeline.initialize(width, height);
       this.buffers.updateBloomUniforms(width, height);
       window.addEventListener('resize', this.resizeListener);
+
+      // Initialize PostProcessStack — operates in "skip-final-tonemap" mode so it
+      // acts as a post-composite TAA + color-grading layer without double-tonemapping.
+      this.postProcessStack = new PostProcessStack(
+        this.context,
+        {}, // use default PostProcessConfig (film grain, color grading, sharpness)
+        { enabled: this.taaEnabled },
+        /* skipFinalTonemap */ true
+      );
+      this.postProcessStack.initialize(width, height);
 
       this.trailRenderer = new TrailRenderer(this.context, {
         enabled: true,
@@ -736,6 +785,7 @@ class GrokZephyrApp {
     
     this.context.resize(width, height);
     this.pipeline.resize(width, height);
+    this.postProcessStack?.resize(width, height);
     this.buffers.updateBloomUniforms(width, height);
   }
 
@@ -990,10 +1040,31 @@ class GrokZephyrApp {
     // Passes 3-5: Bloom
     this.pipeline.encodeBloomPasses(encoder);
     
-    // Pass 6: Composite to screen
-    const outputView = this.context.getContext().getCurrentTexture().createView();
+    // Pass 6: Composite + (optionally) post-process to screen
     const { width: canvasWidth, height: canvasHeight } = this.context.getCanvasSize();
-    this.pipeline.encodeCompositePass(encoder, outputView, canvasWidth, canvasHeight);
+    const screenView = this.context.getContext().getCurrentTexture().createView();
+
+    if (this.postProcessStack) {
+      // Route the composite pass to an intermediate texture, then run the
+      // PostProcessStack (TAA + color grading + film grain) to the screen.
+      this.pipeline.encodeCompositePass(
+        encoder,
+        this.pipeline.getCompositeIntermediateView(),
+        canvasWidth,
+        canvasHeight
+      );
+      this.postProcessStack.execute(
+        encoder,
+        this.pipeline.getCompositeIntermediateView(),
+        screenView,
+        canvasWidth,
+        canvasHeight,
+        deltaTime
+      );
+    } else {
+      // Fallback: direct composite to screen (legacy path).
+      this.pipeline.encodeCompositePass(encoder, screenView, canvasWidth, canvasHeight);
+    }
     
     // Submit
     this.context.submit([encoder.finish()]);
@@ -1083,6 +1154,7 @@ class GrokZephyrApp {
     this.stop();
     window.removeEventListener('resize', this.resizeListener);
     this.pipeline?.destroy();
+    this.postProcessStack?.destroy();
     this.buffers?.destroy();
     this.context?.destroy();
     this.profiler.destroy();

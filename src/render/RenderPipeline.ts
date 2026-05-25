@@ -24,12 +24,15 @@ export interface RenderTargets {
   depth: GPUTexture;
   bloomA: GPUTexture;
   bloomB: GPUTexture;
+  /** Intermediate target for the composite pass when PostProcessStack is active */
+  compositeIntermediate: GPUTexture;
   
   // Cached views
   hdrView: GPUTextureView;
   depthView: GPUTextureView;
   bloomAView: GPUTextureView;
   bloomBView: GPUTextureView;
+  compositeIntermediateView: GPUTextureView;
 }
 
 /** Pipeline bind groups */
@@ -428,15 +431,26 @@ export class RenderPipeline {
     const bloomA = mkTex(RENDER.HDR_FORMAT, GPUTextureUsage.TEXTURE_BINDING);
     const bloomB = mkTex(RENDER.HDR_FORMAT, GPUTextureUsage.TEXTURE_BINDING);
 
+    // Intermediate composite target: the composite pass writes to this when
+    // PostProcessStack is active, so the post-process stack can read from it.
+    const surfaceFormat = this.context.getFormat();
+    const compositeIntermediate = this.context.getDevice().createTexture({
+      size: [width, height],
+      format: surfaceFormat,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+
     this.renderTargets = {
       hdr,
       depth,
       bloomA,
       bloomB,
+      compositeIntermediate,
       hdrView: hdr.createView(),
       depthView: depth.createView(),
       bloomAView: bloomA.createView(),
       bloomBView: bloomB.createView(),
+      compositeIntermediateView: compositeIntermediate.createView(),
     };
   }
 
@@ -564,6 +578,7 @@ export class RenderPipeline {
     this.renderTargets?.depth.destroy();
     this.renderTargets?.bloomA.destroy();
     this.renderTargets?.bloomB.destroy();
+    this.renderTargets?.compositeIntermediate.destroy();
     
     // Recreate
     this.createRenderTargets(width, height);
@@ -828,6 +843,18 @@ export class RenderPipeline {
   }
 
   /**
+   * Get the intermediate composite texture view.
+   * When PostProcessStack is active the composite pass writes to this texture
+   * instead of the swapchain, and PostProcessStack samples from it.
+   */
+  getCompositeIntermediateView(): GPUTextureView {
+    if (!this.renderTargets) {
+      throw new Error('RenderPipeline not initialized');
+    }
+    return this.renderTargets.compositeIntermediateView;
+  }
+
+  /**
    * Get render targets
    */
   getRenderTargets(): RenderTargets | null {
@@ -842,6 +869,7 @@ export class RenderPipeline {
     this.renderTargets?.depth.destroy();
     this.renderTargets?.bloomA.destroy();
     this.renderTargets?.bloomB.destroy();
+    this.renderTargets?.compositeIntermediate.destroy();
     this.renderTargets = null;
     this.pipelines = null;
     this.bindGroups = null;
