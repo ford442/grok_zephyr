@@ -34,6 +34,8 @@ export interface QualityPreset {
   description: string;
   trail: TrailQualitySettings;
   atmosphere: AtmosphereQualitySettings;
+  /** Whether TAA should be enabled for this quality tier */
+  taaEnabled: boolean;
 }
 
 /** All built-in quality presets */
@@ -42,6 +44,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     level: 'low',
     label: 'LOW',
     description: 'Minimal effects — best for low-end devices',
+    taaEnabled: false,
     trail: {
       enabled: false,
       maxLength: 0,
@@ -61,6 +64,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     level: 'balanced',
     label: 'BALANCED',
     description: 'Good performance/quality trade-off',
+    taaEnabled: true,
     trail: {
       enabled: true,
       maxLength: 30,
@@ -80,6 +84,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     level: 'high',
     label: 'HIGH',
     description: 'Full quality for modern discrete GPUs',
+    taaEnabled: true,
     trail: {
       enabled: true,
       maxLength: 45,
@@ -99,6 +104,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     level: 'cinematic',
     label: 'CINEMATIC',
     description: 'Maximum fidelity — demos and screenshots',
+    taaEnabled: true,
     trail: {
       enabled: true,
       maxLength: 90,
