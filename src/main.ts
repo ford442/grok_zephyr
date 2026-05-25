@@ -534,7 +534,7 @@ class GrokZephyrApp {
 
     // Apply TAA setting from quality preset
     if (this.postProcessStack) {
-      const taaEnabled = preset.taaEnabled ?? true;
+      const taaEnabled = preset.taaEnabled;
       this.taaEnabled = taaEnabled;
       this.postProcessStack.enableTAA(taaEnabled);
       // Sync the UI button label
@@ -663,7 +663,7 @@ class GrokZephyrApp {
       // acts as a post-composite TAA + color-grading layer without double-tonemapping.
       this.postProcessStack = new PostProcessStack(
         this.context,
-        {}, // use default PostProcessConfig (film grain, color grading, sharpness)
+        {}, // PostProcessConfig — defaults apply (film grain, color grading, sharpness)
         { enabled: this.taaEnabled },
         /* skipFinalTonemap */ true
       );

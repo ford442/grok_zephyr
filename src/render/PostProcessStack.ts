@@ -159,9 +159,6 @@ export class PostProcessStack {
     height: number,
     deltaTime: number
   ): void {
-    // Reset ping-pong index so every frame starts deterministically.
-    this.currentPass = 0;
-
     // Update TAA jitter
     this.updateTAAJitter(width, height);
     
@@ -568,7 +565,15 @@ export class PostProcessStack {
   private createTonemapPipeline(device: GPUDevice): void {
     const surfaceFormat = this.context.getFormat();
 
-    const acesShaderCode = /* wgsl */ `
+    const fullscreenVertexShader = /* wgsl */ `
+        @vertex
+        fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
+          const pts = array<vec2f, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
+          return vec4f(pts[vi], 0, 1);
+        }
+      `;
+
+    const acesShaderCode = fullscreenVertexShader + /* wgsl */ `
         @group(0) @binding(0) var sourceTexture: texture_2d<f32>;
         @group(0) @binding(1) var linearSampler: sampler;
         
@@ -579,21 +584,6 @@ export class PostProcessStack {
           let d = 0.59;
           let e = 0.14;
           return clamp((x * (a * x + b)) / (x * (c * x + d) + e), vec3f(0.0), vec3f(1.0));
-        }
-        
-        fn reinhard(x: vec3f) -> vec3f {
-          return x / (1.0 + x);
-        }
-        
-        fn filmic(x: vec3f) -> vec3f {
-          let X = max(vec3f(0.0), x - 0.004);
-          return (X * (6.2 * X + 0.5)) / (X * (6.2 * X + 1.7) + 0.06);
-        }
-        
-        @vertex
-        fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
-          const pts = array<vec2f, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
-          return vec4f(pts[vi], 0, 1);
         }
         
         @fragment
@@ -614,15 +604,9 @@ export class PostProcessStack {
 
     // When skipFinalTonemap is true the input is already tonemapped LDR —
     // use a simple passthrough to avoid double-tonemapping.
-    const passthroughShaderCode = /* wgsl */ `
+    const passthroughShaderCode = fullscreenVertexShader + /* wgsl */ `
         @group(0) @binding(0) var sourceTexture: texture_2d<f32>;
         @group(0) @binding(1) var linearSampler: sampler;
-
-        @vertex
-        fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
-          const pts = array<vec2f, 3>(vec2f(-1, -1), vec2f(3, -1), vec2f(-1, 3));
-          return vec4f(pts[vi], 0, 1);
-        }
 
         @fragment
         fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
