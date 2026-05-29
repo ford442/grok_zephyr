@@ -98,6 +98,37 @@ fn cloudNoise(pos: vec3f, time: f32) -> f32 {
   return noise3d(p0) * 0.6 + noise3d(p1) * 0.4;
 }
 
+// ── 2-D noise helpers for city-light clustering ──────────────────────────────
+// Separate from the 3-D terrain hash to avoid any frequency aliasing.
+// Constants 127.1, 311.7, 43758.5453 are standard hash primes for smooth PRNG.
+fn hash2c(p: vec2f) -> f32 {
+  return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453);
+}
+
+fn noise2c(p: vec2f) -> f32 {
+  let i = floor(p);
+  let f = fract(p);
+  let u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash2c(i + vec2f(0,0)), hash2c(i + vec2f(1,0)), u.x),
+    mix(hash2c(i + vec2f(0,1)), hash2c(i + vec2f(1,1)), u.x),
+    u.y
+  );
+}
+
+// 4-octave 2-D FBM for organic, non-repeating city-light patterns
+fn fbmCity(p: vec2f) -> f32 {
+  var v = 0.0;
+  var a = 0.5;
+  var x = p;
+  for (var i = 0; i < 4; i++) {
+    v += a * noise2c(x);
+    x *= 2.0;
+    a *= 0.5;
+  }
+  return v;
+}
+
 
 fn schlickFresnel(cosTheta:f32, F0:f32)->f32 {
   return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
@@ -208,12 +239,23 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
     surf = mix(surf, vec3f(0.90, 0.92, 0.95), pole);
   }
 
-  // City lights on night side === tighter terminator for crisp day/night boundary
+  // City lights: FBM-based for plausible coastal/river density patterns
   let night = smoothstep(0.06, -0.04, dot(N, sun_dir));
-  let cityA = 0.5 + 0.5 * sin(lon * 22.0 + lat * 18.0);
-  let cityB = 0.5 + 0.5 * sin(lon * 61.0 + lat * 47.0);
-  let cityMask = f32(isLand) * cityA * (0.4 + 0.3*cityB);
-  let cityWarm = vec3f(1.0, 0.78, 0.28) * cityMask * night * 0.12;
+  // Coarse FBM captures large population clusters; fine FBM adds sub-city variation
+  let cityCoarse = fbmCity(vec2f(lat * 6.0,  lon * 8.0));
+  let cityFine   = fbmCity(vec2f(lat * 25.0 + 1.7, lon * 19.0 + 2.3));
+  // Coastal elevation bias: cities cluster near coasts and river-delta plains
+  let coastalBias = smoothstep(0.44, 0.52, height) * (1.0 - smoothstep(0.52, 0.76, height));
+  // Latitude weighting: favour temperate zones ~20°-60° (less near equator/poles)
+  let absLat = abs(lat) / (PI / 2.0);
+  let latWeight = smoothstep(0.07, 0.22, absLat) * (1.0 - smoothstep(0.60, 0.80, absLat));
+  // Final density: land × coastal × latitude × FBM cluster threshold
+  let cityDensity = f32(isLand) * coastalBias * latWeight * smoothstep(0.38, 0.58, cityCoarse);
+  let cityMask = cityDensity * (0.55 + 0.45 * cityFine);
+  // Warm sodium-vapour lights + cool LED cores in dense centres
+  let warmLight = vec3f(1.0, 0.78, 0.28) * cityMask;
+  let coolLight = vec3f(0.9, 0.95, 1.0) * pow(cityMask, 2.5) * 0.45;
+  let cityWarm = (warmLight + coolLight) * night * 0.18;
 
   let viewDir = normalize(uni.camera_pos.xyz - in.wp);
   let horizonFactor = clamp(1.0 - abs(dot(N, viewDir)), 0.0, 1.0);
