@@ -77,6 +77,7 @@ class GrokZephyrApp {
   private captureVideoLength: HTMLSelectElement | null = null;
   private captureVideoButton: HTMLButtonElement | null = null;
   private captureInProgress = false;
+  private captureHideElements: HTMLElement[] = [];
   
   // Earth geometry
   private earthVertexBuffer: GPUBuffer | null = null;
@@ -281,6 +282,9 @@ class GrokZephyrApp {
     this.captureHideUIToggle = document.getElementById('capHideUIToggle') as HTMLInputElement | null;
     this.captureVideoLength = document.getElementById('capVideoLength') as HTMLSelectElement | null;
     this.captureVideoButton = document.getElementById('capVideoStart') as HTMLButtonElement | null;
+    this.captureHideElements = GrokZephyrApp.CAPTURE_UI_HIDE_IDS
+      .map((id) => document.getElementById(id))
+      .filter((el): el is HTMLElement => el !== null);
 
     const still1x = document.getElementById('capStill1x');
     const still2x = document.getElementById('capStill2x');
@@ -377,9 +381,7 @@ class GrokZephyrApp {
       return fn();
     }
 
-    const affected = GrokZephyrApp.CAPTURE_UI_HIDE_IDS
-      .map((id) => document.getElementById(id))
-      .filter((el): el is HTMLElement => el !== null);
+    const affected = this.captureHideElements;
     const previous = affected.map((el) => el.style.visibility);
 
     affected.forEach((el) => {
@@ -413,6 +415,8 @@ class GrokZephyrApp {
     item.href = url;
     item.download = label;
     item.title = label;
+    item.dataset.captureUrl = url;
+    item.setAttribute('aria-label', `Captured ${type} ${label}`);
 
     if (type === 'image') {
       const img = document.createElement('img');
@@ -437,8 +441,29 @@ class GrokZephyrApp {
     while (this.captureGallery.children.length > GrokZephyrApp.CAPTURE_GALLERY_LIMIT) {
       const last = this.captureGallery.lastElementChild as HTMLAnchorElement | null;
       if (!last) break;
+      const oldUrl = last.dataset.captureUrl;
+      if (oldUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(oldUrl);
+      }
       this.captureGallery.removeChild(last);
     }
+  }
+
+  private getCaptureFilename(prefix: string, ext: string): string {
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '').replace('T', '-');
+    return `grok-zephyr-${prefix}-${stamp}.${ext}`;
+  }
+
+  private toBlobUrl(canvas: HTMLCanvasElement, mimeType: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error('Failed to encode capture'));
+          return;
+        }
+        resolve(URL.createObjectURL(blob));
+      }, mimeType);
+    });
   }
 
   private async captureStillImage(scale: 1 | 2): Promise<void> {
@@ -457,8 +482,8 @@ class GrokZephyrApp {
         if (!ctx) throw new Error('2D capture context unavailable');
 
         this.drawCaptureFrame(ctx, width, height);
-        const url = outCanvas.toDataURL('image/png');
-        const filename = `grok-zephyr-${scale}x-${Date.now()}.png`;
+        const url = await this.toBlobUrl(outCanvas, 'image/png');
+        const filename = this.getCaptureFilename(`${scale}x`, 'png');
         this.addCaptureToGallery(url, 'image', filename);
         this.downloadUrl(url, filename);
       });
@@ -541,7 +566,7 @@ class GrokZephyrApp {
 
         const blob = new Blob(chunks, { type: mimeType || 'video/webm' });
         const url = URL.createObjectURL(blob);
-        const filename = `grok-zephyr-${durationSeconds}s-${Date.now()}.webm`;
+        const filename = this.getCaptureFilename(`${durationSeconds}s`, 'webm');
         this.addCaptureToGallery(url, 'video', filename);
         this.downloadUrl(url, filename);
       });
@@ -1447,6 +1472,14 @@ class GrokZephyrApp {
   destroy(): void {
     this.stop();
     window.removeEventListener('resize', this.resizeListener);
+    if (this.captureGallery) {
+      this.captureGallery.querySelectorAll<HTMLAnchorElement>('.capture-gallery-item').forEach((item) => {
+        const url = item.dataset.captureUrl;
+        if (url?.startsWith('blob:')) {
+          URL.revokeObjectURL(url);
+        }
+      });
+    }
     this.pipeline?.destroy();
     this.postProcessStack?.destroy();
     this.buffers?.destroy();
