@@ -4,9 +4,10 @@
  *
  * Bindings:
  *   0 === sceneTex  (HDR scene)
- *   1 === bloomTex  (blurred bloom)
+ *   1 === bloomTex  (blurred bloom pyramid result)
  *   2 === linearSamp
  *   3 === uni       (shared Uni uniform buffer === for uni.time)
+ *   4 === bloomUni  (BloomCompositeUni: intensity + anamorphic control)
  *
  * NOTE: The `Uni` struct below MUST match the layout in src/shaders/uniforms.ts exactly.
  * If fields are added to the shared struct, update this copy to keep the byte offsets aligned.
@@ -28,6 +29,14 @@ struct Uni {
   time_scale     : f32,
   background_mode: u32,
   sun_position   : vec4f,
+};
+
+// Bloom composite parameters — written by RenderPipeline.updateBloomCompositeUni()
+struct BloomCompositeUni {
+  bloomIntensity    : f32,
+  anamorphicEnabled : u32,   // 1 = enabled, 0 = disabled
+  anamorphicRatio   : f32,
+  pad               : f32,
 };
 
 struct VSOut {
@@ -53,16 +62,14 @@ fn vs(@builtin(vertex_index) vid: u32) -> VSOut {
 @group(0) @binding(1) var bloomTex  : texture_2d<f32>;
 @group(0) @binding(2) var linearSamp: sampler;
 @group(0) @binding(3) var<uniform>  uni: Uni;
+@group(0) @binding(4) var<uniform>  bloomUni: BloomCompositeUni;
 
-const EXPOSURE        : f32 = 1.0;
 const GAMMA           : f32 = 2.2;
 const VIGNETTE_STRENGTH: f32 = 0.4;
 const VIGNETTE_INNER  : f32 = 0.5;
 const VIGNETTE_OUTER  : f32 = 1.2;
 const CA_STRENGTH     : f32 = 0.003;
 const GRAIN_STRENGTH  : f32 = 0.025;
-const BLOOM_STRENGTH  : f32 = 1.8;
-const STREAK_STRENGTH : f32 = 0.30;
 
 fn acesToneMapping(hdr: vec3f) -> vec3f {
   let a = 2.51;
@@ -97,7 +104,8 @@ fn filmGrain(uv: vec2f, time: f32) -> f32 {
   return hash * 2.0 - 1.0;
 }
 
-// Anamorphic horizontal streak === simulates anamorphic lens flare on bright pixels
+// Anamorphic horizontal streak === simulates anamorphic lens flare on bright pixels.
+// Only executed when bloomUni.anamorphicEnabled != 0.
 fn anamorphicStreak(uv: vec2f) -> vec3f {
   var streak = vec3f(0.0);
   let tx = 1.0 / f32(textureDimensions(bloomTex, 0).x);
@@ -113,10 +121,15 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   // Chromatic aberration on scene texture
   let scene  = applyChromaticAberration(uv);
   let bloom  = textureSample(bloomTex, linearSamp, uv).rgb;
-  let streak = anamorphicStreak(uv);
 
-  let hdr = scene + bloom * BLOOM_STRENGTH + streak * STREAK_STRENGTH;
-  let mapped = acesToneMapping(hdr * EXPOSURE);
+  // Anamorphic streaks are gated behind the uniform flag
+  var streak = vec3f(0.0);
+  if (bloomUni.anamorphicEnabled != 0u) {
+    streak = anamorphicStreak(uv);
+  }
+
+  let hdr = scene + bloom * bloomUni.bloomIntensity + streak * bloomUni.anamorphicRatio;
+  let mapped = acesToneMapping(hdr);
   let gammaCorrected = pow(max(mapped, vec3f(0.0)), vec3f(1.0 / GAMMA));
 
   // Vignette

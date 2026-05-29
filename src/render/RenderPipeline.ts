@@ -5,18 +5,20 @@
  * 1. Compute orbital positions
  * 2. Smile V2 animation (optional, between compute and scene)
  * 3. Scene pass (stars, Earth, atmosphere, satellites)
- * 4. Bloom threshold
- * 5. Bloom horizontal blur
- * 6. Bloom vertical blur
- * 7. Composite + tonemapping
+ * 4. Bloom threshold (configurable threshold + soft-knee)
+ * 5. Bloom downsample pyramid (Kawase dual-filter, 2–5 levels)
+ * 6. Bloom upsample pyramid (9-tap tent filter, additive blend)
+ * 7. Composite + tonemapping (ACES, optional anamorphic streaks)
  */
 
 import type WebGPUContext from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
 import type { EarthAtmosphereRenderer } from '@/earth.js';
+import type { BloomConfig } from '@/types/animation.js';
 import { SmileV2Pipeline } from './SmileV2Pipeline.js';
 import { SHADERS } from '@/shaders/index.js';
 import { CONSTANTS, RENDER } from '@/types/constants.js';
+import { DEFAULT_BLOOM_CONFIG } from '@/types/animation.js';
 
 /** Render targets for HDR pipeline */
 export interface RenderTargets {
@@ -24,6 +26,9 @@ export interface RenderTargets {
   depth: GPUTexture;
   bloomA: GPUTexture;
   bloomB: GPUTexture;
+  /** Bloom pyramid mip levels: [0]=1/2, [1]=1/4, [2]=1/8, [3]=1/16, [4]=1/32 */
+  bloomMip: GPUTexture[];
+  bloomMipViews: GPUTextureView[];
   /** Intermediate target for the composite pass when PostProcessStack is active */
   compositeIntermediate: GPUTexture;
   
@@ -46,8 +51,6 @@ export interface PipelineBindGroups {
   beam: GPUBindGroup;
   groundTerrain: GPUBindGroup;
   bloomThreshold: GPUBindGroup;
-  bloomHorizontal: GPUBindGroup;
-  bloomVertical: GPUBindGroup;
   composite: GPUBindGroup;
 }
 
@@ -66,6 +69,8 @@ export interface Pipelines {
   groundTerrain: GPURenderPipeline;
   bloomThreshold: GPURenderPipeline;
   bloomBlur: GPURenderPipeline;
+  bloomDownsample: GPURenderPipeline;
+  bloomUpsample: GPURenderPipeline;
   composite: GPURenderPipeline;
 }
 
@@ -87,6 +92,26 @@ export class RenderPipeline {
   private width = 0;
   private height = 0;
 
+  /** Current bloom configuration (drives threshold, levels, anamorphic) */
+  private bloomConfig: BloomConfig = { ...DEFAULT_BLOOM_CONFIG };
+
+  /** Uniform buffer for the bloom threshold pass (ThresholdUni) */
+  private bloomThresholdUniformBuffer: GPUBuffer | null = null;
+  /** Uniform buffer for the composite bloom parameters (BloomCompositeUni) */
+  private bloomCompositeUniformBuffer: GPUBuffer | null = null;
+  /**
+   * Per-level Kawase uniform buffers (srcTexelSize for each pyramid level).
+   * Index i holds the texel size of mip level i.
+   * Created on initialize/resize; maximum MAX_BLOOM_LEVELS entries.
+   */
+  private bloomKawaseBuffers: GPUBuffer[] = [];
+
+  /** Maximum supported pyramid levels */
+  private static readonly MAX_BLOOM_LEVELS = 5;
+
+  /** Minimum meaningful pyramid levels (need at least 2 for the Kawase dual-filter to work) */
+  private static readonly MIN_BLOOM_LEVELS = 2;
+
   constructor(context: WebGPUContext, buffers: SatelliteBufferSet) {
     this.context = context;
     this.buffers = buffers;
@@ -102,6 +127,7 @@ export class RenderPipeline {
     
     console.log(`[RenderPipeline] Initializing ${width}x${height}`);
     
+    this.createBloomUniformBuffers(width, height);
     this.createPipelines();
     this.createRenderTargets(width, height);
     this.createBindGroups();
@@ -150,7 +176,7 @@ export class RenderPipeline {
       ],
     });
 
-    // Bloom layout
+    // Bloom layout (Kawase downsample + upsample + legacy blur)
     const bloomLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
@@ -159,21 +185,23 @@ export class RenderPipeline {
       ],
     });
 
-    // Threshold layout
+    // Threshold layout (texture + sampler + ThresholdUni)
     const thresholdLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
       ],
     });
 
-    // Composite layout (binding 3 = shared Uni uniform for uni.time used in film grain)
+    // Composite layout (binding 3 = shared Uni for film grain, binding 4 = BloomCompositeUni)
     const compositeLayout = device.createBindGroupLayout({
       entries: [
         { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
       ],
     });
 
@@ -394,6 +422,41 @@ export class RenderPipeline {
         primitive: { topology: 'triangle-list' },
       }),
 
+      bloomDownsample: device.createRenderPipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [bloomLayout] }),
+        vertex: {
+          module: this.context.createShaderModule(SHADERS.render.postProcess.bloomDownsample, 'bloom-downsample'),
+          entryPoint: 'vs',
+        },
+        fragment: {
+          module: this.context.createShaderModule(SHADERS.render.postProcess.bloomDownsample, 'bloom-downsample'),
+          entryPoint: 'fs',
+          targets: [{ format: RENDER.HDR_FORMAT }],
+        },
+        primitive: { topology: 'triangle-list' },
+      }),
+
+      bloomUpsample: device.createRenderPipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [bloomLayout] }),
+        vertex: {
+          module: this.context.createShaderModule(SHADERS.render.postProcess.bloomUpsample, 'bloom-upsample'),
+          entryPoint: 'vs',
+        },
+        fragment: {
+          module: this.context.createShaderModule(SHADERS.render.postProcess.bloomUpsample, 'bloom-upsample'),
+          entryPoint: 'fs',
+          // Additive blend: each upsample level accumulates onto the target
+          targets: [{
+            format: RENDER.HDR_FORMAT,
+            blend: {
+              color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+            },
+          }],
+        },
+        primitive: { topology: 'triangle-list' },
+      }),
+
       composite: device.createRenderPipeline({
         layout: device.createPipelineLayout({ bindGroupLayouts: [compositeLayout] }),
         vertex: {
@@ -414,27 +477,40 @@ export class RenderPipeline {
    * Create render targets for HDR pipeline
    */
   private createRenderTargets(width: number, height: number): void {
-    const mkTex = (format: GPUTextureFormat, usage: GPUTextureUsageFlags): GPUTexture => {
-      return this.context.getDevice().createTexture({
-        size: [width, height],
+    const device = this.context.getDevice();
+    const mkTex = (w: number, h: number, format: GPUTextureFormat): GPUTexture => {
+      return device.createTexture({
+        size: [w, h],
         format,
-        usage: usage | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
       });
     };
 
-    const hdr = mkTex(RENDER.HDR_FORMAT, GPUTextureUsage.TEXTURE_BINDING);
-    const depth = this.context.getDevice().createTexture({
+    const hdr = mkTex(width, height, RENDER.HDR_FORMAT);
+    const depth = device.createTexture({
       size: [width, height],
       format: RENDER.DEPTH_FORMAT,
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
-    const bloomA = mkTex(RENDER.HDR_FORMAT, GPUTextureUsage.TEXTURE_BINDING);
-    const bloomB = mkTex(RENDER.HDR_FORMAT, GPUTextureUsage.TEXTURE_BINDING);
+    const bloomA = mkTex(width, height, RENDER.HDR_FORMAT);
+    const bloomB = mkTex(width, height, RENDER.HDR_FORMAT);
+
+    // Bloom pyramid mip levels: [0]=1/2, [1]=1/4, [2]=1/8, [3]=1/16, [4]=1/32
+    const bloomMip: GPUTexture[] = [];
+    const bloomMipViews: GPUTextureView[] = [];
+    for (let i = 0; i < RenderPipeline.MAX_BLOOM_LEVELS; i++) {
+      const scale = 1 << (i + 1); // 2, 4, 8, 16, 32
+      const mw = Math.max(1, Math.floor(width / scale));
+      const mh = Math.max(1, Math.floor(height / scale));
+      const mip = mkTex(mw, mh, RENDER.HDR_FORMAT);
+      bloomMip.push(mip);
+      bloomMipViews.push(mip.createView());
+    }
 
     // Intermediate composite target: the composite pass writes to this when
     // PostProcessStack is active, so the post-process stack can read from it.
     const surfaceFormat = this.context.getFormat();
-    const compositeIntermediate = this.context.getDevice().createTexture({
+    const compositeIntermediate = device.createTexture({
       size: [width, height],
       format: surfaceFormat,
       usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
@@ -445,6 +521,8 @@ export class RenderPipeline {
       depth,
       bloomA,
       bloomB,
+      bloomMip,
+      bloomMipViews,
       compositeIntermediate,
       hdrView: hdr.createView(),
       depthView: depth.createView(),
@@ -459,106 +537,94 @@ export class RenderPipeline {
    */
   private createBindGroups(): void {
     if (!this.pipelines || !this.renderTargets) return;
+    if (!this.bloomThresholdUniformBuffer || !this.bloomCompositeUniformBuffer) return;
 
     const device = this.context.getDevice();
     const posBuffer = this.buffers.positions instanceof GPUBuffer
-      ? this.buffers.positions
-      : (this.buffers.positions as { read: GPUBuffer }).read;
+    ? this.buffers.positions
+    : (this.buffers.positions as { read: GPUBuffer }).read;
+
+    // The bloom pyramid result is in mip[0] (1/2 res) after the upsample passes.
+    const bloomResultView = this.renderTargets.bloomMipViews[0];
 
     this.bindGroups = {
-      compute: device.createBindGroup({
-        layout: this.pipelines.compute.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: this.buffers.uniforms } },
-          { binding: 1, resource: { buffer: this.buffers.orbitalElements } },
-          { binding: 2, resource: { buffer: this.buffers.extendedElements } },
-          { binding: 3, resource: { buffer: posBuffer } },
-        ],
-      }),
+    compute: device.createBindGroup({
+      layout: this.pipelines.compute.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.buffers.uniforms } },
+        { binding: 1, resource: { buffer: this.buffers.orbitalElements } },
+        { binding: 2, resource: { buffer: this.buffers.extendedElements } },
+        { binding: 3, resource: { buffer: posBuffer } },
+      ],
+    }),
 
-      beamCompute: device.createBindGroup({
-        layout: this.pipelines.beamCompute.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: this.buffers.uniforms } },
-          { binding: 1, resource: { buffer: posBuffer } },
-          { binding: 2, resource: { buffer: this.buffers.beams } },
-          { binding: 3, resource: { buffer: this.buffers.beamParams } },
-        ],
-      }),
+    beamCompute: device.createBindGroup({
+      layout: this.pipelines.beamCompute.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.buffers.uniforms } },
+        { binding: 1, resource: { buffer: posBuffer } },
+        { binding: 2, resource: { buffer: this.buffers.beams } },
+        { binding: 3, resource: { buffer: this.buffers.beamParams } },
+      ],
+    }),
 
-      stars: device.createBindGroup({
-        layout: this.pipelines.stars.getBindGroupLayout(0),
-        entries: [{ binding: 0, resource: { buffer: this.buffers.uniforms } }],
-      }),
+    stars: device.createBindGroup({
+      layout: this.pipelines.stars.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: this.buffers.uniforms } }],
+    }),
 
-      earth: device.createBindGroup({
-        layout: this.pipelines.earth.getBindGroupLayout(0),
-        entries: [{ binding: 0, resource: { buffer: this.buffers.uniforms } }],
-      }),
+    earth: device.createBindGroup({
+      layout: this.pipelines.earth.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: this.buffers.uniforms } }],
+    }),
 
-      atmosphere: device.createBindGroup({
-        layout: this.pipelines.atmosphere.getBindGroupLayout(0),
-        entries: [{ binding: 0, resource: { buffer: this.buffers.uniforms } }],
-      }),
+    atmosphere: device.createBindGroup({
+      layout: this.pipelines.atmosphere.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: this.buffers.uniforms } }],
+    }),
 
-      satellites: device.createBindGroup({
-        layout: this.pipelines.satellites.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: this.buffers.uniforms } },
-          { binding: 1, resource: { buffer: posBuffer } },
-          { binding: 2, resource: { buffer: this.buffers.colors } },
-          { binding: 3, resource: { buffer: this.buffers.patternParams } },
-        ],
-      }),
+    satellites: device.createBindGroup({
+      layout: this.pipelines.satellites.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.buffers.uniforms } },
+        { binding: 1, resource: { buffer: posBuffer } },
+        { binding: 2, resource: { buffer: this.buffers.colors } },
+        { binding: 3, resource: { buffer: this.buffers.patternParams } },
+      ],
+    }),
 
-      beam: device.createBindGroup({
-        layout: this.pipelines.beam.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: this.buffers.uniforms } },
-          { binding: 1, resource: { buffer: this.buffers.beams } },
-        ],
-      }),
+    beam: device.createBindGroup({
+      layout: this.pipelines.beam.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.buffers.uniforms } },
+        { binding: 1, resource: { buffer: this.buffers.beams } },
+      ],
+    }),
 
-      groundTerrain: device.createBindGroup({
-        layout: this.pipelines.groundTerrain.getBindGroupLayout(0),
-        entries: [{ binding: 0, resource: { buffer: this.buffers.uniforms } }],
-      }),
+    groundTerrain: device.createBindGroup({
+      layout: this.pipelines.groundTerrain.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: this.buffers.uniforms } }],
+    }),
 
-      bloomThreshold: device.createBindGroup({
-        layout: this.pipelines.bloomThreshold.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: this.renderTargets.hdrView },
-          { binding: 1, resource: this.linearSampler },
-        ],
-      }),
+    bloomThreshold: device.createBindGroup({
+      layout: this.pipelines.bloomThreshold.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: this.renderTargets.hdrView },
+        { binding: 1, resource: this.linearSampler },
+        { binding: 2, resource: { buffer: this.bloomThresholdUniformBuffer } },
+      ],
+    }),
 
-      bloomHorizontal: device.createBindGroup({
-        layout: this.pipelines.bloomBlur.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: this.buffers.bloomUniforms.horizontal } },
-          { binding: 1, resource: this.renderTargets.bloomAView },
-          { binding: 2, resource: this.linearSampler },
-        ],
-      }),
-
-      bloomVertical: device.createBindGroup({
-        layout: this.pipelines.bloomBlur.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: this.buffers.bloomUniforms.vertical } },
-          { binding: 1, resource: this.renderTargets.bloomBView },
-          { binding: 2, resource: this.linearSampler },
-        ],
-      }),
-
-      composite: device.createBindGroup({
-        layout: this.pipelines.composite.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: this.renderTargets.hdrView },
-          { binding: 1, resource: this.renderTargets.bloomAView },
-          { binding: 2, resource: this.linearSampler },
-          { binding: 3, resource: { buffer: this.buffers.uniforms } },
-        ],
-      }),
+    composite: device.createBindGroup({
+      layout: this.pipelines.composite.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: this.renderTargets.hdrView },
+        { binding: 1, resource: bloomResultView },
+        { binding: 2, resource: this.linearSampler },
+        { binding: 3, resource: { buffer: this.buffers.uniforms } },
+        { binding: 4, resource: { buffer: this.bloomCompositeUniformBuffer } },
+      ],
+    }),
     };
   }
 
@@ -578,9 +644,15 @@ export class RenderPipeline {
     this.renderTargets?.depth.destroy();
     this.renderTargets?.bloomA.destroy();
     this.renderTargets?.bloomB.destroy();
+    this.renderTargets?.bloomMip.forEach(t => t.destroy());
     this.renderTargets?.compositeIntermediate.destroy();
-    
-    // Recreate
+
+    // Recreate Kawase uniform buffers for new dimensions
+    this.bloomKawaseBuffers.forEach(b => b.destroy());
+    this.bloomKawaseBuffers = [];
+    this.createBloomUniformBuffers(width, height);
+
+    // Recreate render targets + bind groups
     this.createRenderTargets(width, height);
     this.createBindGroups();
   }
@@ -765,55 +837,118 @@ export class RenderPipeline {
   }
 
   /**
-   * Execute bloom passes
+   * Execute bloom passes — multi-resolution Kawase pyramid.
+   *
+   * Pass sequence:
+   *   1. Threshold pass  → bloomA (full res, bright-pass with soft knee)
+   *   2. Downsample chain: bloomA → mip[0] → mip[1] → … → mip[levels-1]
+   *   3. Upsample chain (additive):  mip[levels-1] → mip[levels-2] → … → mip[0]
+   *
+   * The composite pass reads from mip[0] (half res) as the final bloom result.
    */
   encodeBloomPasses(encoder: GPUCommandEncoder): void {
     if (!this.pipelines || !this.bindGroups || !this.renderTargets) return;
+    if (this.bloomKawaseBuffers.length === 0) return;
 
-    // Threshold
-    const thrPass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: this.renderTargets.bloomAView,
-        clearValue: { r: 0, g: 0, b: 0, a: 1 },
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
-    });
-    thrPass.setViewport(0, 0, this.width, this.height, 0, 1);
-    thrPass.setPipeline(this.pipelines.bloomThreshold);
-    thrPass.setBindGroup(0, this.bindGroups.bloomThreshold);
-    thrPass.draw(3);
-    thrPass.end();
+    const device = this.context.getDevice();
+    const levels = Math.min(
+      Math.max(RenderPipeline.MIN_BLOOM_LEVELS, this.bloomConfig.levels),
+      RenderPipeline.MAX_BLOOM_LEVELS
+    );
 
-    // Horizontal blur
-    const hBlurPass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: this.renderTargets.bloomBView,
-        clearValue: { r: 0, g: 0, b: 0, a: 1 },
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
-    });
-    hBlurPass.setViewport(0, 0, this.width, this.height, 0, 1);
-    hBlurPass.setPipeline(this.pipelines.bloomBlur);
-    hBlurPass.setBindGroup(0, this.bindGroups.bloomHorizontal);
-    hBlurPass.draw(3);
-    hBlurPass.end();
+    // Validate that all required GPU resources exist for the requested level count.
+    for (let i = 0; i < levels; i++) {
+      if (!this.renderTargets.bloomMip[i] || !this.bloomKawaseBuffers[i]) {
+        console.warn(`[RenderPipeline] Bloom mip level ${i} resource missing — bloom pass skipped.`);
+        return;
+      }
+    }
 
-    // Vertical blur
-    const vBlurPass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: this.renderTargets.bloomAView,
-        clearValue: { r: 0, g: 0, b: 0, a: 1 },
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
-    });
-    vBlurPass.setViewport(0, 0, this.width, this.height, 0, 1);
-    vBlurPass.setPipeline(this.pipelines.bloomBlur);
-    vBlurPass.setBindGroup(0, this.bindGroups.bloomVertical);
-    vBlurPass.draw(3);
-    vBlurPass.end();
+    // ── 1. Threshold pass ────────────────────────────────────────────────────
+    {
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{
+          view: this.renderTargets.bloomAView,
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: 'clear',
+          storeOp: 'store',
+        }],
+      });
+      pass.setViewport(0, 0, this.width, this.height, 0, 1);
+      pass.setPipeline(this.pipelines.bloomThreshold);
+      pass.setBindGroup(0, this.bindGroups.bloomThreshold);
+      pass.draw(3);
+      pass.end();
+    }
+
+    // ── 2. Downsample chain ──────────────────────────────────────────────────
+    // Level 0: bloomA (full res) → mip[0]  (1/2 res)
+    // Level i: mip[i-1]         → mip[i]
+    const srcViews: GPUTextureView[] = [this.renderTargets.bloomAView, ...this.renderTargets.bloomMipViews];
+    const dstViews: GPUTextureView[] = this.renderTargets.bloomMipViews;
+
+    for (let i = 0; i < levels; i++) {
+      const mip = this.renderTargets.bloomMip[i];
+      const kawaseBuf = this.bloomKawaseBuffers[i];
+      if (!mip || !kawaseBuf) break;
+
+      const bg = device.createBindGroup({
+        layout: this.pipelines.bloomDownsample.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: kawaseBuf } },
+          { binding: 1, resource: srcViews[i] },
+          { binding: 2, resource: this.linearSampler },
+        ],
+      });
+
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{
+          view: dstViews[i],
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: 'clear',
+          storeOp: 'store',
+        }],
+      });
+      pass.setViewport(0, 0, mip.width, mip.height, 0, 1);
+      pass.setPipeline(this.pipelines.bloomDownsample);
+      pass.setBindGroup(0, bg);
+      pass.draw(3);
+      pass.end();
+    }
+
+    // ── 3. Upsample chain (additive blend) ───────────────────────────────────
+    // Levels are accumulated from the bottom of the pyramid up.
+    // mip[levels-1] → mip[levels-2] → … → mip[0]
+    for (let i = levels - 1; i > 0; i--) {
+      const srcMip = this.renderTargets.bloomMip[i];
+      const dstMip = this.renderTargets.bloomMip[i - 1];
+      const kawaseBuf = this.bloomKawaseBuffers[i];
+      if (!srcMip || !dstMip || !kawaseBuf) break;
+
+      const bg = device.createBindGroup({
+        layout: this.pipelines.bloomUpsample.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: kawaseBuf } },
+          { binding: 1, resource: this.renderTargets.bloomMipViews[i] },
+          { binding: 2, resource: this.linearSampler },
+        ],
+      });
+
+      const pass = encoder.beginRenderPass({
+        colorAttachments: [{
+          view: this.renderTargets.bloomMipViews[i - 1],
+          // loadOp 'load' to preserve the existing downsampled content and
+          // let the GPU additive blend state accumulate on top of it.
+          loadOp: 'load',
+          storeOp: 'store',
+        }],
+      });
+      pass.setViewport(0, 0, dstMip.width, dstMip.height, 0, 1);
+      pass.setPipeline(this.pipelines.bloomUpsample);
+      pass.setBindGroup(0, bg);
+      pass.draw(3);
+      pass.end();
+    }
   }
 
   /**
@@ -869,15 +1004,125 @@ export class RenderPipeline {
     this.renderTargets?.depth.destroy();
     this.renderTargets?.bloomA.destroy();
     this.renderTargets?.bloomB.destroy();
+    this.renderTargets?.bloomMip.forEach(t => t.destroy());
     this.renderTargets?.compositeIntermediate.destroy();
     this.renderTargets = null;
     this.pipelines = null;
     this.bindGroups = null;
+
+    this.bloomThresholdUniformBuffer?.destroy();
+    this.bloomThresholdUniformBuffer = null;
+    this.bloomCompositeUniformBuffer?.destroy();
+    this.bloomCompositeUniformBuffer = null;
+    this.bloomKawaseBuffers.forEach(b => b.destroy());
+    this.bloomKawaseBuffers = [];
     
     if (this.smileV2Pipeline) {
       this.smileV2Pipeline.destroy();
       this.smileV2Pipeline = null;
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Bloom configuration helpers
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Update the active bloom configuration.
+   * Writes new values into the GPU uniform buffers immediately.
+   * The change takes effect on the next rendered frame.
+   */
+  setBloomConfig(config: Partial<BloomConfig>): void {
+    this.bloomConfig = { ...this.bloomConfig, ...config };
+    this.writeBloomThresholdUni();
+    this.writeBloomCompositeUni();
+  }
+
+  /** Return a copy of the current bloom configuration. */
+  getBloomConfig(): BloomConfig {
+    return { ...this.bloomConfig };
+  }
+
+  /**
+   * Create GPU uniform buffers used by the bloom passes.
+   * Called once on initialize() and again on resize() to update texel sizes.
+   */
+  private createBloomUniformBuffers(width: number, height: number): void {
+    const device = this.context.getDevice();
+
+    // ThresholdUni: 4 × f32 = 16 bytes
+    if (!this.bloomThresholdUniformBuffer) {
+      this.bloomThresholdUniformBuffer = device.createBuffer({
+        size: 16,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        label: 'Bloom Threshold Uniform',
+      });
+    }
+    this.writeBloomThresholdUni();
+
+    // BloomCompositeUni: 4 × f32/u32 = 16 bytes
+    if (!this.bloomCompositeUniformBuffer) {
+      this.bloomCompositeUniformBuffer = device.createBuffer({
+        size: 16,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        label: 'Bloom Composite Uniform',
+      });
+    }
+    this.writeBloomCompositeUni();
+
+    // Per-level Kawase uniform buffers — one per pyramid level.
+    // Each holds { srcTexelSize: vec2f, pad: vec2f } = 16 bytes.
+    //
+    // Buffer[i] stores the texel size of the SOURCE texture for downsample pass i:
+    //   pass 0: source = bloomA (full res, scale = 1×)  → destination = mip[0] (1/2 res)
+    //   pass 1: source = mip[0] (1/2 res, scale = 2×)  → destination = mip[1] (1/4 res)
+    //   …
+    // The same buffer is reused for the corresponding upsample pass.
+    this.bloomKawaseBuffers.forEach(b => b.destroy());
+    this.bloomKawaseBuffers = [];
+    for (let i = 0; i < RenderPipeline.MAX_BLOOM_LEVELS; i++) {
+      // scale = resolution divisor of the source texture for this pass level.
+      const scale = 1 << i; // i=0 → ÷1 (bloomA), i=1 → ÷2 (mip[0]), …
+      const srcW = Math.max(1, Math.floor(width / scale));
+      const srcH = Math.max(1, Math.floor(height / scale));
+
+      const buf = device.createBuffer({
+        size: 16,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        label: `Bloom Kawase Uniform L${i}`,
+      });
+      const data = new Float32Array(4);
+      data[0] = 1.0 / srcW;
+      data[1] = 1.0 / srcH;
+      data[2] = 0.0;
+      data[3] = 0.0;
+      device.queue.writeBuffer(buf, 0, data);
+      this.bloomKawaseBuffers.push(buf);
+    }
+  }
+
+  /** Write the ThresholdUni buffer from the current bloomConfig. */
+  private writeBloomThresholdUni(): void {
+    if (!this.bloomThresholdUniformBuffer) return;
+    const data = new Float32Array(4);
+    data[0] = this.bloomConfig.threshold;
+    data[1] = this.bloomConfig.knee;
+    data[2] = 0.0;
+    data[3] = 0.0;
+    this.context.getDevice().queue.writeBuffer(this.bloomThresholdUniformBuffer, 0, data);
+  }
+
+  /** Write the BloomCompositeUni buffer from the current bloomConfig. */
+  private writeBloomCompositeUni(): void {
+    if (!this.bloomCompositeUniformBuffer) return;
+    const ab = new ArrayBuffer(16);
+    const f32 = new Float32Array(ab);
+    const u32 = new Uint32Array(ab);
+    f32[0] = this.bloomConfig.intensity;
+    u32[1] = this.bloomConfig.anamorphicEnabled ? 1 : 0;
+    f32[2] = this.bloomConfig.anamorphicRatio;
+    f32[3] = 0.0;
+    this.context.getDevice().queue.writeBuffer(this.bloomCompositeUniformBuffer, 0, ab);
   }
 }
 
