@@ -49,6 +49,10 @@ const CELESTRAK_GROUPS: Record<string, string> = {
  * Main Application Class
  */
 class GrokZephyrApp {
+  private static readonly CAPTURE_UI_HIDE_IDS = ['ui', 'controls', 'horizon-indicator', 'ground-preset-selector', 'capture-gallery'];
+  private static readonly CAPTURE_GALLERY_LIMIT = 6;
+  private static readonly PREFERRED_VIDEO_MIME_TYPES = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+
   private canvas: HTMLCanvasElement;
   private context: WebGPUContext | null = null;
   private buffers: SatelliteGPUBuffer | null = null;
@@ -288,7 +292,7 @@ class GrokZephyrApp {
       void this.captureStillImage(2);
     });
     this.captureVideoButton?.addEventListener('click', () => {
-      const seconds = parseInt(this.captureVideoLength?.value ?? '5', 10);
+      const seconds = parseInt(this.captureVideoLength?.value ?? '5', 10) || 5;
       void this.captureVideoClip(seconds);
     });
   }
@@ -299,8 +303,19 @@ class GrokZephyrApp {
     }
   }
 
+  private getCurrentViewDisplayName(): string {
+    switch (this.camera.getViewMode()) {
+      case 'horizon-720': return '720km Horizon';
+      case 'god': return 'God View';
+      case 'sat-pov': return 'Fleet POV';
+      case 'ground': return 'Ground View';
+      case 'moon': return 'Moon View';
+      default: return 'Unknown';
+    }
+  }
+
   private getCaptureMeta() {
-    const modeName = document.getElementById('s-view')?.textContent?.replace('View     : ', '').trim() || 'Unknown';
+    const modeName = this.getCurrentViewDisplayName();
     const patternName = this.patternNameDisplay?.textContent?.trim() || getBeamPatternTitle(this.currentPatternMode);
     const timestamp = new Date().toISOString().replace('T', ' ').replace(/\..+$/, ' UTC');
     return { modeName, patternName, timestamp };
@@ -362,8 +377,7 @@ class GrokZephyrApp {
       return fn();
     }
 
-    const idsToHide = ['ui', 'controls', 'horizon-indicator', 'ground-preset-selector', 'capture-gallery'];
-    const affected = idsToHide
+    const affected = GrokZephyrApp.CAPTURE_UI_HIDE_IDS
       .map((id) => document.getElementById(id))
       .filter((el): el is HTMLElement => el !== null);
     const previous = affected.map((el) => el.style.visibility);
@@ -420,7 +434,7 @@ class GrokZephyrApp {
     item.appendChild(meta);
 
     this.captureGallery.prepend(item);
-    while (this.captureGallery.children.length > 6) {
+    while (this.captureGallery.children.length > GrokZephyrApp.CAPTURE_GALLERY_LIMIT) {
       const last = this.captureGallery.lastElementChild as HTMLAnchorElement | null;
       if (!last) break;
       this.captureGallery.removeChild(last);
@@ -458,8 +472,7 @@ class GrokZephyrApp {
   }
 
   private getVideoMimeType(): string {
-    const preferred = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
-    for (const type of preferred) {
+    for (const type of GrokZephyrApp.PREFERRED_VIDEO_MIME_TYPES) {
       if (MediaRecorder.isTypeSupported(type)) {
         return type;
       }
@@ -490,7 +503,12 @@ class GrokZephyrApp {
 
         const stream = recorderCanvas.captureStream(30);
         const mimeType = this.getVideoMimeType();
-        const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        let recorder: MediaRecorder;
+        try {
+          recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+        } catch {
+          throw new Error(`Failed to initialize video recorder${mimeType ? ` (${mimeType})` : ''}`);
+        }
         const chunks: BlobPart[] = [];
         recorder.ondataavailable = (event) => {
           if (event.data.size > 0) chunks.push(event.data);
