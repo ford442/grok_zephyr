@@ -193,14 +193,31 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
   let N       = normalize(in.n);
   let sun_dir = normalize(uni.sun_position.xyz);
   let V       = normalize(uni.camera_pos.xyz - in.wp);
-  let diff    = max(dot(N,sun_dir),0.0);
 
-  let lat = asin(clamp(N.z,-1.0,1.0));
-  let lon = atan2(N.y,N.x);
+  // Earth sidereal rotation: one full turn every 86164 seconds.
+  // Rotate the surface sampling position around Z in body frame while
+  // keeping the ECI sphere normal (N) unchanged for correct sun lighting.
+  let earthRotAngle = 2.0 * PI * uni.sim_time / 86164.0;
+  let cosR = cos(earthRotAngle);
+  let sinR = sin(earthRotAngle);
+  let wp_norm = normalize(in.wp);
+  let wp_rot = vec3f(
+    wp_norm.x * cosR - wp_norm.y * sinR,
+    wp_norm.x * sinR + wp_norm.y * cosR,
+    wp_norm.z
+  );
 
-  // FBM terrain height
-  let terrainPos = normalize(in.wp) * 3.0;
+  // Latitude/longitude from body-frame rotated position (for terrain, cities, clouds)
+  let lat = asin(clamp(wp_rot.z, -1.0, 1.0));
+  let lon = atan2(wp_rot.y, wp_rot.x);
+
+  // FBM terrain height sampled in body frame (rotates with the Earth)
+  let terrainPos = wp_rot * 3.0;
   let height = fbmTerrain(terrainPos, 4);
+
+  // Sun–surface dot product (in ECI frame for correct terminator)
+  let sunDot = dot(N, sun_dir);
+  let diff   = max(sunDot, 0.0);
 
   // Determine land vs ocean
   let isLand = height > 0.45;
@@ -211,18 +228,24 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
 
   var surf: vec3f;
   if (isLand) {
-    // Terrain normal from height gradient for self-shadowing
+    // Terrain normal from body-frame height gradient for self-shadowing
     let eps = 0.01;
-    let hL = fbmTerrain(normalize(in.wp + vec3f(-eps, 0.0, 0.0)) * 3.0, 4);
-    let hR = fbmTerrain(normalize(in.wp + vec3f(eps, 0.0, 0.0)) * 3.0, 4);
-    let hD = fbmTerrain(normalize(in.wp + vec3f(0.0, -eps, 0.0)) * 3.0, 4);
-    let hU = fbmTerrain(normalize(in.wp + vec3f(0.0, eps, 0.0)) * 3.0, 4);
+    let hL = fbmTerrain(normalize(vec3f(wp_rot.x - eps, wp_rot.y, wp_rot.z)) * 3.0, 4);
+    let hR = fbmTerrain(normalize(vec3f(wp_rot.x + eps, wp_rot.y, wp_rot.z)) * 3.0, 4);
+    let hD = fbmTerrain(normalize(vec3f(wp_rot.x, wp_rot.y - eps, wp_rot.z)) * 3.0, 4);
+    let hU = fbmTerrain(normalize(vec3f(wp_rot.x, wp_rot.y + eps, wp_rot.z)) * 3.0, 4);
     let gradient = vec2f(hR - hL, hU - hD) / (2.0 * eps);
-    let terrainNormal = normalize(vec3f(-gradient.x, -gradient.y, 1.0));
-    let modN = normalize(N + terrainNormal * 0.3);
+    let terrNormBody = normalize(vec3f(-gradient.x, -gradient.y, 1.0));
+    // Rotate terrain normal back to ECI frame for correct lighting
+    let terrNormECI = vec3f(
+      terrNormBody.x * cosR + terrNormBody.y * sinR,
+     -terrNormBody.x * sinR + terrNormBody.y * cosR,
+      terrNormBody.z
+    );
+    let modN = normalize(N + terrNormECI * 0.3);
 
-    // Slope from terrain gradient magnitude (angle between terrain normal and geometric normal)
-    let slope = 1.0 - abs(dot(normalize(vec3f(-gradient.x, -gradient.y, 1.0)), vec3f(0.0, 0.0, 1.0)));
+    // Slope from terrain gradient magnitude
+    let slope = 1.0 - abs(dot(terrNormBody, vec3f(0.0, 0.0, 1.0)));
 
     // Get biome color
     surf = biomeColor(height, lat, slope);
@@ -239,8 +262,13 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
     surf = mix(surf, vec3f(0.90, 0.92, 0.95), pole);
   }
 
-  // City lights: FBM-based for plausible coastal/river density patterns
-  let night = smoothstep(0.06, -0.04, dot(N, sun_dir));
+  // Soft terminator: orange-red atmospheric twilight scattering at the day/night boundary
+  let twilightBand = smoothstep(-0.12, 0.0, sunDot) * (1.0 - smoothstep(0.0, 0.12, sunDot));
+  surf += vec3f(1.0, 0.38, 0.08) * twilightBand * 0.22;
+
+  // City lights: FBM-based for plausible coastal/river density patterns.
+  // Strictly night-side — fade in only as sunDot goes negative.
+  let night = smoothstep(0.08, -0.06, sunDot);
   // Coarse FBM captures large population clusters; fine FBM adds sub-city variation
   let cityCoarse = fbmCity(vec2f(lat * 6.0,  lon * 8.0));
   let cityFine   = fbmCity(vec2f(lat * 25.0 + 1.7, lon * 19.0 + 2.3));
@@ -252,27 +280,31 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
   // Final density: land × coastal × latitude × FBM cluster threshold
   let cityDensity = f32(isLand) * coastalBias * latWeight * smoothstep(0.38, 0.58, cityCoarse);
   let cityMask = cityDensity * (0.55 + 0.45 * cityFine);
-  // Warm sodium-vapour lights + cool LED cores in dense centres
+  // Warm sodium-vapour lights + cool LED cores in dense centres + faint blue atmospheric haze
   let warmLight = vec3f(1.0, 0.78, 0.28) * cityMask;
   let coolLight = vec3f(0.9, 0.95, 1.0) * pow(cityMask, 2.5) * 0.45;
-  let cityWarm = (warmLight + coolLight) * night * 0.18;
+  let cityHaze  = vec3f(0.15, 0.20, 0.40) * cityMask * 0.35;
+  let cityWarm = (warmLight + coolLight + cityHaze) * night * 0.18;
 
   let viewDir = normalize(uni.camera_pos.xyz - in.wp);
   let horizonFactor = clamp(1.0 - abs(dot(N, viewDir)), 0.0, 1.0);
-  // Stronger Fresnel limb glow with deeper blue
-  let atmosphereGlow = vec3f(0.20, 0.50, 1.0) * pow(horizonFactor, 1.8) * 0.36;
-  surf += atmosphereGlow * (1.0 - diff) * 0.7;
+  // Atmosphere limb glow: blue on the day side, dim on the night side
+  let dayAtm   = vec3f(0.20, 0.50, 1.0) * diff;
+  let nightAtm = vec3f(0.05, 0.08, 0.18) * (1.0 - diff);
+  surf += (dayAtm + nightAtm) * pow(horizonFactor, 1.8) * 0.36 * 0.7;
 
-  // Procedural animated cloud layer (2-octave, cheap)
-  let cloudSample = cloudNoise(normalize(in.wp), uni.time);
+  // Procedural animated cloud layer (2-octave, cheap).
+  // Sampled from body-frame rotated position and driven by sim_time so cloud
+  // motion is visible at any time scale (not just real-time).
+  let cloudSample = cloudNoise(wp_rot, uni.sim_time);
   let cloudAlpha = smoothstep(0.44, 0.62, cloudSample);
   // Forward-scatter brightening on cloud edges facing the sun
   let cloudEdge = smoothstep(0.62, 0.80, cloudSample) * (1.0 - cloudAlpha);
-  let cloudLit = max(dot(N, sun_dir), 0.0);
+  let cloudLit = max(sunDot, 0.0);
   let cloudColor = vec3f(0.92, 0.94, 0.97) * (cloudLit * 0.85 + 0.15);
   let cloudEdgeColor = cloudColor + vec3f(0.4, 0.35, 0.2) * cloudEdge * cloudLit * 1.4;
-  // Cloud visibility fades to zero on the night side of Earth
-  let cloudVisibility = smoothstep(-0.05, 0.1, dot(N, sun_dir));
+  // Cloud visibility fades to zero on the deep night side, with a soft twilight fringe
+  let cloudVisibility = smoothstep(-0.08, 0.08, sunDot);
   surf = mix(surf, cloudEdgeColor, cloudAlpha * cloudVisibility);
 
   return vec4f(surf + cityWarm, 1.0);

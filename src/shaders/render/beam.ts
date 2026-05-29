@@ -63,7 +63,7 @@ fn fs(in: VOut) -> @location(0) vec4f {
   let glow = max(0.35, travel);
   let alpha = clamp(edge * in.intensity * pulse * glow, 0.0, 1.0);
   let color = mix(base * 0.8, base * 1.4, travel);
-  if (uni.is_ground_view == 1u) {
+  if (((uni.view_mode >> 16u) & 1u) == 1u) {
     let groundTint = mix(color, vec3f(1.0, 0.8, 0.45), 0.24);
     return vec4f(groundTint * alpha * 1.05, alpha * 0.85);
   }

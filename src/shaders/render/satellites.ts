@@ -316,7 +316,7 @@ fn vs(
   let shellSize = shellSizeScale(shellIdx);
 
   // Increased max distance from 14000 to 150000 to support ground/Moon views
-  let groundScale = select(1.0, 0.72, uni.is_ground_view == 1u);
+  let groundScale = select(1.0, 0.72, ((uni.view_mode >> 16u) & 1u) == 1u);
   let bsize = clamp(1200.0 / max(dist, 50.0), 0.4, 60.0) *
               select(0.0, 1.0, dist < 150000.0) * shellSize * groundScale;
   let offset = (qv.x * right + qv.y * up) * bsize;
