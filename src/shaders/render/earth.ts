@@ -10,6 +10,10 @@ struct VIn  { @location(0) pos:vec3f, @location(1) nrm:vec3f }
 struct VOut { @builtin(position) cp:vec4f, @location(0) wp:vec3f, @location(1) n:vec3f }
 
 const PI: f32 = 3.14159265;
+const EARTH_SIDEREAL_PERIOD: f32 = 86164.0;  // seconds — one sidereal day
+const TWILIGHT_COS_HALF:     f32 = 0.12;     // ≈ 6.9° angular half-width of twilight band
+const NIGHT_START:           f32 = 0.08;     // sun-dot threshold where night begins
+const NIGHT_END:             f32 = -0.06;    // sun-dot threshold where night is full
 
 @vertex fn vs(v:VIn) -> VOut {
   var o:VOut;
@@ -197,7 +201,7 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
   // Earth sidereal rotation: one full turn every 86164 seconds.
   // Rotate the surface sampling position around Z in body frame while
   // keeping the ECI sphere normal (N) unchanged for correct sun lighting.
-  let earthRotAngle = 2.0 * PI * uni.sim_time / 86164.0;
+  let earthRotAngle = 2.0 * PI * uni.sim_time / EARTH_SIDEREAL_PERIOD;
   let cosR = cos(earthRotAngle);
   let sinR = sin(earthRotAngle);
   let wp_norm = normalize(in.wp);
@@ -263,12 +267,12 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
   }
 
   // Soft terminator: orange-red atmospheric twilight scattering at the day/night boundary
-  let twilightBand = smoothstep(-0.12, 0.0, sunDot) * (1.0 - smoothstep(0.0, 0.12, sunDot));
+  let twilightBand = smoothstep(-TWILIGHT_COS_HALF, 0.0, sunDot) * (1.0 - smoothstep(0.0, TWILIGHT_COS_HALF, sunDot));
   surf += vec3f(1.0, 0.38, 0.08) * twilightBand * 0.22;
 
   // City lights: FBM-based for plausible coastal/river density patterns.
   // Strictly night-side — fade in only as sunDot goes negative.
-  let night = smoothstep(0.08, -0.06, sunDot);
+  let night = smoothstep(NIGHT_START, NIGHT_END, sunDot);
   // Coarse FBM captures large population clusters; fine FBM adds sub-city variation
   let cityCoarse = fbmCity(vec2f(lat * 6.0,  lon * 8.0));
   let cityFine   = fbmCity(vec2f(lat * 25.0 + 1.7, lon * 19.0 + 2.3));
@@ -304,7 +308,7 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
   let cloudColor = vec3f(0.92, 0.94, 0.97) * (cloudLit * 0.85 + 0.15);
   let cloudEdgeColor = cloudColor + vec3f(0.4, 0.35, 0.2) * cloudEdge * cloudLit * 1.4;
   // Cloud visibility fades to zero on the deep night side, with a soft twilight fringe
-  let cloudVisibility = smoothstep(-0.08, 0.08, sunDot);
+  let cloudVisibility = smoothstep(-TWILIGHT_COS_HALF, TWILIGHT_COS_HALF, sunDot);
   surf = mix(surf, cloudEdgeColor, cloudAlpha * cloudVisibility);
 
   return vec4f(surf + cityWarm, 1.0);
