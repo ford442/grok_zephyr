@@ -19,7 +19,7 @@ struct Uni {
   time: f32,
   delta_time: f32,
   view_mode: u32,
-  is_ground_view: u32,
+  sim_time: f32,
   frustum: array<vec4f, 6>,
   screen_size: vec2f,
   physics_mode: u32,
@@ -224,7 +224,7 @@ fn vs(
   }
   
   // Ground view horizon check
-  if (visible && uni.is_ground_view != 0u) {
+  if (visible && ((uni.view_mode >> 16u) & 1u) != 0u) {
     let ray_dir = wp - cam;
     let a = dot(ray_dir, ray_dir);
     let b = 2.0 * dot(cam, ray_dir);

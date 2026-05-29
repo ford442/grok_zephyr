@@ -892,8 +892,8 @@ class GrokZephyrApp {
     f32[29] = deltaTime;
     // View flags (120-123) - u32[30]
     u32[30] = viewFlags;
-    // is_ground_view (124-127) - u32[31]
-    u32[31] = isGroundView;
+    // sim_time (124-127) - f32[31]: scaled simulation time (is_ground_view is packed in viewFlags bit 16)
+    f32[31] = this.simTime;
     
     // Frustum planes (128-223) - 6 planes * 4 floats each - f32[32-55]
     for (let p = 0; p < 6; p++) {

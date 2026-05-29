@@ -23,7 +23,7 @@ struct Uni {
   time           : f32,
   delta_time     : f32,
   view_mode      : u32,
-  is_ground_view : u32,
+  sim_time       : f32,
   frustum        : array<vec4f, 6>,
   screen_size    : vec2f,
   time_scale     : f32,
