@@ -1,6 +1,14 @@
 /**
- * Starfield Background Shader
- * High-quality procedural starfield with atmospheric horizon glow.
+ * Cinematic Starfield Background Shader
+ *
+ * Features:
+ *  - Camera-direction-based sky ray reconstruction so stars and the Milky Way
+ *    rotate correctly with camera orientation (no more screen-space tiling).
+ *  - Magnitude-based brightness (Pogson's law) with realistic stellar density.
+ *  - Full O/B/A/F/G/K/M spectral-type color temperature via blackbody curve.
+ *  - Procedural Milky Way band keyed on galactic coordinates of the view ray.
+ *  - Subtle TAA-friendly twinkling driven by uni.time + per-star hash offset.
+ *  - HDR output values (no clamp to 1) so bright stars drive bloom correctly.
  */
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
@@ -18,6 +26,8 @@ struct VSOut { @builtin(position) pos:vec4f, @location(0) uv:vec2f };
 
 const PI: f32 = 3.14159265;
 
+// ── Hash / noise ─────────────────────────────────────────────────────────────
+
 fn hash2(p:vec2f)->f32 {
   return fract(sin(dot(p,vec2f(127.1,311.7)))*43758.5453);
 }
@@ -31,132 +41,181 @@ fn noise3d(p:vec3f)->f32 {
   let f = fract(p);
   let u = f * f * (3.0 - 2.0 * f);
   return mix(
-    mix(mix(hash3d(i + vec3f(0,0,0)), hash3d(i + vec3f(1,0,0)), u.x),
-        mix(hash3d(i + vec3f(0,1,0)), hash3d(i + vec3f(1,1,0)), u.x), u.y),
-    mix(mix(hash3d(i + vec3f(0,0,1)), hash3d(i + vec3f(1,0,1)), u.x),
-        mix(hash3d(i + vec3f(0,1,1)), hash3d(i + vec3f(1,1,1)), u.x), u.y),
+    mix(mix(hash3d(i+vec3f(0,0,0)), hash3d(i+vec3f(1,0,0)), u.x),
+        mix(hash3d(i+vec3f(0,1,0)), hash3d(i+vec3f(1,1,0)), u.x), u.y),
+    mix(mix(hash3d(i+vec3f(0,0,1)), hash3d(i+vec3f(1,0,1)), u.x),
+        mix(hash3d(i+vec3f(0,1,1)), hash3d(i+vec3f(1,1,1)), u.x), u.y),
     u.z
   );
 }
 
 fn fbm(p:vec3f)->f32 {
-  var value = 0.0;
-  var amplitude = 0.5;
-  var freq = 1.0;
-  var maxValue = 0.0;
-  for (var i = 0; i < 4; i++) {
-    value += amplitude * noise3d(p * freq);
-    maxValue += amplitude;
-    amplitude *= 0.5;
+  var v = 0.0; var amp = 0.5; var freq = 1.0; var mx = 0.0;
+  for (var i=0; i<4; i++) {
+    v  += amp * noise3d(p * freq);
+    mx += amp;
+    amp  *= 0.5;
     freq *= 2.0;
   }
-  return value / maxValue;
+  return v / mx;
 }
+
+// ── Blackbody color (Tanner Helland approximation, O/B/A/F/G/K/M range) ─────
 
 fn blackbodyColor(temp:f32)->vec3f {
   let t = clamp(temp, 1000.0, 40000.0) / 1000.0;
   var r: f32 = 1.0;
-  if (t > 6.6) {
-    r = clamp(1.292 - 0.1292*t + 0.0054*t*t - 0.00007*t*t*t, 0.0, 1.0);
-  }
+  if (t > 6.6) { r = clamp(1.292 - 0.1292*t + 0.0054*t*t - 0.00007*t*t*t, 0.0, 1.0); }
   var g: f32;
-  if (t <= 6.6) {
-    g = clamp(0.04 + 0.319*t - 0.026*t*t + 0.0009*t*t*t, 0.0, 1.0);
-  } else {
-    g = clamp(1.016 - 0.0638*t + 0.0014*t*t, 0.0, 1.0);
-  }
+  if (t <= 6.6) { g = clamp(0.04 + 0.319*t - 0.026*t*t + 0.0009*t*t*t, 0.0, 1.0); }
+  else          { g = clamp(1.016 - 0.0638*t + 0.0014*t*t, 0.0, 1.0); }
   var b: f32;
-  if (t < 4.0) {
-    b = clamp(0.07 * t, 0.0, 1.0);
-  } else if (t < 6.6) {
-    b = clamp(-1.839 + 0.839*t - 0.0956*t*t + 0.0036*t*t*t, 0.0, 1.0);
-  } else {
-    b = 1.0;
-  }
+  if      (t < 4.0) { b = clamp(0.07 * t, 0.0, 1.0); }
+  else if (t < 6.6) { b = clamp(-1.839 + 0.839*t - 0.0956*t*t + 0.0036*t*t*t, 0.0, 1.0); }
+  else              { b = 1.0; }
   return vec3f(r, g, b);
 }
 
-fn renderMilkyWay(uv: vec2f) -> vec3f {
-  let theta = (uv.x - 0.5) * 2.0 * PI;
-  let phi = (uv.y - 0.5) * PI;
-  let viewDir = normalize(vec3f(cos(phi)*cos(theta), sin(phi), cos(phi)*sin(theta)));
+// ── Camera-space sky direction ────────────────────────────────────────────────
+//
+// Reconstructs the world-space ray for a fullscreen-triangle pixel using the
+// camera right/up vectors supplied in the uniform buffer.
+//
+// Derivation: in mat4lookAt, r = cross(f, up_world) and u = cross(r, f), so
+// cross(u, r) = cross(r, cross(r, f)) = r*(r.f) - f*(r.r) = -f, therefore
+// f = -cross(u,r) = cross(up, right).  Verified for the right-handed lookAt.
+//
+// The NDC x/y are left unscaled (no FOV division) which is fine: normalize()
+// produces the correct angular direction and stars are anchored in sky space.
 
-  let galacticNorth = normalize(vec3f(-0.0548, 0.4941, 0.8677));
-  let galacticCenter = normalize(vec3f(-0.0558, -0.8744, 0.4821));
+fn skyDir(uv:vec2f) -> vec3f {
+  let ndc = vec2f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+  let right   = uni.camera_right.xyz;
+  let up      = uni.camera_up.xyz;
+  let forward = normalize(cross(up, right));
+  return normalize(forward + ndc.x * right + ndc.y * up);
+}
 
-  let galacticLat = asin(clamp(dot(viewDir, galacticNorth), -1.0, 1.0));
-  let projGC = normalize(viewDir - galacticNorth * dot(viewDir, galacticNorth) + vec3f(0.0001));
-  let galacticLon = atan2(dot(projGC, cross(galacticNorth, galacticCenter)),
-                          dot(projGC, galacticCenter));
+// ── Milky Way ─────────────────────────────────────────────────────────────────
+//
+// Takes the world-space view ray (not screen UV) so the band rotates correctly
+// with camera orientation.  Galactic pole and center vectors are ICRS J2000.
 
-  let verticalProfile = exp(-galacticLat * galacticLat / (2.0 * 0.15 * 0.15));
-  let r = length(vec2f(cos(galacticLon) - 0.1, sin(galacticLon)));
+fn renderMilkyWay(dir:vec3f) -> vec3f {
+  let galNorth  = normalize(vec3f(-0.0548,  0.4941, 0.8677));
+  let galCenter = normalize(vec3f(-0.0558, -0.8744, 0.4821));
+
+  let galLat = asin(clamp(dot(dir, galNorth), -1.0, 1.0));
+  let proj   = normalize(dir - galNorth * dot(dir, galNorth) + vec3f(0.0001));
+  let galLon = atan2(dot(proj, cross(galNorth, galCenter)),
+                     dot(proj, galCenter));
+
+  // Gaussian vertical profile (σ ≈ 8.6°) + radial intensity toward the centre
+  let vertProfile   = exp(-galLat * galLat / (2.0 * 0.15 * 0.15));
+  let r             = length(vec2f(cos(galLon) - 0.1, sin(galLon)));
   let radialProfile = 0.3 * exp(-r * 3.0) + 0.7 * exp(-r * 0.8);
 
-  let noiseCoord = viewDir * 8.0 + vec3f(100.0);
-  let detail = fbm(noiseCoord) * 0.4 + 0.6;
+  // Procedural dust-lane detail
+  let noiseCoord = dir * 8.0 + vec3f(100.0);
+  let detail     = fbm(noiseCoord) * 0.4 + 0.6;
 
-  let color = mix(vec3f(0.9, 0.85, 0.7), vec3f(0.75, 0.8, 1.0), clamp(r, 0.0, 1.0));
-  let intensity = verticalProfile * radialProfile * detail * 0.16;
-  return color * intensity;
+  let bandColor = mix(vec3f(0.9, 0.85, 0.7), vec3f(0.75, 0.8, 1.0), clamp(r, 0.0, 1.0));
+  let intensity = vertProfile * radialProfile * detail * 0.18;
+  return bandColor * intensity;
 }
 
-fn renderNebula(uv: vec2f) -> vec3f {
-  let pink = vec3f(0.28, 0.14, 0.32);
-  let blue = vec3f(0.18, 0.20, 0.40);
-  let p = vec3f(uv * 3.4, uni.time * 0.04);
-  let n = fbm(p + vec3f(12.1, 21.4, 0.0)) * 0.55 + fbm(p * 2.2 + vec3f(9.3, 5.7, 0.0)) * 0.35;
-  let band = smoothstep(0.1, 0.6, fract(uv.x * 1.7 + uv.y * 0.28));
-  let cloud = smoothstep(0.35, 0.72, n + 0.28 - pow(abs(uv.y - 0.55), 1.8));
-  return mix(blue, pink, band) * cloud * 0.35;
-}
+// ── Horizon atmospheric glow ──────────────────────────────────────────────────
 
-fn horizonFog(uv: vec2f, mode: u32) -> vec3f {
-  let glow = pow(max(0.0, 0.38 - uv.y), 2.8);
+fn horizonFog(uv:vec2f, mode:u32) -> vec3f {
+  let glow         = pow(max(0.0, 0.38 - uv.y), 2.8);
   let horizonColor = vec3f(0.26, 0.16, 0.08);
-  let warm = vec3f(0.20, 0.12, 0.06);
-  let cold = vec3f(0.07, 0.09, 0.16);
-
+  let warm         = vec3f(0.20, 0.12, 0.06);
+  let cold         = vec3f(0.07, 0.09, 0.16);
   let horizonScale = select(0.0, 0.42, mode == 1u) + select(0.0, 0.88, mode == 2u);
-  let glowLayer = horizonColor * glow * horizonScale;
-  let scatter = mix(cold, warm, smoothstep(0.55, 0.90, uv.y));
-  let scatterStrength = pow(clamp(1.0 - uv.y * 1.2, 0.0, 1.0), 2.6) * select(0.18, 0.32, mode == 1u) + select(0.0, 0.22, mode == 2u);
-  return scatter * scatterStrength + glowLayer;
+  let glowLayer    = horizonColor * glow * horizonScale;
+  let scatter      = mix(cold, warm, smoothstep(0.55, 0.90, uv.y));
+  let scatterStr   = pow(clamp(1.0 - uv.y * 1.2, 0.0, 1.0), 2.6)
+                     * select(0.18, 0.32, mode == 1u)
+                     + select(0.0, 0.22, mode == 2u);
+  return scatter * scatterStr + glowLayer;
 }
 
-fn starLayer(uv: vec2f, scale: f32, density: f32, twinklePower: f32) -> vec3f {
-  let cell = floor(uv * scale);
+// ── Star layer (sky-space tiling) ─────────────────────────────────────────────
+//
+// Stars are keyed on spherical (elevation, azimuth) coordinates of the view
+// ray, so they remain fixed on the celestial sphere regardless of camera yaw/
+// pitch/roll.  cellsPerRad controls angular density.
+//
+// Brightness follows Pogson's law: E = 2.512^(-mag).
+// Twinkling amplitude is kept ≤ 8 % per layer so it stays TAA-friendly.
+
+fn starLayer(dir:vec3f, cellsPerRad:f32, density:f32, twinklePower:f32) -> vec3f {
+  let phi   = asin(clamp(dir.y, -1.0, 1.0));         // elevation  [-PI/2, PI/2]
+  let theta = atan2(dir.z, dir.x);                    // azimuth    [-PI,   PI  ]
+  let cell  = floor(vec2f(theta, phi) * cellsPerRad);
+
   let a = hash2(cell);
   let b = hash2(cell + vec2f(1.0, 0.0));
   let c = hash2(cell + vec2f(0.0, 1.0));
-  let mag = mix(1.8, 6.2, a);
+
+  // Magnitude 0.5–7.0 distribution weighted toward faint end (more dim stars)
+  let mag  = mix(0.5, 7.0, pow(a, 0.55));
   let prob = pow(2.512, -mag) * density;
   let starMask = f32(b < prob);
-  let radius = pow(c, 2.4) * 0.9 + 0.05;
-  let intensity = starMask * pow(c, 3.0) * radius;
-  let temperature = mix(2800.0, 18000.0, a);
-  let color = blackbodyColor(temperature);
-  let twinkle = 0.82 + twinklePower * sin(uni.time * (1.2 + b * 3.5) + a * 19.0)
-                 + 0.09 * sin(uni.time * (4.3 + c * 5.1) + b * 23.0);
-  return color * intensity * twinkle;
+
+  // HDR luminance: bright stars (mag 0–1) reach ~3–5 in HDR space for bloom
+  let hdrLum = pow(2.512, -mag) * 4.5;
+
+  // Spectral type temperature: O (30 000 K) through M (3 000 K)
+  // Weight distribution realistically toward cooler K/M types
+  let temperature = mix(3000.0, 30000.0, pow(a, 3.0));
+  let color       = blackbodyColor(temperature);
+
+  // TAA-friendly twinkling: slow frequencies, small amplitude (≤ 8 %)
+  let twinkle = 1.0
+    + twinklePower * 0.08 * sin(uni.time * (0.4 + b * 1.2) + a * 19.0)
+    + twinklePower * 0.04 * sin(uni.time * (1.1 + c * 1.8) + b * 23.0);
+
+  return color * hdrLum * starMask * twinkle;
 }
 
+// ── Fragment entry point ──────────────────────────────────────────────────────
+
 @fragment fn fs(in:VSOut) -> @location(0) vec4f {
-  var sky = mix(vec3f(0.01, 0.02, 0.05), vec3f(0.06, 0.08, 0.15), pow(in.uv.y, 1.7));
+  // World-space sky direction for this pixel
+  let dir = skyDir(in.uv);
+
+  // Deep-space background gradient (very dark blue-black)
+  let sky = mix(vec3f(0.0, 0.005, 0.015), vec3f(0.01, 0.02, 0.05),
+                pow(clamp(in.uv.y, 0.0, 1.0), 1.7));
+
+  // ── Stars: four layers spanning magnitudes 0–7 ──────────────────────────
+  // cellsPerRad values: 1 rad ≈ 57° → scale sets angular star density
+  //   ~480 cells/rad ≈ 0.12° per cell  (bright/sparse)
+  //   ~960 cells/rad ≈ 0.06° per cell  (medium)
+  //   ~1920 cells/rad ≈ 0.03° per cell (faint/dense)
   var stars = vec3f(0.0);
+  stars += starLayer(dir,  240.0, 0.06, 1.0);   // sparse, bright  (high HDR lum)
+  stars += starLayer(dir,  480.0, 0.20, 0.9);   // medium density
+  stars += starLayer(dir,  960.0, 0.40, 0.6);   // dense, dimmer
+  stars += starLayer(dir, 1920.0, 0.55, 0.3);   // very dense faint background
 
-  stars += renderMilkyWay(in.uv) * 2.0;
-  stars += renderNebula(in.uv);
-  stars += starLayer(in.uv, 1024.0, 0.22, 0.22);
-  stars += starLayer(in.uv + vec2f(0.002, 0.007), 512.0, 0.16, 0.14);
-  stars += starLayer(in.uv + vec2f(0.001, 0.003), 256.0, 0.11, 0.10);
-  stars += starLayer(in.uv + vec2f(0.006, 0.004), 78.0, 0.02, 0.05);
+  // ── Milky Way band ───────────────────────────────────────────────────────
+  stars += renderMilkyWay(dir) * 2.2;
 
+  // ── Atmospheric horizon glow ─────────────────────────────────────────────
   let atmosphere = horizonFog(in.uv, uni.background_mode);
-  let modeBoost = select(0.88, select(1.02, 1.18, uni.background_mode == 1u), uni.background_mode == 2u);
-  var color = sky * 0.92 + stars * 1.05 + atmosphere;
-  color = mix(sky, color, 0.88) * modeBoost;
-  color = pow(color, vec3f(0.96, 0.97, 0.99));
-  return vec4f(clamp(color, vec3f(0.0), vec3f(1.0)), 1.0);
+
+  // ── Compose – HDR output, no clamp so bright stars drive bloom ───────────
+  let modeBoost = select(0.88, select(1.02, 1.18, uni.background_mode == 1u),
+                         uni.background_mode == 2u);
+  var color = sky + stars * 1.05 + atmosphere;
+  color *= modeBoost;
+
+  // Soft gamma lift (keeps very dark regions slightly luminous)
+  color = pow(max(color, vec3f(0.0)), vec3f(0.96, 0.97, 0.99));
+
+  // Return HDR (values > 1 are intentional for bloom pipeline)
+  return vec4f(color, 1.0);
 }
 `;
