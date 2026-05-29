@@ -59,8 +59,11 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   c     += textureSample(srcTex, srcSamp, uv + vec2f( 0.0, -d.y)).rgb * 2.0;
   c     += textureSample(srcTex, srcSamp, uv + vec2f( d.x, -d.y)).rgb * 1.0;
 
-  // Divide by 16 to normalise, then multiply by 0.5 to control blend weight
-  // (the GPU additive blend state adds this to existing content).
-  return vec4f(c * (0.5 / 16.0), 1.0);
+  // Normalise by 16 (tent kernel sum), then scale by UPSAMPLE_BLEND_WEIGHT
+  // (0.5) to prevent over-brightening when additively accumulated across
+  // multiple pyramid levels during the upsample chain.
+  const TENT_NORMALISE     : f32 = 16.0;
+  const UPSAMPLE_BLEND_WEIGHT : f32 = 0.5;
+  return vec4f(c * (UPSAMPLE_BLEND_WEIGHT / TENT_NORMALISE), 1.0);
 }
 `;

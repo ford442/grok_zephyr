@@ -42,7 +42,11 @@ fn vs(@builtin(vertex_index) vid: u32) -> VSOut {
 
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let d = uni.srcTexelSize * 0.5;
+  // HALF_TEXEL_OFFSET: positions the four bilinear taps at the half-texel
+  // corners of the destination pixel, which is the defining feature of the
+  // Kawase dual-filter downsample algorithm.
+  const HALF_TEXEL_OFFSET : f32 = 0.5;
+  let d = uni.srcTexelSize * HALF_TEXEL_OFFSET;
 
   // 5-tap Kawase dual-filter downsample:
   // 1 centre tap + 4 bilinear taps at ±0.5 texel corners.

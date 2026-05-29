@@ -109,6 +109,9 @@ export class RenderPipeline {
   /** Maximum supported pyramid levels */
   private static readonly MAX_BLOOM_LEVELS = 5;
 
+  /** Minimum meaningful pyramid levels (need at least 2 for the Kawase dual-filter to work) */
+  private static readonly MIN_BLOOM_LEVELS = 2;
+
   constructor(context: WebGPUContext, buffers: SatelliteBufferSet) {
     this.context = context;
     this.buffers = buffers;
@@ -849,9 +852,17 @@ export class RenderPipeline {
 
     const device = this.context.getDevice();
     const levels = Math.min(
-      Math.max(2, this.bloomConfig.levels),
+      Math.max(RenderPipeline.MIN_BLOOM_LEVELS, this.bloomConfig.levels),
       RenderPipeline.MAX_BLOOM_LEVELS
     );
+
+    // Validate that all required GPU resources exist for the requested level count.
+    for (let i = 0; i < levels; i++) {
+      if (!this.renderTargets.bloomMip[i] || !this.bloomKawaseBuffers[i]) {
+        console.warn(`[RenderPipeline] Bloom mip level ${i} resource missing — bloom pass skipped.`);
+        return;
+      }
+    }
 
     // ── 1. Threshold pass ────────────────────────────────────────────────────
     {
@@ -1061,10 +1072,17 @@ export class RenderPipeline {
 
     // Per-level Kawase uniform buffers — one per pyramid level.
     // Each holds { srcTexelSize: vec2f, pad: vec2f } = 16 bytes.
+    //
+    // Buffer[i] stores the texel size of the SOURCE texture for downsample pass i:
+    //   pass 0: source = bloomA (full res, scale = 1×)  → destination = mip[0] (1/2 res)
+    //   pass 1: source = mip[0] (1/2 res, scale = 2×)  → destination = mip[1] (1/4 res)
+    //   …
+    // The same buffer is reused for the corresponding upsample pass.
     this.bloomKawaseBuffers.forEach(b => b.destroy());
     this.bloomKawaseBuffers = [];
     for (let i = 0; i < RenderPipeline.MAX_BLOOM_LEVELS; i++) {
-      const scale = 1 << i; // level 0 = full res source (bloomA), level i = 1/(2^i) res
+      // scale = resolution divisor of the source texture for this pass level.
+      const scale = 1 << i; // i=0 → ÷1 (bloomA), i=1 → ÷2 (mip[0]), …
       const srcW = Math.max(1, Math.floor(width / scale));
       const srcH = Math.max(1, Math.floor(height / scale));
 
