@@ -216,12 +216,28 @@ export interface PostProcessConfig {
   tonemapping: 'aces' | 'reinhard' | 'filmic';
 }
 
+/** Multi-resolution bloom pyramid configuration */
+export interface BloomConfig {
+  /** Luminance threshold for bright-pass extraction (0.5–1.5) */
+  threshold: number;
+  /** Soft-knee width around the threshold for smooth roll-off */
+  knee: number;
+  /** Overall bloom intensity multiplier applied in composite */
+  intensity: number;
+  /** Number of downsample/upsample pyramid levels (2–5) */
+  levels: number;
+  /** Enable anamorphic horizontal streaks */
+  anamorphicEnabled: boolean;
+  /** Anamorphic streak intensity (0–1) */
+  anamorphicRatio: number;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PERFORMANCE & QUALITY
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /** Quality preset levels */
-export type QualityPreset = 'low' | 'medium' | 'high' | 'ultra';
+export type QualityPreset = 'low' | 'medium' | 'high' | 'ultra' | 'cinematic';
 
 /** Quality settings bundle */
 export interface QualitySettings {
@@ -232,6 +248,7 @@ export interface QualitySettings {
   beams: VolumetricBeamConfig;
   trails: TrailConfig;
   postProcess: PostProcessConfig;
+  bloom: BloomConfig;
 }
 
 /** Performance profiler data */
@@ -319,6 +336,16 @@ export const DEFAULT_POSTPROCESS_CONFIG: PostProcessConfig = {
   tonemapping: 'aces',
 };
 
+/** Default bloom configuration (balanced quality) */
+export const DEFAULT_BLOOM_CONFIG: BloomConfig = {
+  threshold: 0.75,
+  knee: 0.1,
+  intensity: 1.8,
+  levels: 4,
+  anamorphicEnabled: false,
+  anamorphicRatio: 0.35,
+};
+
 /** Quality presets */
 export const QUALITY_PRESETS: Record<QualityPreset, Partial<QualitySettings>> = {
   low: {
@@ -326,23 +353,34 @@ export const QUALITY_PRESETS: Record<QualityPreset, Partial<QualitySettings>> = 
     taa: { ...DEFAULT_TAA_CONFIG, enabled: false },
     beams: { enabled: false, maxSteps: 4, stepSize: 50.0, density: 0.1, mieAsymmetry: 0.7 },
     trails: { enabled: true, maxLength: 2, fadeOut: 1.0, colorByShell: true, ribbonWidth: 20.0 },
+    bloom: { threshold: 0.85, knee: 0.05, intensity: 1.4, levels: 2, anamorphicEnabled: false, anamorphicRatio: 0.0 },
   },
   medium: {
     lod: { ...DEFAULT_LOD_CONFIG, taaEnabled: true, motionBlurEnabled: false },
     taa: DEFAULT_TAA_CONFIG,
     beams: { enabled: true, maxSteps: 6, stepSize: 40.0, density: 0.15, mieAsymmetry: 0.75 },
     trails: { enabled: true, maxLength: 5, fadeOut: 2.0, colorByShell: true, ribbonWidth: 30.0 },
+    bloom: { threshold: 0.80, knee: 0.08, intensity: 1.6, levels: 3, anamorphicEnabled: false, anamorphicRatio: 0.0 },
   },
   high: {
     lod: DEFAULT_LOD_CONFIG,
     taa: DEFAULT_TAA_CONFIG,
     beams: { enabled: true, maxSteps: 8, stepSize: 30.0, density: 0.2, mieAsymmetry: 0.8 },
     trails: { enabled: true, maxLength: 10, fadeOut: 3.0, colorByShell: true, ribbonWidth: 40.0 },
+    bloom: { threshold: 0.75, knee: 0.10, intensity: 1.8, levels: 4, anamorphicEnabled: false, anamorphicRatio: 0.0 },
   },
   ultra: {
     lod: { ...DEFAULT_LOD_CONFIG, msaaSamples: 8 },
     taa: { ...DEFAULT_TAA_CONFIG, historyWeight: 0.92 },
     beams: { enabled: true, maxSteps: 16, stepSize: 20.0, density: 0.3, mieAsymmetry: 0.85 },
     trails: { enabled: true, maxLength: 20, fadeOut: 5.0, colorByShell: true, ribbonWidth: 50.0 },
+    bloom: { threshold: 0.70, knee: 0.12, intensity: 2.0, levels: 5, anamorphicEnabled: false, anamorphicRatio: 0.0 },
+  },
+  cinematic: {
+    lod: { ...DEFAULT_LOD_CONFIG, msaaSamples: 8 },
+    taa: { ...DEFAULT_TAA_CONFIG, historyWeight: 0.93 },
+    beams: { enabled: true, maxSteps: 16, stepSize: 20.0, density: 0.3, mieAsymmetry: 0.85 },
+    trails: { enabled: true, maxLength: 20, fadeOut: 5.0, colorByShell: true, ribbonWidth: 50.0 },
+    bloom: { threshold: 0.65, knee: 0.15, intensity: 2.2, levels: 5, anamorphicEnabled: true, anamorphicRatio: 0.35 },
   },
 };
