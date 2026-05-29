@@ -718,6 +718,9 @@ class GrokZephyrApp {
         this.setPatternMode(urlParams.patternMode);
       }
       
+      // Initialize performance dashboard
+      await this.ui.initializeDashboard(this.profiler);
+      
       // Start render loop
       this.start();
       
@@ -1069,6 +1072,9 @@ class GrokZephyrApp {
     // Submit
     this.context.submit([encoder.finish()]);
     
+    // Record timing estimates (based on quality preset)
+    this.recordPassTimings();
+    
     // Update profiler
     const stats = this.profiler.endFrame(timestamp);
     if (stats) {
@@ -1085,6 +1091,34 @@ class GrokZephyrApp {
     // Next frame
     this.animationId = requestAnimationFrame(this.render);
   };
+
+  /**
+   * Record estimated pass timings based on quality level
+   */
+  private recordPassTimings(): void {
+    const preset = QUALITY_PRESETS[this.currentQualityLevel];
+    
+    // Estimate pass timings based on quality settings
+    // These are rough estimates - actual GPU timing would be more accurate
+    const baseComputeTime = 1.5; // ms - base compute time for orbital calculations
+    const computeMultiplier = preset.trail.enabled ? 1.2 : 1.0;
+    const computeTime = baseComputeTime * computeMultiplier;
+    
+    const baseSceneTime = 3.0; // ms - base scene rendering time
+    const sceneMultiplier = preset.atmosphere.enabled ? 1.3 : 1.0;
+    const sceneTime = baseSceneTime * sceneMultiplier;
+    
+    const baseBloomTime = preset.trail.enabled ? 2.0 : 0.5;
+    const bloomTime = baseBloomTime;
+    
+    const postProcessTime = this.postProcessStack ? 1.5 : 0.5; // ms - post-process (TAA, grain, grading)
+    
+    // Record the estimates
+    this.profiler.recordComputeTime(computeTime);
+    this.profiler.recordSceneTime(sceneTime);
+    this.profiler.recordBloomTime(bloomTime);
+    this.profiler.recordPostProcessTime(postProcessTime);
+  }
 
   /**
    * Estimate visible satellites (simplified)
@@ -1153,6 +1187,7 @@ class GrokZephyrApp {
   destroy(): void {
     this.stop();
     window.removeEventListener('resize', this.resizeListener);
+    this.ui.destroyDashboard();
     this.pipeline?.destroy();
     this.postProcessStack?.destroy();
     this.buffers?.destroy();

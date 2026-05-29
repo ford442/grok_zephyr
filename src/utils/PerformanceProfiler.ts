@@ -53,6 +53,7 @@ export class PerformanceProfiler {
   private frameCount = 0;
   private lastFpsTime = 0;
   private currentFps = 0;
+  private fpsHistory: number[] = [];
   
   // Frame timing
   private lastFrameTime = 0;
@@ -67,6 +68,9 @@ export class PerformanceProfiler {
   // Pass timing
   private computeTimeHistory: MetricHistory;
   private renderTimeHistory: MetricHistory;
+  private sceneTimeHistory: MetricHistory;
+  private bloomTimeHistory: MetricHistory;
+  private postProcessTimeHistory: MetricHistory;
   
   // Stats
   private visibleSatellites = 0;
@@ -86,6 +90,9 @@ export class PerformanceProfiler {
     this.frameTimeHistory = this.createHistory(this.options.historySize);
     this.computeTimeHistory = this.createHistory(this.options.historySize);
     this.renderTimeHistory = this.createHistory(this.options.historySize);
+    this.sceneTimeHistory = this.createHistory(this.options.historySize);
+    this.bloomTimeHistory = this.createHistory(this.options.historySize);
+    this.postProcessTimeHistory = this.createHistory(this.options.historySize);
   }
 
   /**
@@ -163,6 +170,12 @@ export class PerformanceProfiler {
       this.frameCount = 0;
       this.lastFpsTime = now;
       
+      // Add FPS to history (keep last 120 values for sparkline)
+      this.fpsHistory.push(this.currentFps);
+      if (this.fpsHistory.length > 120) {
+        this.fpsHistory.shift();
+      }
+      
       // Update GPU memory if available
       this.updateGPUMemory();
       
@@ -202,6 +215,27 @@ export class PerformanceProfiler {
   }
 
   /**
+   * Record scene pass timing
+   */
+  recordSceneTime(timeMs: number): void {
+    this.addToHistory(this.sceneTimeHistory, timeMs);
+  }
+
+  /**
+   * Record bloom pass timing
+   */
+  recordBloomTime(timeMs: number): void {
+    this.addToHistory(this.bloomTimeHistory, timeMs);
+  }
+
+  /**
+   * Record post-process pass timing
+   */
+  recordPostProcessTime(timeMs: number): void {
+    this.addToHistory(this.postProcessTimeHistory, timeMs);
+  }
+
+  /**
    * Update visible satellite count
    */
   setVisibleSatellites(count: number): void {
@@ -234,6 +268,32 @@ export class PerformanceProfiler {
       computeTime: this.getAverage(this.computeTimeHistory),
       renderTime: this.getAverage(this.renderTimeHistory),
     };
+  }
+
+  /**
+   * Get detailed pass timings for dashboard
+   */
+  getDetailedTimings() {
+    return {
+      compute: this.getAverage(this.computeTimeHistory),
+      scene: this.getAverage(this.sceneTimeHistory),
+      bloom: this.getAverage(this.bloomTimeHistory),
+      postProcess: this.getAverage(this.postProcessTimeHistory),
+    };
+  }
+
+  /**
+   * Get FPS history for sparkline visualization
+   */
+  getFPSHistory(): number[] {
+    return [...this.fpsHistory];
+  }
+
+  /**
+   * Get supports GPU timing flag
+   */
+  supportsTimestampQuery(): boolean {
+    return this.supportsGPUTiming;
   }
 
   /**
@@ -379,9 +439,13 @@ export class PerformanceProfiler {
     this.frameCount = 0;
     this.lastFpsTime = 0;
     this.currentFps = 0;
+    this.fpsHistory = [];
     this.frameTimeHistory = this.createHistory(this.options.historySize);
     this.computeTimeHistory = this.createHistory(this.options.historySize);
     this.renderTimeHistory = this.createHistory(this.options.historySize);
+    this.sceneTimeHistory = this.createHistory(this.options.historySize);
+    this.bloomTimeHistory = this.createHistory(this.options.historySize);
+    this.postProcessTimeHistory = this.createHistory(this.options.historySize);
     this.visibleSatellites = 0;
   }
 
