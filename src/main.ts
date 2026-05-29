@@ -46,6 +46,28 @@ const CELESTRAK_GROUPS: Record<string, string> = {
 };
 
 /**
+ * Performance timing estimation constants (milliseconds)
+ * 
+ * These values are used to provide realistic timing breakdowns when GPU timestamp
+ * queries are unavailable or not supported by the device. They represent heuristic
+ * estimates based on typical pass complexity and are adjusted by multipliers that
+ * depend on quality preset settings (e.g., whether trails or atmosphere effects
+ * are enabled). When GPU timestamp queries are available (on supported devices),
+ * these estimates are replaced by actual measured GPU timing data.
+ */
+const TIMING_ESTIMATES = {
+  BASE_COMPUTE: 1.5,        // Base compute time for orbital calculations
+  BASE_SCENE: 3.0,          // Base scene rendering time
+  BASE_BLOOM: 2.0,          // Base bloom effect time (trails enabled)
+  BASE_POST: 1.5,           // Post-process (TAA, grain, grading) time
+  COMPUTE_NO_TRAIL_MULT: 1.0, // Multiplier when trails are disabled
+  COMPUTE_TRAIL_MULT: 1.2,  // Multiplier when trails are enabled
+  SCENE_ATMOSPHERE_MULT: 1.3, // Multiplier when atmosphere is enabled
+  BLOOM_DISABLED: 0.5,      // Bloom time when trails are disabled
+  POST_DISABLED: 0.5,       // Post-process time when disabled
+};
+
+/**
  * Main Application Class
  */
 class GrokZephyrApp {
@@ -1037,6 +1059,9 @@ class GrokZephyrApp {
         this.setPatternMode(urlParams.patternMode);
       }
       
+      // Initialize performance dashboard
+      await this.ui.initializeDashboard(this.profiler);
+      
       // Start render loop
       this.start();
       
@@ -1388,6 +1413,9 @@ class GrokZephyrApp {
     // Submit
     this.context.submit([encoder.finish()]);
     
+    // Record timing estimates (based on quality preset)
+    this.recordPassTimings();
+    
     // Update profiler
     const stats = this.profiler.endFrame(timestamp);
     if (stats) {
@@ -1404,6 +1432,30 @@ class GrokZephyrApp {
     // Next frame
     this.animationId = requestAnimationFrame(this.render);
   };
+
+  /**
+   * Record estimated pass timings based on quality level
+   */
+  private recordPassTimings(): void {
+    const preset = QUALITY_PRESETS[this.currentQualityLevel];
+    
+    // Estimate pass timings based on quality settings using TIMING_ESTIMATES constants
+    const computeMultiplier = preset.trail.enabled ? TIMING_ESTIMATES.COMPUTE_TRAIL_MULT : TIMING_ESTIMATES.COMPUTE_NO_TRAIL_MULT;
+    const computeTime = TIMING_ESTIMATES.BASE_COMPUTE * computeMultiplier;
+    
+    const sceneMultiplier = preset.atmosphere.enabled ? TIMING_ESTIMATES.SCENE_ATMOSPHERE_MULT : 1.0;
+    const sceneTime = TIMING_ESTIMATES.BASE_SCENE * sceneMultiplier;
+    
+    const bloomTime = preset.trail.enabled ? TIMING_ESTIMATES.BASE_BLOOM : TIMING_ESTIMATES.BLOOM_DISABLED;
+    
+    const postProcessTime = this.postProcessStack ? TIMING_ESTIMATES.BASE_POST : TIMING_ESTIMATES.POST_DISABLED;
+    
+    // Record the estimates
+    this.profiler.recordComputeTime(computeTime);
+    this.profiler.recordSceneTime(sceneTime);
+    this.profiler.recordBloomTime(bloomTime);
+    this.profiler.recordPostProcessTime(postProcessTime);
+  }
 
   /**
    * Estimate visible satellites (simplified)
@@ -1472,6 +1524,7 @@ class GrokZephyrApp {
   destroy(): void {
     this.stop();
     window.removeEventListener('resize', this.resizeListener);
+    this.ui.destroyDashboard();
     if (this.captureGallery) {
       this.captureGallery.querySelectorAll<HTMLAnchorElement>('.capture-gallery-item').forEach((item) => {
         const url = item.dataset.captureUrl;

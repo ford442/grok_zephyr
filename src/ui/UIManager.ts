@@ -8,6 +8,7 @@ import type { PerformanceStats } from '@/types/index.js';
 import type { AnimationPattern } from '@/types/animation.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
 import { QUALITY_PRESETS } from '@/core/QualityPresets.js';
+import type { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
 
 /** UI element references */
 export interface UIElements {
@@ -42,6 +43,14 @@ export interface AnimationUIState {
   loop: boolean;
 }
 
+/** Minimal interface for PerformanceDashboard */
+interface IDashboard {
+  initialize(): void;
+  updateStats(stats: PerformanceStats): void;
+  updateQualityPreset(level: QualityLevel): void;
+  destroy(): void;
+}
+
 /**
  * UI Manager
  * 
@@ -68,6 +77,9 @@ export class UIManager {
     isPlaying: false,
     loop: true,
   };
+
+  private dashboard: IDashboard | null = null;
+  private currentQualityLevel: QualityLevel = 'high';
 
   constructor() {
     this.elements = this.getElements();
@@ -301,6 +313,12 @@ export class UIManager {
     if (this.elements.quality) {
       this.elements.quality.textContent = `Quality  : ${preset.label}`;
     }
+    
+    // Update dashboard if available
+    this.currentQualityLevel = level;
+    if (this.dashboard) {
+      this.dashboard.updateQualityPreset(level);
+    }
   }
 
   /**
@@ -402,6 +420,35 @@ export class UIManager {
   updateStats(stats: PerformanceStats): void {
     this.setFPS(stats.fps);
     this.setVisibleCount(stats.visibleSatellites);
+    
+    // Update dashboard if available
+    if (this.dashboard) {
+      this.dashboard.updateStats(stats);
+    }
+  }
+
+  /**
+   * Initialize the performance dashboard with a profiler
+   */
+  async initializeDashboard(profiler: PerformanceProfiler): Promise<void> {
+    if (!this.dashboard) {
+      const { PerformanceDashboard } = await import('@/ui/PerformanceDashboard.js');
+      this.dashboard = new PerformanceDashboard(profiler);
+      this.dashboard.initialize();
+      
+      // Update dashboard with initial quality level
+      this.dashboard.updateQualityPreset(this.currentQualityLevel);
+    }
+  }
+
+  /**
+   * Destroy the performance dashboard
+   */
+  destroyDashboard(): void {
+    if (this.dashboard) {
+      this.dashboard.destroy();
+      this.dashboard = null;
+    }
   }
 
   /**

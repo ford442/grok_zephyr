@@ -643,127 +643,214 @@ html, body {
   color: #fff;
 }
 
-/* Capture Controls */
-#capture-controls {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-left: 20px;
-  padding-left: 20px;
-  border-left: 1px solid #66ccff55;
-  min-width: 120px;
-}
-
-.capture-label {
-  font-size: 10px;
-  color: #66ccff;
-  margin-bottom: 4px;
-  letter-spacing: 2px;
-}
-
-.capture-btn {
-  background: rgba(102, 204, 255, 0.06);
-  border: 1px solid rgba(102, 204, 255, 0.35);
-  color: #66ccff;
-  padding: 5px 10px;
-  cursor: pointer;
-  font-family: 'Courier New', monospace;
-  font-size: 10px;
-  letter-spacing: 1px;
-  transition: background 0.2s, box-shadow 0.2s, border-color 0.2s;
-  pointer-events: auto;
-  margin: 2px 0;
-  min-width: 78px;
-  text-align: center;
-}
-
-.capture-btn:hover:not(:disabled) {
-  background: rgba(102, 204, 255, 0.2);
-  box-shadow: 0 0 14px rgba(102, 204, 255, 0.3);
-  border-color: #66ccff;
-}
-
-.capture-btn:disabled {
-  opacity: 0.5;
-  cursor: wait;
-}
-
-.capture-video-row {
-  display: flex;
-  gap: 4px;
-  margin: 2px 0;
-  width: 100%;
-}
-
-#capVideoLength {
-  background: rgba(0, 8, 20, 0.8);
-  border: 1px solid rgba(102, 204, 255, 0.35);
-  color: #66ccff;
-  font-family: 'Courier New', monospace;
-  font-size: 10px;
-  padding: 4px;
-  pointer-events: auto;
-  flex: 1;
-}
-
-.capture-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 9px;
-  color: #66ccff;
-  margin-top: 4px;
-  pointer-events: auto;
-}
-
-.capture-toggle input[type="checkbox"] {
-  accent-color: #66ccff;
-}
-
-#captureStatus {
-  margin-top: 6px;
-  font-size: 9px;
-  color: #66ccff;
-  min-height: 12px;
-  text-align: center;
-}
-
-#capture-gallery {
+/* Performance Dashboard */
+#perf-dashboard {
   position: fixed;
   top: 16px;
   right: 16px;
-  z-index: 12;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 50vh;
-  overflow-y: auto;
+  z-index: 9;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+}
+
+.perf-dashboard-toggle {
   pointer-events: auto;
 }
 
-.capture-gallery-item {
-  width: 120px;
-  background: rgba(0, 8, 20, 0.75);
-  border: 1px solid rgba(102, 204, 255, 0.35);
+.perf-toggle-btn {
+  background: rgba(0, 255, 136, 0.08);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  color: #00ff88;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
   border-radius: 6px;
-  overflow: hidden;
-  color: #66ccff;
-  font-size: 9px;
-  text-align: center;
-  text-decoration: none;
-  box-shadow: 0 0 16px rgba(0, 0, 0, 0.25);
+  transition: all 0.2s ease;
+  text-transform: uppercase;
 }
 
-.capture-gallery-item img,
-.capture-gallery-item video {
-  display: block;
+.perf-toggle-btn:hover {
+  background: rgba(0, 255, 136, 0.15);
+  box-shadow: 0 0 12px rgba(0, 255, 136, 0.25);
+  border-color: #00ff88;
+}
+
+.perf-toggle-btn.active {
+  background: rgba(0, 255, 136, 0.2);
+  box-shadow: 0 0 16px rgba(0, 255, 136, 0.4);
+  border-color: #00ff88;
+}
+
+.perf-dashboard-panel {
+  margin-top: 12px;
+  background: linear-gradient(135deg, rgba(0, 8, 20, 0.85) 0%, rgba(0, 16, 32, 0.75) 100%);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 24px rgba(0, 170, 255, 0.15), inset 0 0 20px rgba(0, 0, 0, 0.3);
+  padding: 12px 14px;
+  min-width: 220px;
+  max-width: 240px;
+  pointer-events: auto;
+  animation: slideInRight 0.3s ease;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.perf-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(0, 255, 136, 0.2);
+}
+
+.perf-title {
+  font-size: 10px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 8px #00aaff;
+  letter-spacing: 1.5px;
+}
+
+.perf-close-btn {
+  background: transparent;
+  border: none;
+  color: rgba(0, 255, 136, 0.6);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.perf-close-btn:hover {
+  color: #00ff88;
+}
+
+.perf-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.perf-section {
+  border: 1px solid rgba(0, 255, 136, 0.15);
+  border-radius: 4px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.perf-section-title {
+  font-size: 10px;
+  color: #00ff88;
+  font-weight: bold;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.perf-sparkline {
   width: 100%;
-  height: 68px;
-  object-fit: cover;
-  background: #000;
+  height: 40px;
+  display: block;
+  margin: 4px 0;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 2px;
+  border: 1px solid rgba(0, 255, 136, 0.15);
 }
 
-.capture-gallery-item span {
-  display: block;
-  padding: 4px 6px;
+.perf-timing {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
+
+.perf-timing-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 4px;
+  font-size: 10px;
+}
+
+.perf-timing-row.perf-total {
+  border-top: 1px solid rgba(0, 255, 136, 0.2);
+  padding-top: 5px;
+  margin-top: 2px;
+  color: #fff;
+}
+
+.perf-label {
+  color: rgba(0, 255, 136, 0.7);
+  min-width: 90px;
+}
+
+.perf-value {
+  color: #00ff88;
+  font-weight: bold;
+  text-align: right;
+  min-width: 50px;
+}
+
+.perf-preset-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+}
+
+.perf-preset-label {
+  font-size: 12px;
+  font-weight: bold;
+  color: #ffdd00;
+  letter-spacing: 1px;
+  transition: all 0.3s ease;
+}
+
+.perf-preset-label.perf-preset-changing {
+  animation: pulseYellow 0.6s ease;
+}
+
+@keyframes pulseYellow {
+  0%, 100% {
+    color: #ffdd00;
+    text-shadow: none;
+  }
+  50% {
+    color: #ffff88;
+    text-shadow: 0 0 10px rgba(255, 221, 0, 0.8);
+  }
+}
+
+.perf-preset-headroom {
+  font-size: 10px;
+  color: #00ff88;
+}
+
+.perf-timing-source {
+  font-size: 9px;
+  color: #00ff88;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(0, 255, 136, 0.15);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+

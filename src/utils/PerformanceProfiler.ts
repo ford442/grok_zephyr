@@ -11,6 +11,9 @@
 import type { PerformanceStats } from '@/types/index.js';
 import { UI } from '@/types/constants.js';
 
+/** Maximum FPS history entries for sparkline visualization */
+export const MAX_FPS_HISTORY_LENGTH = 120;
+
 /** Performance metric history entry */
 interface MetricHistory {
   values: number[];
@@ -27,14 +30,12 @@ interface GPUTimingQuery {
   endIndex: number;
 }
 
-/** Performance profiler options */
-export interface PerformanceProfilerOptions {
-  /** Enable GPU timestamp queries */
-  enableGPUTiming: boolean;
-  /** History size for moving averages */
-  historySize: number;
-  /** FPS update interval in seconds */
-  fpsUpdateInterval: number;
+/** Detailed pass timing information */
+export interface DetailedTimings {
+  compute: number;
+  scene: number;
+  bloom: number;
+  postProcess: number;
 }
 
 /**
@@ -53,6 +54,7 @@ export class PerformanceProfiler {
   private frameCount = 0;
   private lastFpsTime = 0;
   private currentFps = 0;
+  private fpsHistory: number[] = [];
   
   // Frame timing
   private lastFrameTime = 0;
@@ -67,6 +69,9 @@ export class PerformanceProfiler {
   // Pass timing
   private computeTimeHistory: MetricHistory;
   private renderTimeHistory: MetricHistory;
+  private sceneTimeHistory: MetricHistory;
+  private bloomTimeHistory: MetricHistory;
+  private postProcessTimeHistory: MetricHistory;
   
   // Stats
   private visibleSatellites = 0;
@@ -86,6 +91,9 @@ export class PerformanceProfiler {
     this.frameTimeHistory = this.createHistory(this.options.historySize);
     this.computeTimeHistory = this.createHistory(this.options.historySize);
     this.renderTimeHistory = this.createHistory(this.options.historySize);
+    this.sceneTimeHistory = this.createHistory(this.options.historySize);
+    this.bloomTimeHistory = this.createHistory(this.options.historySize);
+    this.postProcessTimeHistory = this.createHistory(this.options.historySize);
   }
 
   /**
@@ -163,6 +171,12 @@ export class PerformanceProfiler {
       this.frameCount = 0;
       this.lastFpsTime = now;
       
+      // Add FPS to history (keep last entries for sparkline)
+      this.fpsHistory.push(this.currentFps);
+      if (this.fpsHistory.length > MAX_FPS_HISTORY_LENGTH) {
+        this.fpsHistory.shift();
+      }
+      
       // Update GPU memory if available
       this.updateGPUMemory();
       
@@ -202,6 +216,27 @@ export class PerformanceProfiler {
   }
 
   /**
+   * Record scene pass timing
+   */
+  recordSceneTime(timeMs: number): void {
+    this.addToHistory(this.sceneTimeHistory, timeMs);
+  }
+
+  /**
+   * Record bloom pass timing
+   */
+  recordBloomTime(timeMs: number): void {
+    this.addToHistory(this.bloomTimeHistory, timeMs);
+  }
+
+  /**
+   * Record post-process pass timing
+   */
+  recordPostProcessTime(timeMs: number): void {
+    this.addToHistory(this.postProcessTimeHistory, timeMs);
+  }
+
+  /**
    * Update visible satellite count
    */
   setVisibleSatellites(count: number): void {
@@ -234,6 +269,32 @@ export class PerformanceProfiler {
       computeTime: this.getAverage(this.computeTimeHistory),
       renderTime: this.getAverage(this.renderTimeHistory),
     };
+  }
+
+  /**
+   * Get detailed pass timings for dashboard
+   */
+  getDetailedTimings(): DetailedTimings {
+    return {
+      compute: this.getAverage(this.computeTimeHistory),
+      scene: this.getAverage(this.sceneTimeHistory),
+      bloom: this.getAverage(this.bloomTimeHistory),
+      postProcess: this.getAverage(this.postProcessTimeHistory),
+    };
+  }
+
+  /**
+   * Get FPS history for sparkline visualization
+   */
+  getFPSHistory(): number[] {
+    return [...this.fpsHistory];
+  }
+
+  /**
+   * Get supports GPU timing flag
+   */
+  supportsTimestampQuery(): boolean {
+    return this.supportsGPUTiming;
   }
 
   /**
@@ -379,9 +440,13 @@ export class PerformanceProfiler {
     this.frameCount = 0;
     this.lastFpsTime = 0;
     this.currentFps = 0;
+    this.fpsHistory = [];
     this.frameTimeHistory = this.createHistory(this.options.historySize);
     this.computeTimeHistory = this.createHistory(this.options.historySize);
     this.renderTimeHistory = this.createHistory(this.options.historySize);
+    this.sceneTimeHistory = this.createHistory(this.options.historySize);
+    this.bloomTimeHistory = this.createHistory(this.options.historySize);
+    this.postProcessTimeHistory = this.createHistory(this.options.historySize);
     this.visibleSatellites = 0;
   }
 
