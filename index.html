@@ -90,7 +90,32 @@
       <button class="quality-btn" id="qcine" data-quality="cinematic" title="Maximum fidelity — demos and screenshots">CINEMATIC</button>
       <button class="quality-btn active" id="taaToggle" title="Toggle Temporal Anti-Aliasing (TAA) — smooths edges using frame history">TAA ON</button>
     </div>
+
+    <div id="capture-controls">
+      <div class="capture-label">CAPTURE</div>
+      <button class="capture-btn" id="capStill1x">PNG 1x</button>
+      <button class="capture-btn" id="capStill2x">PNG 2x</button>
+      <div class="capture-video-row">
+        <select id="capVideoLength" aria-label="Video length">
+          <option value="5">5s</option>
+          <option value="10">10s</option>
+          <option value="15">15s</option>
+        </select>
+        <button class="capture-btn" id="capVideoStart">REC</button>
+      </div>
+      <label class="capture-toggle">
+        <input type="checkbox" id="capOverlayToggle" checked>
+        Overlay
+      </label>
+      <label class="capture-toggle">
+        <input type="checkbox" id="capHideUIToggle">
+        Hide UI
+      </label>
+      <div id="captureStatus">Ready</div>
+    </div>
   </div>
+
+  <div id="capture-gallery" aria-live="polite"></div>
   
   <div id="horizon-indicator">
     <div>Earth Radius: 6,371 km</div>
