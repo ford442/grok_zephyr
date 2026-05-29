@@ -11,6 +11,9 @@
 import type { PerformanceStats } from '@/types/index.js';
 import { UI } from '@/types/constants.js';
 
+/** Maximum FPS history entries for sparkline visualization */
+export const MAX_FPS_HISTORY_LENGTH = 120;
+
 /** Performance metric history entry */
 interface MetricHistory {
   values: number[];
@@ -27,14 +30,12 @@ interface GPUTimingQuery {
   endIndex: number;
 }
 
-/** Performance profiler options */
-export interface PerformanceProfilerOptions {
-  /** Enable GPU timestamp queries */
-  enableGPUTiming: boolean;
-  /** History size for moving averages */
-  historySize: number;
-  /** FPS update interval in seconds */
-  fpsUpdateInterval: number;
+/** Detailed pass timing information */
+export interface DetailedTimings {
+  compute: number;
+  scene: number;
+  bloom: number;
+  postProcess: number;
 }
 
 /**
@@ -170,9 +171,9 @@ export class PerformanceProfiler {
       this.frameCount = 0;
       this.lastFpsTime = now;
       
-      // Add FPS to history (keep last 120 values for sparkline)
+      // Add FPS to history (keep last entries for sparkline)
       this.fpsHistory.push(this.currentFps);
-      if (this.fpsHistory.length > 120) {
+      if (this.fpsHistory.length > MAX_FPS_HISTORY_LENGTH) {
         this.fpsHistory.shift();
       }
       
@@ -273,7 +274,7 @@ export class PerformanceProfiler {
   /**
    * Get detailed pass timings for dashboard
    */
-  getDetailedTimings() {
+  getDetailedTimings(): DetailedTimings {
     return {
       compute: this.getAverage(this.computeTimeHistory),
       scene: this.getAverage(this.sceneTimeHistory),

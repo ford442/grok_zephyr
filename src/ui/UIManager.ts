@@ -8,7 +8,6 @@ import type { PerformanceStats } from '@/types/index.js';
 import type { AnimationPattern } from '@/types/animation.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
 import { QUALITY_PRESETS } from '@/core/QualityPresets.js';
-import type { PerformanceDashboard } from '@/ui/PerformanceDashboard.js';
 import type { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
 
 /** UI element references */
@@ -44,6 +43,14 @@ export interface AnimationUIState {
   loop: boolean;
 }
 
+/** Minimal interface for PerformanceDashboard */
+interface IDashboard {
+  initialize(): void;
+  updateStats(stats: PerformanceStats): void;
+  updateQualityPreset(level: QualityLevel): void;
+  destroy(): void;
+}
+
 /**
  * UI Manager
  * 
@@ -71,7 +78,7 @@ export class UIManager {
     loop: true,
   };
 
-  private dashboard: PerformanceDashboard | null = null;
+  private dashboard: IDashboard | null = null;
   private currentQualityLevel: QualityLevel = 'high';
 
   constructor() {

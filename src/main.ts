@@ -46,6 +46,28 @@ const CELESTRAK_GROUPS: Record<string, string> = {
 };
 
 /**
+ * Performance timing estimation constants (milliseconds)
+ * 
+ * These values are used to provide realistic timing breakdowns when GPU timestamp
+ * queries are unavailable or not supported by the device. They represent heuristic
+ * estimates based on typical pass complexity and are adjusted by multipliers that
+ * depend on quality preset settings (e.g., whether trails or atmosphere effects
+ * are enabled). When GPU timestamp queries are available (on supported devices),
+ * these estimates are replaced by actual measured GPU timing data.
+ */
+const TIMING_ESTIMATES = {
+  BASE_COMPUTE: 1.5,        // Base compute time for orbital calculations
+  BASE_SCENE: 3.0,          // Base scene rendering time
+  BASE_BLOOM: 2.0,          // Base bloom effect time (trails enabled)
+  BASE_POST: 1.5,           // Post-process (TAA, grain, grading) time
+  COMPUTE_NO_TRAIL_MULT: 1.0, // Multiplier when trails are disabled
+  COMPUTE_TRAIL_MULT: 1.2,  // Multiplier when trails are enabled
+  SCENE_ATMOSPHERE_MULT: 1.3, // Multiplier when atmosphere is enabled
+  BLOOM_DISABLED: 0.5,      // Bloom time when trails are disabled
+  POST_DISABLED: 0.5,       // Post-process time when disabled
+};
+
+/**
  * Main Application Class
  */
 class GrokZephyrApp {
@@ -1098,20 +1120,16 @@ class GrokZephyrApp {
   private recordPassTimings(): void {
     const preset = QUALITY_PRESETS[this.currentQualityLevel];
     
-    // Estimate pass timings based on quality settings
-    // These are rough estimates - actual GPU timing would be more accurate
-    const baseComputeTime = 1.5; // ms - base compute time for orbital calculations
-    const computeMultiplier = preset.trail.enabled ? 1.2 : 1.0;
-    const computeTime = baseComputeTime * computeMultiplier;
+    // Estimate pass timings based on quality settings using TIMING_ESTIMATES constants
+    const computeMultiplier = preset.trail.enabled ? TIMING_ESTIMATES.COMPUTE_TRAIL_MULT : TIMING_ESTIMATES.COMPUTE_NO_TRAIL_MULT;
+    const computeTime = TIMING_ESTIMATES.BASE_COMPUTE * computeMultiplier;
     
-    const baseSceneTime = 3.0; // ms - base scene rendering time
-    const sceneMultiplier = preset.atmosphere.enabled ? 1.3 : 1.0;
-    const sceneTime = baseSceneTime * sceneMultiplier;
+    const sceneMultiplier = preset.atmosphere.enabled ? TIMING_ESTIMATES.SCENE_ATMOSPHERE_MULT : 1.0;
+    const sceneTime = TIMING_ESTIMATES.BASE_SCENE * sceneMultiplier;
     
-    const baseBloomTime = preset.trail.enabled ? 2.0 : 0.5;
-    const bloomTime = baseBloomTime;
+    const bloomTime = preset.trail.enabled ? TIMING_ESTIMATES.BASE_BLOOM : TIMING_ESTIMATES.BLOOM_DISABLED;
     
-    const postProcessTime = this.postProcessStack ? 1.5 : 0.5; // ms - post-process (TAA, grain, grading)
+    const postProcessTime = this.postProcessStack ? TIMING_ESTIMATES.BASE_POST : TIMING_ESTIMATES.POST_DISABLED;
     
     // Record the estimates
     this.profiler.recordComputeTime(computeTime);

@@ -8,7 +8,14 @@
 import type { PerformanceStats } from '@/types/index.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
 import { QUALITY_PRESETS } from '@/core/QualityPresets.js';
-import type { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
+import type { PerformanceProfiler, DetailedTimings } from '@/utils/PerformanceProfiler.js';
+import { MAX_FPS_HISTORY_LENGTH } from '@/utils/PerformanceProfiler.js';
+
+/** Maximum FPS value for sparkline Y-axis scaling (typical high-performance target) */
+const MAX_DISPLAY_FPS = 120;
+
+/** Target FPS for headroom calculation (60 FPS baseline) */
+const TARGET_FPS = 60;
 
 /** Performance dashboard element references */
 interface DashboardElements {
@@ -26,15 +33,6 @@ interface DashboardElements {
   timingSource: HTMLElement;
 }
 
-/** Dashboard state for preset transitions */
-interface PresetTransition {
-  fromLevel: QualityLevel;
-  toLevel: QualityLevel;
-  timestamp: number;
-  fromComputeTime: number;
-  fromSceneTime: number;
-}
-
 /**
  * Performance Dashboard
  * 
@@ -50,7 +48,6 @@ export class PerformanceDashboard {
   private profiler: PerformanceProfiler;
   private isCollapsed = true;
   private lastFPS = 60;
-  private presetTransition: PresetTransition | null = null;
   private currentQualityLevel: QualityLevel = 'high';
   private maxFrameTime = 16.67; // 60 FPS baseline
 
@@ -215,7 +212,7 @@ export class PerformanceDashboard {
     if (!this.elements) return;
     
     this.lastFPS = stats.fps;
-    const timings = this.profiler.getDetailedTimings();
+    const timings: DetailedTimings = this.profiler.getDetailedTimings();
     
     // Update timing displays
     this.elements.computeTime.textContent = timings.compute.toFixed(2);
@@ -250,6 +247,14 @@ export class PerformanceDashboard {
   }
 
   /**
+   * Calculate SVG Y coordinate for a given FPS value
+   */
+  private calculateYPosition(fps: number, height: number, padding: number): number {
+    const scaledFps = Math.min(fps, MAX_DISPLAY_FPS);
+    return height - padding - (scaledFps / MAX_DISPLAY_FPS) * (height - padding * 2);
+  }
+
+  /**
    * Update FPS sparkline visualization
    */
   private updateSparkline(): void {
@@ -273,26 +278,27 @@ export class PerformanceDashboard {
     bg.setAttribute('fill', 'rgba(0, 255, 136, 0.02)');
     svg.appendChild(bg);
     
-    // Draw reference line at 60 FPS
+    // Draw reference line at TARGET_FPS (60 FPS)
+    const refLineY = this.calculateYPosition(TARGET_FPS, height, padding);
     const refLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     refLine.setAttribute('x1', '0');
-    refLine.setAttribute('y1', ((height - padding) * (1 - 60/120)).toString());
+    refLine.setAttribute('y1', refLineY.toString());
     refLine.setAttribute('x2', width.toString());
-    refLine.setAttribute('y2', ((height - padding) * (1 - 60/120)).toString());
+    refLine.setAttribute('y2', refLineY.toString());
     refLine.setAttribute('stroke', 'rgba(0, 255, 136, 0.2)');
     refLine.setAttribute('stroke-width', '0.5');
     refLine.setAttribute('stroke-dasharray', '2,2');
     svg.appendChild(refLine);
     
     // Create sparkline path
-    const pointCount = Math.min(fpsHistory.length, 120);
+    const pointCount = Math.min(fpsHistory.length, MAX_FPS_HISTORY_LENGTH);
     const stepX = (width - padding * 2) / Math.max(1, pointCount - 1);
     
     let pathData = '';
     for (let i = 0; i < pointCount; i++) {
       const fps = fpsHistory[fpsHistory.length - pointCount + i];
       const x = padding + i * stepX;
-      const y = height - padding - (Math.min(fps, 120) / 120) * (height - padding * 2);
+      const y = this.calculateYPosition(fps, height, padding);
       
       if (i === 0) {
         pathData += `M ${x} ${y}`;
@@ -301,7 +307,13 @@ export class PerformanceDashboard {
       }
     }
     
-    // Draw sparkline path
+    // Draw area under sparkline with gradient effect (append first so it renders below)
+    const areaPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    areaPath.setAttribute('d', `${pathData} L ${width - padding} ${height} L ${padding} ${height} Z`);
+    areaPath.setAttribute('fill', 'rgba(0, 255, 136, 0.1)');
+    svg.appendChild(areaPath);
+    
+    // Draw sparkline path on top
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', pathData);
     path.setAttribute('stroke', '#00ff88');
@@ -310,12 +322,6 @@ export class PerformanceDashboard {
     path.setAttribute('stroke-linecap', 'round');
     path.setAttribute('stroke-linejoin', 'round');
     svg.appendChild(path);
-    
-    // Draw area under sparkline with gradient effect
-    const areaPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    areaPath.setAttribute('d', `${pathData} L ${width - padding} ${height} L ${padding} ${height} Z`);
-    areaPath.setAttribute('fill', 'rgba(0, 255, 136, 0.1)');
-    svg.appendChild(areaPath);
   }
 
   /**
@@ -327,24 +333,13 @@ export class PerformanceDashboard {
     const preset = QUALITY_PRESETS[level];
     this.elements.presetLabel.textContent = preset.label;
     
-    // Record preset transition for visual feedback
-    const timings = this.profiler.getDetailedTimings();
-    this.presetTransition = {
-      fromLevel: this.currentQualityLevel,
-      toLevel: level,
-      timestamp: Date.now(),
-      fromComputeTime: timings.compute,
-      fromSceneTime: timings.scene,
-    };
-    
     this.currentQualityLevel = level;
     
-    // Add transition animation class
+    // Add transition animation class for visual feedback
     const presetEl = this.elements.presetLabel;
     presetEl.classList.add('perf-preset-changing');
     setTimeout(() => {
       presetEl.classList.remove('perf-preset-changing');
-      this.presetTransition = null;
     }, 600);
   }
 
