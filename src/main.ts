@@ -1607,7 +1607,7 @@ class GrokZephyrApp {
       const compatCheck = WebGPUCompatibilityManager.checkSupport();
       if (!compatCheck.isSupported) {
         // Check if an overlay already exists to prevent duplicates
-        if (!document.querySelector('#webgpu-compatibility-overlay')) {
+        if (!WebGPUCompatibilityManager.hasActiveOverlay()) {
           const overlay = WebGPUCompatibilityManager.createCompatibilityOverlay(compatCheck);
           document.body.appendChild(overlay);
         }

@@ -85,6 +85,13 @@ export class WebGPUCompatibilityManager {
   }
 
   /**
+   * Check if a compatibility overlay is already displayed
+   */
+  static hasActiveOverlay(): boolean {
+    return document.querySelector('#webgpu-compatibility-overlay') !== null;
+  }
+
+  /**
    * Create a detailed error overlay for WebGPU failures
    */
   static createCompatibilityOverlay(result: CompatibilityCheckResult): HTMLElement {
@@ -191,11 +198,17 @@ export class WebGPUCompatibilityManager {
   }
 
   /**
-   * Escape HTML entities to prevent XSS
+   * Escape HTML entities to prevent XSS attacks.
+   * Uses a map-based approach for efficient HTML entity escaping.
    */
   private static escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    const htmlEntityMap: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    };
+    return text.replace(/[&<>"']/g, (char) => htmlEntityMap[char]);
   }
 }

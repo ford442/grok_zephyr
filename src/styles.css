@@ -24,6 +24,7 @@
   --hud-underline-bottom: 4px;
   --hud-underline-height: 1px;
   --view-group-min-width: 15rem;
+  --overlay-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
 html, body {
@@ -1270,6 +1271,15 @@ html, body {
   border-top: 1px solid rgba(0, 255, 136, 0.15);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+/* Visually hidden text - used for screen reader-only content */
+.sr-only {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
 }
 
 /* Enhanced accessibility: visible focus indicators */

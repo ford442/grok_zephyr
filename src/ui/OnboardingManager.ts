@@ -9,7 +9,7 @@ export class OnboardingManager {
   private overlayElement: HTMLElement | null = null;
   private escapeHandler: ((e: KeyboardEvent) => void) | null = null;
   private isDismissing = false;
-  private dismissTimeoutId: number | null = null;
+  private dismissTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Check if onboarding has been dismissed by the user
