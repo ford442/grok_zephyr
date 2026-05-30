@@ -43,6 +43,13 @@ export interface MouseState {
   lastY: number;
 }
 
+type CinematicPathId = 'horizon-drift' | 'god-spiral' | 'fleet-fly';
+
+interface CinematicStep {
+  id: CinematicPathId;
+  duration: number;
+}
+
 /**
  * Camera Controller
  * 
@@ -103,6 +110,19 @@ export class CameraController {
   // Callbacks
   private modeChangeCallback: ((mode: ViewMode, name: string, altitude: string) => void) | null = null;
   private angleChangeCallback: ((yaw: number, pitch: number) => void) | null = null;
+  private cinematicChangeCallback: ((active: boolean) => void) | null = null;
+  private userInteractionCallback: (() => void) | null = null;
+
+  private readonly cinematicSteps: CinematicStep[] = [
+    { id: 'horizon-drift', duration: 52 },
+    { id: 'god-spiral', duration: 44 },
+    { id: 'fleet-fly', duration: 36 },
+  ];
+  private cinematicActive = false;
+  private cinematicStepIndex = 0;
+  private cinematicStepStartTime = 0;
+  private lastCinematicState: CameraState | null = null;
+  private cinematicBlendOut: { startTime: number; duration: number; from: CameraState } | null = null;
 
   constructor() {
     // Event listeners are attached lazily via attachToCanvas()
@@ -117,6 +137,7 @@ export class CameraController {
     
     // Mouse down - start dragging
     canvas.addEventListener('mousedown', (e) => {
+      this.handleUserInteraction();
       if (e.button === 0 && !e.altKey) {
         this.mouseMode = 'rotate';
       } else if (e.button === 2 || e.button === 1 || (e.button === 0 && e.altKey)) {
@@ -181,6 +202,7 @@ export class CameraController {
 
     // Wheel - zoom distance (works in all modes)
     canvas.addEventListener('wheel', (e) => {
+      this.handleUserInteraction();
       e.preventDefault();
       const zoomSpeed = 40;
       this.cameraAngles.distance = Math.max(
@@ -204,6 +226,7 @@ export class CameraController {
     
     // Keyboard input for Fleet POV micro-movement
     window.addEventListener('keydown', (e) => {
+      this.handleUserInteraction();
       this.keys[e.key.toLowerCase()] = true;
     });
     window.addEventListener('keyup', (e) => {
@@ -326,6 +349,10 @@ export class CameraController {
   }
 
   setViewMode(index: number): void {
+    if (this.cinematicActive) {
+      this.stopCinematic();
+    }
+
     this.modeIndex = index;
     
     // Reset fleet offset when switching modes
@@ -426,33 +453,273 @@ export class CameraController {
     satelliteVelocity: (index: number, time: number) => Vec3,
     time: number
   ): CameraState {
-    let cameraState: CameraState;
+    const manualState = this.applyPanOffset(
+      this.calculateManualCamera(satellitePosition, satelliteVelocity, time)
+    );
 
-    if (this.focusSatelliteIndex !== null) {
-      cameraState = this.calculateFocusedView(satellitePosition, time);
-    } else {
-      switch (this.currentMode) {
-        case 'horizon-720':
-          cameraState = this.calculateHorizonView();
-          break;
-        case 'god':
-          cameraState = this.calculateGodView();
-          break;
-        case 'sat-pov':
-          cameraState = this.calculateFleetPOV(satellitePosition, satelliteVelocity, time);
-          break;
-        case 'ground':
-          cameraState = this.calculateGroundView();
-          break;
-        case 'moon':
-          cameraState = this.calculateMoonView();
-          break;
-        default:
-          cameraState = this.calculateHorizonView();
-      }
+    if (this.cinematicActive) {
+      const cinematic = this.calculateCinematicCamera(satellitePosition, satelliteVelocity, time);
+      this.lastCinematicState = cinematic;
+      return cinematic;
     }
 
-    return this.applyPanOffset(cameraState);
+    if (this.cinematicBlendOut) {
+      const elapsed = Math.max(0, time - this.cinematicBlendOut.startTime);
+      const tLinear = Math.min(1, elapsed / this.cinematicBlendOut.duration);
+      const t = this.smoothstep(tLinear);
+      const blended = this.blendCameraState(this.cinematicBlendOut.from, manualState, t);
+      if (tLinear >= 1) {
+        this.cinematicBlendOut = null;
+      }
+      return blended;
+    }
+
+    return manualState;
+  }
+
+  private calculateManualCamera(
+    satellitePosition: (index: number, time: number) => Vec3,
+    satelliteVelocity: (index: number, time: number) => Vec3,
+    time: number
+  ): CameraState {
+    if (this.focusSatelliteIndex !== null) {
+      return this.calculateFocusedView(satellitePosition, time);
+    }
+
+    switch (this.currentMode) {
+      case 'horizon-720':
+        return this.calculateHorizonView();
+      case 'god':
+        return this.calculateGodView();
+      case 'sat-pov':
+        return this.calculateFleetPOV(satellitePosition, satelliteVelocity, time);
+      case 'ground':
+        return this.calculateGroundView();
+      case 'moon':
+        return this.calculateMoonView();
+      default:
+        return this.calculateHorizonView();
+    }
+  }
+
+  private calculateCinematicCamera(
+    getPosition: (index: number, time: number) => Vec3,
+    getVelocity: (index: number, time: number) => Vec3,
+    time: number
+  ): CameraState {
+    const step = this.cinematicSteps[this.cinematicStepIndex];
+    let elapsed = Math.max(0, time - this.cinematicStepStartTime);
+
+    if (elapsed >= step.duration) {
+      this.cinematicStepIndex = (this.cinematicStepIndex + 1) % this.cinematicSteps.length;
+      this.cinematicStepStartTime = time;
+      elapsed = 0;
+    }
+
+    const current = this.cinematicSteps[this.cinematicStepIndex];
+    const t = Math.min(1, elapsed / current.duration);
+
+    switch (current.id) {
+      case 'horizon-drift':
+        return this.calculateCinematicHorizonDrift(t, time);
+      case 'god-spiral':
+        return this.calculateCinematicGodSpiral(t, getPosition, time);
+      case 'fleet-fly':
+      default:
+        return this.calculateCinematicFleetFly(t, getPosition, getVelocity, time);
+    }
+  }
+
+  private calculateCinematicHorizonDrift(t: number, time: number): CameraState {
+    const eased = this.smoothstep(t);
+    const yaw = eased * MATH.TWO_PI * 1.2 + Math.sin(time * 0.12) * 0.06;
+    const radius = CONSTANTS.CAMERA_RADIUS_KM + Math.sin(time * 0.08) * 10;
+
+    const position: Vec3 = [
+      radius * Math.cos(yaw),
+      radius * Math.sin(yaw),
+      0,
+    ];
+
+    const radial = v3norm(position);
+    const tangent = v3norm([-Math.sin(yaw), Math.cos(yaw), 0]);
+    const pitchVec: Vec3 = [0, 0, Math.sin(eased * MATH.TWO_PI) * 0.15 + Math.sin(time * 0.18) * 0.03];
+    const lookDir = v3norm(v3add(v3add(v3scale(tangent, 0.92), v3scale(radial, 0.22)), pitchVec));
+    const target = v3add(position, v3scale(lookDir, 9000));
+
+    return {
+      position,
+      target,
+      up: radial,
+      fov: CAMERA.DEFAULT_FOV * 0.94,
+      near: CAMERA.NEAR_PLANE,
+      far: CAMERA.FAR_PLANE,
+    };
+  }
+
+  private calculateCinematicGodSpiral(
+    t: number,
+    getPosition: (index: number, time: number) => Vec3,
+    time: number
+  ): CameraState {
+    const eased = this.smoothstep(t);
+    const yaw = eased * MATH.TWO_PI * 2.3;
+    const pitch = 0.78 + (0.3 - 0.78) * eased + Math.sin(time * 0.2) * 0.05;
+    const distance = 48000 + (14000 - 48000) * eased;
+
+    const cosP = Math.cos(pitch);
+    const sinP = Math.sin(pitch);
+    const position: Vec3 = [
+      cosP * Math.cos(yaw) * distance,
+      cosP * Math.sin(yaw) * distance,
+      sinP * distance,
+    ];
+
+    const center = this.sampleConstellationCenter(getPosition, time);
+    const centerBias = 0.15 + 0.25 * (1 - eased);
+    const target: Vec3 = [
+      center[0] * centerBias,
+      center[1] * centerBias,
+      center[2] * centerBias + Math.sin(time * 0.25) * 1200,
+    ];
+
+    let up: Vec3 = [0, 0, 1];
+    if (Math.abs(sinP) > 0.95) {
+      up = [Math.cos(yaw), Math.sin(yaw), 0];
+    }
+
+    return {
+      position,
+      target,
+      up,
+      fov: CAMERA.DEFAULT_FOV * 0.88,
+      near: CAMERA.NEAR_PLANE,
+      far: CAMERA.FAR_PLANE,
+    };
+  }
+
+  private calculateCinematicFleetFly(
+    t: number,
+    getPosition: (index: number, time: number) => Vec3,
+    getVelocity: (index: number, time: number) => Vec3,
+    time: number
+  ): CameraState {
+    const segment = time / 9;
+    const step = Math.floor(segment);
+    const mix = this.smoothstep(segment - step);
+    const idxA = (step * 7919) % CONSTANTS.NUM_SATELLITES;
+    const idxB = ((step + 1) * 7919) % CONSTANTS.NUM_SATELLITES;
+
+    const posA = getPosition(idxA, time);
+    const posB = getPosition(idxB, time);
+    const velA = getVelocity(idxA, time);
+    const velB = getVelocity(idxB, time);
+
+    const satPos = this.lerpVec3(posA, posB, mix);
+    const satVel = this.lerpVec3(velA, velB, mix);
+
+    const radial = v3norm(satPos);
+    const forward = v3norm(satVel);
+    const right = v3norm(v3cross(forward, radial));
+    const localUp = v3norm(v3cross(right, forward));
+
+    const bank = Math.sin(time * 0.9) * 0.2;
+    const bob = Math.sin(time * 1.6) * 1.2;
+    const position = v3add(
+      satPos,
+      v3add(
+        v3add(v3scale(localUp, 65 + bob), v3scale(right, 20 * bank)),
+        v3scale(forward, 18)
+      )
+    );
+
+    const lead = 1500 + 900 * (0.5 + 0.5 * Math.sin(t * MATH.TWO_PI));
+    const target = v3add(
+      position,
+      v3add(v3scale(forward, lead), v3scale(localUp, 80 * Math.sin(time * 0.4)))
+    );
+    const up = v3norm(v3add(localUp, v3scale(right, bank * 0.25)));
+
+    return {
+      position,
+      target,
+      up,
+      fov: CAMERA.DEFAULT_FOV * 0.86,
+      near: 1,
+      far: CAMERA.FAR_PLANE,
+    };
+  }
+
+  private sampleConstellationCenter(getPosition: (index: number, time: number) => Vec3, time: number): Vec3 {
+    const sampleIndices = [0, 8191, 65535, 131071, 262143, 524287, 786431, 1048575];
+    let sum: Vec3 = [0, 0, 0];
+    for (const index of sampleIndices) {
+      const p = getPosition(index, time);
+      sum = [sum[0] + p[0], sum[1] + p[1], sum[2] + p[2]];
+    }
+    return v3scale(sum, 1 / sampleIndices.length);
+  }
+
+  private smoothstep(t: number): number {
+    const clamped = Math.max(0, Math.min(1, t));
+    return clamped * clamped * (3 - 2 * clamped);
+  }
+
+  private lerpVec3(a: Vec3, b: Vec3, t: number): Vec3 {
+    return [
+      a[0] + (b[0] - a[0]) * t,
+      a[1] + (b[1] - a[1]) * t,
+      a[2] + (b[2] - a[2]) * t,
+    ];
+  }
+
+  private blendCameraState(a: CameraState, b: CameraState, t: number): CameraState {
+    return {
+      position: this.lerpVec3(a.position, b.position, t),
+      target: this.lerpVec3(a.target, b.target, t),
+      up: v3norm(this.lerpVec3(a.up, b.up, t)),
+      fov: a.fov + (b.fov - a.fov) * t,
+      near: a.near + (b.near - a.near) * t,
+      far: a.far + (b.far - a.far) * t,
+    };
+  }
+
+  private handleUserInteraction(): void {
+    if (this.userInteractionCallback) {
+      this.userInteractionCallback();
+    }
+    if (this.cinematicActive) {
+      this.stopCinematic();
+    }
+  }
+
+  startCinematic(time: number = performance.now() / 1000): void {
+    this.cinematicStepIndex = this.cinematicStepIndex % this.cinematicSteps.length;
+    this.cinematicStepStartTime = time;
+    this.cinematicBlendOut = null;
+    this.cinematicActive = true;
+    if (this.cinematicChangeCallback) {
+      this.cinematicChangeCallback(true);
+    }
+  }
+
+  stopCinematic(time: number = performance.now() / 1000): void {
+    if (!this.cinematicActive) return;
+    this.cinematicActive = false;
+    if (this.lastCinematicState) {
+      this.cinematicBlendOut = {
+        startTime: time,
+        duration: 0.45,
+        from: this.lastCinematicState,
+      };
+    }
+    if (this.cinematicChangeCallback) {
+      this.cinematicChangeCallback(false);
+    }
+  }
+
+  isCinematicActive(): boolean {
+    return this.cinematicActive;
   }
 
   /**
@@ -854,6 +1121,14 @@ export class CameraController {
    */
   onAngleChange(callback: (yaw: number, pitch: number) => void): void {
     this.angleChangeCallback = callback;
+  }
+
+  onCinematicChange(callback: (active: boolean) => void): void {
+    this.cinematicChangeCallback = callback;
+  }
+
+  onUserInteraction(callback: () => void): void {
+    this.userInteractionCallback = callback;
   }
 
   /**

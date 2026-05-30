@@ -21,6 +21,8 @@ export interface UIElements {
   error: HTMLElement;
   controls: HTMLElement;
   buttons: HTMLButtonElement[];
+  demoButton: HTMLButtonElement;
+  demoAutoButton: HTMLButtonElement;
   patternButtons: HTMLButtonElement[];
   animationButtons: HTMLButtonElement[];
   physicsButtons: HTMLButtonElement[];
@@ -70,6 +72,8 @@ export class UIManager {
   private onQualityChangeCallback: ((level: QualityLevel) => void) | null = null;
   private onSpeedChangeCallback: ((speed: number) => void) | null = null;
   private onLoopToggleCallback: ((loop: boolean) => void) | null = null;
+  private onDemoToggleCallback: (() => void) | null = null;
+  private onDemoAutoToggleCallback: ((enabled: boolean) => void) | null = null;
   
   private animationState: AnimationUIState = {
     currentPattern: 'grok',
@@ -109,6 +113,8 @@ export class UIManager {
         document.getElementById('btn3') as HTMLButtonElement,
         document.getElementById('btn4') as HTMLButtonElement,
       ],
+      demoButton: document.getElementById('btnDemo') as HTMLButtonElement,
+      demoAutoButton: document.getElementById('btnDemoAuto') as HTMLButtonElement,
       patternButtons: [
         document.getElementById('pbtn0') as HTMLButtonElement,
         document.getElementById('pbtn1') as HTMLButtonElement,
@@ -149,6 +155,21 @@ export class UIManager {
           this.onViewChangeCallback(index);
         }
       });
+    });
+
+    // Pattern buttons (Chaos/Grok/X)
+    this.elements.demoButton?.addEventListener('click', () => {
+      if (this.onDemoToggleCallback) {
+        this.onDemoToggleCallback();
+      }
+    });
+
+    this.elements.demoAutoButton?.addEventListener('click', () => {
+      const enabled = !this.elements.demoAutoButton.classList.contains('active');
+      this.setDemoAutoEnabled(enabled);
+      if (this.onDemoAutoToggleCallback) {
+        this.onDemoAutoToggleCallback(enabled);
+      }
     });
 
     // Pattern buttons (Chaos/Grok/X)
@@ -262,6 +283,16 @@ export class UIManager {
     this.elements.buttons.forEach((btn, i) => {
       btn?.classList.toggle('active', i === index);
     });
+  }
+
+  setDemoActive(active: boolean): void {
+    this.elements.demoButton?.classList.toggle('active', active);
+    this.elements.demoButton.textContent = active ? 'DEMO STOP' : 'CINEMATIC DEMO';
+  }
+
+  setDemoAutoEnabled(enabled: boolean): void {
+    this.elements.demoAutoButton?.classList.toggle('active', enabled);
+    this.elements.demoAutoButton.textContent = enabled ? 'AUTO DEMO: ON' : 'AUTO DEMO: OFF';
   }
 
   /**
@@ -515,6 +546,14 @@ export class UIManager {
     this.onLoopToggleCallback = callback;
   }
 
+  onDemoToggle(callback: () => void): void {
+    this.onDemoToggleCallback = callback;
+  }
+
+  onDemoAutoToggle(callback: (enabled: boolean) => void): void {
+    this.onDemoAutoToggleCallback = callback;
+  }
+
   // Time scale control properties
   private onTimeScaleChangeCallback: ((scale: number) => void) | null = null;
   private currentTimeScale: number = 1.0;
@@ -724,6 +763,10 @@ export class UIManager {
             <button class="vbtn" id="btn2">FLEET POV</button>
             <button class="vbtn" id="btn3">GROUND VIEW</button>
             <button class="vbtn" id="btn4">MOON VIEW</button>
+          </div>
+          <div class="view-extra-row">
+            <button class="vbtn" id="btnDemo">CINEMATIC DEMO</button>
+            <button class="vbtn active" id="btnDemoAuto">AUTO DEMO: ON</button>
           </div>
         </section>
       </div>

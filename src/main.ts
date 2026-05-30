@@ -154,6 +154,11 @@ class GrokZephyrApp {
   /** Scaled simulation time (accumulated based on timeScale) */
   private simTime: number = 0.0;
 
+  /** Demo mode settings */
+  private demoAutoEnabled = true;
+  private readonly demoIdleTimeoutSeconds = 180;
+  private lastUserActivityTime = performance.now() * 0.001;
+
   /**
    * Setup UI and camera callbacks
    */
@@ -169,6 +174,31 @@ class GrokZephyrApp {
     this.ui.onViewModeChange((index) => {
       this.camera.setViewMode(index);
     });
+
+    this.camera.onCinematicChange((active) => {
+      this.ui.setDemoActive(active);
+    });
+
+    this.camera.onUserInteraction(() => {
+      this.registerUserActivity(true);
+    });
+
+    this.ui.onDemoToggle(() => {
+      this.registerUserActivity(false);
+      if (this.camera.isCinematicActive()) {
+        this.camera.stopCinematic();
+      } else {
+        this.camera.startCinematic(performance.now() * 0.001);
+      }
+    });
+
+    this.ui.onDemoAutoToggle((enabled) => {
+      this.demoAutoEnabled = enabled;
+      this.registerUserActivity(false);
+    });
+
+    this.ui.setDemoActive(false);
+    this.ui.setDemoAutoEnabled(this.demoAutoEnabled);
 
     // Stats update
     this.profiler.onStatsUpdate((stats) => {
@@ -228,6 +258,21 @@ class GrokZephyrApp {
         this.focusManager?.releaseFocus();
       }
     });
+
+    const controls = document.getElementById('controls');
+    controls?.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement | null;
+      const button = target?.closest('button') as HTMLButtonElement | null;
+      if (!button) return;
+      this.registerUserActivity(button.id !== 'btnDemo');
+    });
+  }
+
+  private registerUserActivity(interruptCinematic: boolean): void {
+    this.lastUserActivityTime = performance.now() * 0.001;
+    if (interruptCinematic && this.camera.isCinematicActive()) {
+      this.camera.stopCinematic();
+    }
   }
 
   /**
@@ -1340,6 +1385,14 @@ class GrokZephyrApp {
     
     // Update scaled simulation time based on timeScale
     this.simTime += deltaTime * this.timeScale;
+
+    if (
+      this.demoAutoEnabled &&
+      !this.camera.isCinematicActive() &&
+      time - this.lastUserActivityTime >= this.demoIdleTimeoutSeconds
+    ) {
+      this.camera.startCinematic(time);
+    }
     
     // Sync background mode from the current camera view
     setBackgroundMode(resolveBackgroundMode(this.camera.getViewMode()));
