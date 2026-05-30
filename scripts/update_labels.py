@@ -123,8 +123,6 @@ def update_label(token, label_name, color, description):
         else:
             response = json.loads(response_text) if response_text else {}
             print(f"  ✗ Failed (HTTP {http_code}): {response.get('message', 'Unknown error')}")
-            if response_text and response_text != response_text.strip():
-                print(f"     Response: {response_text[:100]}")
             return False
     except json.JSONDecodeError:
         if response_text:

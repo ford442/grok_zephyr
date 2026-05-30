@@ -8,7 +8,7 @@ The Grok Zephyr project uses a comprehensive set of labels to organize issues an
 
 ## Available Labels
 
-See [docs/LABELS.md](../docs/LABELS.md) for a complete description of all available labels, their colors, and usage guidelines.
+See [docs/LABELS.md](docs/LABELS.md) for a complete description of all available labels, their colors, and usage guidelines.
 
 ## Setting Up Labels
 
@@ -46,7 +46,7 @@ To add or modify labels, edit this file and then run the update script or the Gi
 
 ## Integration with GitHub Actions
 
-The repository includes a GitHub Actions workflow (``.github/workflows/manage-labels.yml``) that can:
+The repository includes a GitHub Actions workflow (`.github/workflows/manage-labels.yml`) that can:
 - Be manually triggered via `workflow_dispatch`
 - Automatically run when the workflow file or label configuration changes
 
@@ -68,4 +68,4 @@ This ensures labels are always up-to-date and consistent across the repository.
 
 ## Contributing
 
-When creating new issues or PRs, please use the appropriate labels to help organize the work. See the label descriptions in [docs/LABELS.md](../docs/LABELS.md) for guidance.
+When creating new issues or PRs, please use the appropriate labels to help organize the work. See the label descriptions in [docs/LABELS.md](docs/LABELS.md) for guidance.
