@@ -4,6 +4,10 @@
  * Styles for first-run experience and WebGPU compatibility messaging.
  */
 
+:root {
+  --overlay-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
 /* Onboarding Overlay */
 #onboarding-overlay {
   position: fixed;
@@ -18,7 +22,7 @@
   justify-content: center;
   z-index: 10000;
   animation: fadeIn 0.3s ease-out;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-family: var(--overlay-font-family);
 }
 
 #onboarding-overlay.dismissing {
@@ -253,7 +257,7 @@ kbd {
   align-items: center;
   justify-content: center;
   z-index: 10001;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  font-family: var(--overlay-font-family);
   animation: fadeIn 0.3s ease-out;
 }
 

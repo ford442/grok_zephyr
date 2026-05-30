@@ -1291,9 +1291,15 @@ button:focus-visible {
   }
 }
 
-/* Reduced motion support */
+/* Reduced motion support - apply to interactive elements and overlays */
 @media (prefers-reduced-motion: reduce) {
-  * {
+  button,
+  select,
+  input,
+  #onboarding-overlay,
+  .compatibility-overlay,
+  .onboarding-content,
+  .compatibility-content {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

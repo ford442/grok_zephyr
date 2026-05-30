@@ -7,6 +7,7 @@
 export class OnboardingManager {
   private static readonly STORAGE_KEY = 'grok-zephyr-onboarding-dismissed';
   private overlayElement: HTMLElement | null = null;
+  private escapeHandler: ((e: KeyboardEvent) => void) | null = null;
 
   /**
    * Check if onboarding has been dismissed by the user
@@ -100,12 +101,12 @@ export class OnboardingManager {
     startBtn.addEventListener('click', dismissHandler);
 
     // Close on Escape key (attached to document for better usability)
-    const escapeHandler = (e: KeyboardEvent) => {
+    this.escapeHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && this.overlayElement === overlay) {
         dismissHandler();
       }
     };
-    document.addEventListener('keydown', escapeHandler);
+    document.addEventListener('keydown', this.escapeHandler);
 
     // Close on background click
     overlay.addEventListener('click', (e: MouseEvent) => {
@@ -129,6 +130,11 @@ export class OnboardingManager {
   private dismiss(): void {
     if (this.overlayElement) {
       this.overlayElement.classList.add('dismissing');
+      // Remove the Escape key listener to prevent memory leak
+      if (this.escapeHandler) {
+        document.removeEventListener('keydown', this.escapeHandler);
+        this.escapeHandler = null;
+      }
       setTimeout(() => {
         if (this.overlayElement && this.overlayElement.parentElement) {
           this.overlayElement.parentElement.removeChild(this.overlayElement);

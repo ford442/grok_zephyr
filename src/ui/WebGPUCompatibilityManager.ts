@@ -18,7 +18,8 @@ export class WebGPUCompatibilityManager {
    */
   static detectBrowser(): string {
     const ua = navigator.userAgent;
-    if (ua.includes('Edge')) return 'Edge';
+    // Check Edge before Chrome since Edge contains 'Chrome'
+    if (ua.includes('Edg/')) return 'Edge';
     if (ua.includes('Chrome')) return 'Chrome';
     if (ua.includes('Firefox')) return 'Firefox';
     if (ua.includes('Safari')) return 'Safari';
