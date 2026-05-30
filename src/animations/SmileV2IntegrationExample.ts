@@ -5,11 +5,12 @@
  * Grok Zephyr render pipeline.
  */
 
-import { SmileV2Controller, SmilePhase } from './animations/SmileV2Controller.js';
-import { PatternSequencer } from './patterns/PatternSequencer.js';
-import { SatelliteGPUBuffer } from './core/SatelliteGPUBuffer.js';
-import { PerformanceProfiler } from './utils/PerformanceProfiler.js';
-import type WebGPUContext from './core/WebGPUContext.js';
+import { SmileV2Controller, SmilePhase } from './SmileV2Controller.js';
+import type { SmileV2Events } from './SmileV2Controller.js';
+import { PatternSequencer } from '@/patterns/PatternSequencer.js';
+import { SatelliteGPUBuffer } from '@/core/SatelliteGPUBuffer.js';
+import { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
+import type WebGPUContext from '@/core/WebGPUContext.js';
 
 /**
  * Example: Initialize and use SmileV2Controller in the render loop
@@ -44,9 +45,9 @@ export class SmileV2IntegrationExample {
       }
     );
     
-    // Register event handlers
+        // Register event handlers
     this.controller.onEvents({
-      onPhaseStart: (phase, progress) => {
+      onPhaseStart: (phase: SmilePhase, progress: number) => {
         console.log(`Phase ${SmilePhase[phase]} started at ${(progress * 100).toFixed(1)}%`);
         
         // Example: Trigger UI updates, audio cues, etc.
@@ -63,7 +64,7 @@ export class SmileV2IntegrationExample {
         }
       },
       
-      onPhaseEnd: (phase, nextPhase) => {
+      onPhaseEnd: (phase: SmilePhase, nextPhase: SmilePhase | null) => {
         console.log(`Phase ${SmilePhase[phase]} ended`);
         
         // Example: Cleanup phase-specific effects
@@ -78,10 +79,10 @@ export class SmileV2IntegrationExample {
         // this.controller?.startCycle();
       },
       
-      onPerformanceWarning: (frameTime, threshold) => {
+      onPerformanceWarning: (frameTime: number, threshold: number) => {
         console.warn(`Performance warning: ${frameTime.toFixed(2)}ms > ${threshold}ms`);
       },
-    });
+    } satisfies SmileV2Events);
   }
 
   /**

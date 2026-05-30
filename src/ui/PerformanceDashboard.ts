@@ -47,8 +47,6 @@ export class PerformanceDashboard {
   private elements: DashboardElements | null = null;
   private profiler: PerformanceProfiler;
   private isCollapsed = true;
-  private lastFPS = 60;
-  private currentQualityLevel: QualityLevel = 'high';
   private maxFrameTime = 16.67; // 60 FPS baseline
 
   constructor(profiler: PerformanceProfiler) {
@@ -211,7 +209,6 @@ export class PerformanceDashboard {
   updateStats(stats: PerformanceStats): void {
     if (!this.elements) return;
     
-    this.lastFPS = stats.fps;
     const timings: DetailedTimings = this.profiler.getDetailedTimings();
     
     // Update timing displays
@@ -333,7 +330,6 @@ export class PerformanceDashboard {
     const preset = QUALITY_PRESETS[level];
     this.elements.presetLabel.textContent = preset.label;
     
-    this.currentQualityLevel = level;
     
     // Add transition animation class for visual feedback
     const presetEl = this.elements.presetLabel;

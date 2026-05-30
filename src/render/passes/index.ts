@@ -22,7 +22,7 @@ export interface PassContext {
  */
 export function encodeComputePass(
   encoder: GPUCommandEncoder,
-  { buffers, bindGroups, pipelines }: PassContext
+  { buffers: _buffers, bindGroups, pipelines }: PassContext
 ): void {
   const pass = encoder.beginComputePass({ label: 'Compute Pass' });
   

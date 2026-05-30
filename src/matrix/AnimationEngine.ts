@@ -52,14 +52,6 @@ export class AnimationEngine {
   
   // Timing
   private lastTime = 0;
-  private phaseStartTime = 0;
-  
-  // GPU buffer references (set externally)
-  private gpuBuffers: {
-    positions?: GPUBuffer;
-    colors?: GPUBuffer;
-    features?: GPUBuffer;
-  } = {};
   
   // Feature assignments (computed once per pattern)
   private featureAssignments: Map<number, SatelliteFeature> = new Map();
@@ -88,8 +80,8 @@ export class AnimationEngine {
   /**
    * Set GPU buffers for compute shader dispatch
    */
-  setGPUBuffers(buffers: { positions?: GPUBuffer; colors?: GPUBuffer; features?: GPUBuffer }): void {
-    this.gpuBuffers = buffers;
+  setGPUBuffers(_buffers: { positions?: GPUBuffer; colors?: GPUBuffer; features?: GPUBuffer }): void {
+    // Buffer references accepted for future use
   }
 
   /**
@@ -137,7 +129,6 @@ export class AnimationEngine {
   stop(): void {
     this.state.phase = 'fade';
     this.state.progress = 0;
-    this.phaseStartTime = this.state.elapsedTime;
     this.queue = [];
     this.isPlayingQueue = false;
   }
@@ -538,7 +529,6 @@ export class AnimationEngine {
       const x = positions[i * 4 + 0];
       const y = positions[i * 4 + 1];
       const r = Math.sqrt(x * x + y * y);
-      const theta = Math.atan2(y, x);
       
       // Check if in galaxy radius
       if (r > 3500 || r < 200) {
@@ -546,16 +536,12 @@ export class AnimationEngine {
         continue;
       }
       
-      // Calculate closest arm
-      const numArms = 3;
-      const armOffset = (theta / (Math.PI * 2)) * numArms;
-      const armIndex = Math.floor(armOffset) % numArms;
-      
+      // TODO: use theta + arm index for per-arm feature assignment
       this.featureAssignments.set(i, 'text_pixel'); // Generic feature
     }
   }
 
-  private computeFireworkFeatures(positions: Float32Array, count: number): void {
+  private computeFireworkFeatures(_positions: Float32Array, count: number): void {
     // Fireworks assign dynamically based on time, no pre-computation needed
     for (let i = 0; i < count; i++) {
       this.featureAssignments.set(i, 'none');
