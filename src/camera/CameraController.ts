@@ -105,6 +105,7 @@ export class CameraController {
 
   // Fleet POV orbital breathing (gentle idle sway)
   private fleetIdleTime = 0;
+  private lastFleetTime = 0;
   
   // Camera panning state
   private panOffset: Vec3 = [0, 0, 0];
@@ -1074,8 +1075,10 @@ export class CameraController {
     }
     
     // Orbital breathing: gentle position sway when idle (no movement keys pressed)
+    const frameDt = this.lastFleetTime > 0 ? Math.min(0.1, time - this.lastFleetTime) : 0.016;
+    this.lastFleetTime = time;
     if (!isMoving) {
-      this.fleetIdleTime += 0.016; // ~60fps frame time
+      this.fleetIdleTime += frameDt;
     } else {
       this.fleetIdleTime = 0;
     }
