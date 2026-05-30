@@ -27,8 +27,11 @@ import {
   saveQualityLevel,
   parseQualityParam,
 } from '@/core/QualityPresets.js';
+import { OnboardingManager } from '@/ui/OnboardingManager.js';
+import { WebGPUCompatibilityManager } from '@/ui/WebGPUCompatibilityManager.js';
 
 import './styles.css';
+import './styles/onboarding.css';
 
 /**
  * Known CelesTrak group names for the ?tle= query param shorthand.
@@ -1589,11 +1592,27 @@ class GrokZephyrApp {
     console.error('[GrokZephyr] Error:', error);
     
     let message = 'Unknown error occurred';
+    let isWebGPUError = false;
     
     if (error instanceof WebGPUError) {
       message = error.message;
+      isWebGPUError = true;
     } else if (error instanceof Error) {
       message = error.message;
+      isWebGPUError = message.toLowerCase().includes('webgpu');
+    }
+    
+    // Use enhanced WebGPU compatibility messaging if available
+    if (isWebGPUError) {
+      const compatCheck = WebGPUCompatibilityManager.checkSupport();
+      if (!compatCheck.isSupported) {
+        // Check if an overlay already exists to prevent duplicates
+        if (!WebGPUCompatibilityManager.hasActiveOverlay()) {
+          const overlay = WebGPUCompatibilityManager.createCompatibilityOverlay(compatCheck);
+          document.body.appendChild(overlay);
+        }
+        return;
+      }
     }
     
     this.ui.showError(
@@ -1631,6 +1650,10 @@ class GrokZephyrApp {
  * Initialize application when DOM is ready
  */
 function main(): void {
+  // Show onboarding if first time
+  const onboarding = new OnboardingManager();
+  onboarding.showIfNew();
+
   const app = new GrokZephyrApp();
   app.initialize().catch(console.error);
   

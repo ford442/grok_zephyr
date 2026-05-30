@@ -35,69 +35,70 @@
     <button class="preset-btn" data-preset="airplaneWindow">✈️ AIRPLANE</button>
   </div>
   
-  <div id="ui">
-    <div class="title">◈ GROK ZEPHYR</div>
-    <div class="stat" id="s-alt">Altitude : 720 km</div>
-    <div class="stat" id="s-fleet">Fleet    : 1,048,576</div>
-    <div class="stat" id="s-fps">FPS      : --</div>
-    <div class="stat" id="s-view">View     : 720km Horizon</div>
-    <div class="stat" id="s-visible">Visible  : --</div>
-    <div class="stat" id="s-quality">Quality  : HIGH</div>
+  <div id="ui" role="status" aria-live="polite" aria-label="Simulation Status">
+    <div class="title" aria-label="Application Title">◈ GROK ZEPHYR</div>
+    <div class="stat" id="s-alt" aria-label="Altitude">Altitude : 720 km</div>
+    <div class="stat" id="s-fleet" aria-label="Satellite Fleet Count">Fleet    : 1,048,576</div>
+    <div class="stat" id="s-fps" aria-label="Frames Per Second">FPS      : --</div>
+    <div class="stat" id="s-view" aria-label="Current View Mode">View     : 720km Horizon</div>
+    <div class="stat" id="s-visible" aria-label="Visible Satellites">Visible  : --</div>
+    <div class="stat" id="s-quality" aria-label="Rendering Quality">Quality  : HIGH</div>
     
     <div id="camera-controls">
       <div class="angle-display">
-        <span id="angleInfo">Yaw: 0° Pitch: 0°</span>
-        <button id="resetAngle" title="Reset camera angle">↺</button>
+        <span id="angleInfo" aria-label="Camera Rotation Angles">Yaw: 0° Pitch: 0°</span>
+        <button id="resetAngle" title="Reset camera angle to default" aria-label="Reset Camera Angle">↺</button>
       </div>
-      <div class="hint">Drag to rotate • Scroll to zoom • Double-click to reset • Fleet POV: WASD to drift</div>
+      <div class="hint" aria-label="Camera Controls Help">Drag to rotate • Scroll to zoom • Double-click to reset • Fleet POV: WASD to drift</div>
     </div>
   </div>
   
-  <div id="controls">
+  <div id="controls" role="navigation" aria-label="Simulation Controls">
     <section class="control-group control-group-view" aria-label="View Modes">
       <div class="group-label">VIEW MODES</div>
       <div class="view-btn-grid">
-        <button class="vbtn active" id="btn0">720km HORIZON</button>
-        <button class="vbtn" id="btn1">GOD VIEW</button>
-        <button class="vbtn" id="btn2">FLEET POV</button>
-        <button class="vbtn" id="btn3">GROUND VIEW</button>
-        <button class="vbtn" id="btn4">MOON VIEW</button>
+       <button class="vbtn active" id="btn0" aria-label="Switch to 720km Horizon view" title="720km Horizon - Standard orbital view">720km HORIZON</button>
+       <button class="vbtn" id="btn1" aria-label="Switch to God View" title="God View - View from above">GOD VIEW</button>
+       <button class="vbtn" id="btn2" aria-label="Switch to Fleet POV" title="Fleet POV - Satellite perspective with WASD controls">FLEET POV</button>
+       <button class="vbtn" id="btn3" aria-label="Switch to Ground View" title="Ground View - Preset ground observer frames">GROUND VIEW</button>
+       <button class="vbtn" id="btn4" aria-label="Switch to Moon View" title="Moon View - View from lunar orbit">MOON VIEW</button>
       </div>
       <div class="view-extra-row">
-        <button class="vbtn" id="btnDemo" data-no-interrupt-demo="true">CINEMATIC DEMO</button>
-        <button class="vbtn active" id="btnDemoAuto">AUTO DEMO: ON</button>
+       <button class="vbtn" id="btnDemo" data-no-interrupt-demo="true" aria-label="Start cinematic demo" title="Cinematic Demo - Automatically zoom and rotate">CINEMATIC DEMO</button>
+       <button class="vbtn active" id="btnDemoAuto" aria-label="Toggle auto demo on idle" title="Auto Demo - Automatic cinematic when idle">AUTO DEMO: ON</button>
       </div>
     </section>
     
     <section id="pattern-controls" class="control-group" aria-label="Beam Patterns">
       <div class="pattern-label">BEAM PATTERN</div>
       <div class="pattern-title" id="patternName">GROK • Big Dipper</div>
-      <button class="pbtn" id="pbtn0" data-pattern="0">CHAOS</button>
-      <button class="pbtn active" id="pbtn1" data-pattern="1">GROK</button>
-      <button class="pbtn" id="pbtn2" data-pattern="2">𝕏 LOGO</button>
+     <button class="pbtn" id="pbtn0" data-pattern="0" aria-label="Switch to chaos beam pattern">CHAOS</button>
+     <button class="pbtn active" id="pbtn1" data-pattern="1" aria-label="Switch to GROK beam pattern">GROK</button>
+     <button class="pbtn" id="pbtn2" data-pattern="2" aria-label="Switch to X logo beam pattern">𝕏 LOGO</button>
     </section>
     
-    <section id="animation-controls" class="control-group" aria-label="Animations">
+    <section id="animation-controls" class="control-group" aria-label="Constellation Animations">
       <div class="anim-label">CONSTELLATION PATTERNS</div>
-      <button class="anim-btn" id="anim3" data-pattern="3">😊 SMILE</button>
-      <button class="anim-btn" id="anim4" data-pattern="4">💧 MATRIX</button>
-      <button class="anim-btn" id="anim5" data-pattern="5">💓 HEARTBEAT</button>
+      <button class="anim-btn" id="anim3" data-pattern="3" aria-label="Activate smile animation pattern">😊 SMILE</button>
+      <button class="anim-btn" id="anim4" data-pattern="4" aria-label="Activate digital rain animation pattern">💧 MATRIX</button>
+      <button class="anim-btn" id="anim5" data-pattern="5" aria-label="Activate heartbeat animation pattern">💓 HEARTBEAT</button>
     </section>
     
-    <section id="physics-controls" class="control-group" aria-label="Physics">
+    <section id="physics-controls" class="control-group" aria-label="Physics Mode">
       <div class="physics-label">PHYSICS MODE</div>
-      <button class="physics-btn active" id="phys0" data-physics="0">SIMPLE</button>
-      <button class="physics-btn" id="phys1" data-physics="1">KEPLERIAN</button>
-      <button class="physics-btn disabled" id="phys2" data-physics="2" title="Not yet implemented">J2</button>
+      <button class="physics-btn active" id="phys0" data-physics="0" aria-label="Use simple physics mode">SIMPLE</button>
+      <button class="physics-btn" id="phys1" data-physics="1" aria-label="Use Keplerian physics mode">KEPLERIAN</button>
+      <button class="physics-btn disabled" id="phys2" data-physics="2" disabled aria-disabled="true" aria-describedby="j2-note" aria-label="J2 perturbations physics mode">J2</button>
+      <span id="j2-note" class="sr-only">Not yet implemented</span>
     </section>
 
-    <section id="quality-controls" class="control-group" aria-label="Quality">
+    <section id="quality-controls" class="control-group" aria-label="Rendering Quality">
       <div class="quality-label">QUALITY</div>
-      <button class="quality-btn" id="qlow"  data-quality="low"       title="Minimal effects — best for low-end devices">LOW</button>
-      <button class="quality-btn" id="qbal"  data-quality="balanced"  title="Good performance/quality trade-off">BALANCED</button>
-      <button class="quality-btn active" id="qhigh" data-quality="high" title="Full quality for modern GPUs">HIGH</button>
-      <button class="quality-btn" id="qcine" data-quality="cinematic" title="Maximum fidelity — demos and screenshots">CINEMATIC</button>
-      <button class="quality-btn active" id="taaToggle" title="Toggle Temporal Anti-Aliasing (TAA) — smooths edges using frame history">TAA ON</button>
+      <button class="quality-btn" id="qlow"  data-quality="low"       title="Minimal effects — best for low-end devices" aria-label="Set quality to low for better performance">LOW</button>
+      <button class="quality-btn" id="qbal"  data-quality="balanced"  title="Good performance/quality trade-off" aria-label="Set quality to balanced">BALANCED</button>
+      <button class="quality-btn active" id="qhigh" data-quality="high" title="Full quality for modern GPUs" aria-label="Set quality to high">HIGH</button>
+      <button class="quality-btn" id="qcine" data-quality="cinematic" title="Maximum fidelity — demos and screenshots" aria-label="Set quality to cinematic">CINEMATIC</button>
+      <button class="quality-btn active" id="taaToggle" title="Toggle Temporal Anti-Aliasing (TAA) — smooths edges using frame history" aria-label="Toggle temporal anti-aliasing">TAA ON</button>
     </section>
 
     <section id="capture-controls" class="control-group" aria-label="Capture">

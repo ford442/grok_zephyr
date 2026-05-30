@@ -24,6 +24,7 @@
   --hud-underline-bottom: 4px;
   --hud-underline-height: 1px;
   --view-group-min-width: 15rem;
+  --overlay-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
 html, body {
@@ -1270,4 +1271,46 @@ html, body {
   border-top: 1px solid rgba(0, 255, 136, 0.15);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+/* Visually hidden text - used for screen reader-only content */
+.sr-only {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* Enhanced accessibility: visible focus indicators */
+*:focus-visible {
+  outline: 2px solid rgba(0, 255, 170, 0.6);
+  outline-offset: 2px;
+}
+
+button:focus-visible {
+  box-shadow: var(--hud-focus-ring), 0 0 10px rgba(0, 255, 170, 0.3);
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: more) {
+  button:focus-visible,
+  select:focus-visible,
+  input:focus-visible {
+    outline-width: 3px;
+  }
+}
+
+/* Reduced motion support - apply to interactive elements and overlays */
+@media (prefers-reduced-motion: reduce) {
+  button,
+  select,
+  input,
+  #onboarding-overlay,
+  .compatibility-overlay,
+  .onboarding-content,
+  .compatibility-content {
+    animation: none !important;
+    transition: none !important;
+  }
 }
