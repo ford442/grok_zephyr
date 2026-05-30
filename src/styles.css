@@ -1271,3 +1271,31 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+
+/* Enhanced accessibility: visible focus indicators */
+*:focus-visible {
+  outline: 2px solid rgba(0, 255, 170, 0.6);
+  outline-offset: 2px;
+}
+
+button:focus-visible {
+  box-shadow: var(--hud-focus-ring), 0 0 10px rgba(0, 255, 170, 0.3);
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: more) {
+  button:focus-visible,
+  select:focus-visible,
+  input:focus-visible {
+    outline-width: 3px;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
