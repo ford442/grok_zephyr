@@ -128,6 +128,14 @@ export class CameraController {
   private readonly constellationCenterSampleIndices = [0, 8191, 65535, 131071, 262143, 524287, 786431, 1048575];
   private cinematicBlendOut: { startTime: number; duration: number; from: CameraState } | null = null;
 
+  // God View inertia: velocity accumulated from drag deltas, decays after release
+  private godVelocity: { yaw: number; pitch: number } = { yaw: 0, pitch: 0 };
+  private readonly GOD_INERTIA_DAMPING = 0.88; // per-frame decay factor (~60 fps baseline)
+
+  // Smooth mode-switch transitions: blend from the last visual pose to the new one
+  private lastVisualState: CameraState | null = null;
+  private modeTransition: { from: CameraState; startTime: number; duration: number } | null = null;
+
   constructor() {
     // Event listeners are attached lazily via attachToCanvas()
   }
@@ -191,6 +199,9 @@ export class CameraController {
         if (this.currentMode === 'god') {
           this.godView.yaw = this.cameraAngles.yaw * Math.PI / 180;
           this.godView.pitch = this.cameraAngles.pitch * Math.PI / 180;
+          // Record the most-recent drag delta as the post-release inertia seed
+          this.godVelocity.yaw = dx * this.MOUSE_SENSITIVITY;
+          this.godVelocity.pitch = dy * this.MOUSE_SENSITIVITY;
         }
 
         if (this.angleChangeCallback) {
@@ -251,6 +262,11 @@ export class CameraController {
     this.godView.pitch = 0.35;
     this.godView.distance = CAMERA.GOD_VIEW_DISTANCE;
 
+    // Clear inertia and any active transition so the reset is crisp
+    this.godVelocity.yaw = 0;
+    this.godVelocity.pitch = 0;
+    this.modeTransition = null;
+
     console.log('🔄 Camera angle reset');
 
     if (this.angleChangeCallback) {
@@ -259,7 +275,42 @@ export class CameraController {
   }
 
   update(deltaTime: number): void {
+    this.applyGodInertia(deltaTime);
     this.applyKeyboardPanning(deltaTime);
+  }
+
+  /**
+   * Apply post-drag inertia to God View yaw/pitch with exponential decay.
+   * Only active after the mouse button is released.
+   */
+  private applyGodInertia(deltaTime: number): void {
+    if (this.currentMode !== 'god' || this.mouse.down) return;
+
+    // Stop applying below this threshold to avoid floating-point drift
+    const minV = 0.0005; // degrees per 60-fps frame equivalent
+    if (Math.abs(this.godVelocity.yaw) < minV && Math.abs(this.godVelocity.pitch) < minV) return;
+
+    // `frames` normalises velocity (stored as degrees/reference-frame) to actual elapsed time.
+    // The GOD_INERTIA_DAMPING constant was tuned at 60 fps; Math.pow makes decay frame-rate independent.
+    const frames = deltaTime * 60; // reference frame rate: 60 fps
+
+    // Signs mirror the drag handler: yaw decreases with rightward dx, pitch increases with downward dy.
+    this.cameraAngles.yaw -= this.godVelocity.yaw * frames;
+    this.cameraAngles.yaw = ((this.cameraAngles.yaw % 360) + 360) % 360;
+
+    this.cameraAngles.pitch += this.godVelocity.pitch * frames;
+    this.cameraAngles.pitch = Math.max(-this.PITCH_LIMIT, Math.min(this.PITCH_LIMIT, this.cameraAngles.pitch));
+
+    this.godView.yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
+    this.godView.pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
+
+    // Exponential decay (frame-rate independent)
+    const decay = Math.pow(this.GOD_INERTIA_DAMPING, frames);
+    this.godVelocity.yaw *= decay;
+    this.godVelocity.pitch *= decay;
+
+    if (Math.abs(this.godVelocity.yaw) < minV) this.godVelocity.yaw = 0;
+    if (Math.abs(this.godVelocity.pitch) < minV) this.godVelocity.pitch = 0;
   }
 
   setPanSensitivity(value: number): void {
@@ -352,11 +403,12 @@ export class CameraController {
     };
   }
 
-  setViewMode(index: number): void {
+  setViewMode(index: number, time: number = performance.now() / 1000): void {
     if (this.cinematicActive) {
       this.stopCinematic();
     }
 
+    const fromMode = this.currentMode;
     this.modeIndex = index;
     
     // Reset fleet offset when switching modes
@@ -386,6 +438,16 @@ export class CameraController {
       default:
         this.currentMode = 'horizon-720';
     }
+
+    // Start a smooth cinematic blend from the last rendered pose to the new one.
+    // Guard: only create a transition when the mode actually changed to avoid a zero-duration blend.
+    if (this.lastVisualState && fromMode !== this.currentMode) {
+      this.modeTransition = {
+        from: this.lastVisualState,
+        startTime: time,
+        duration: this.getTransitionDuration(fromMode, this.currentMode),
+      };
+    }
     
     const config = VIEW_MODES[index] || VIEW_MODES[0];
     
@@ -397,6 +459,22 @@ export class CameraController {
     if (this.currentMode === 'sat-pov' && this.angleChangeCallback) {
       this.angleChangeCallback(this.cameraAngles.yaw, this.cameraAngles.pitch);
     }
+  }
+
+  /**
+   * Return the transition duration (seconds) for a given mode pair.
+   * Longer transitions for large spatial jumps (e.g. anything ↔ moon).
+   * Callers must ensure `from !== to` before calling this method.
+   */
+  private getTransitionDuration(from: ViewMode, to: ViewMode): number {
+    // Moon transitions are the longest because the distance change is huge
+    if (from === 'moon' || to === 'moon') return 1.4;
+    // Fleet POV ↔ ground: close spatial distance, short transition
+    if ((from === 'sat-pov' && to === 'ground') || (from === 'ground' && to === 'sat-pov')) return 0.7;
+    // God ↔ horizon: medium arc
+    if ((from === 'god' && to === 'horizon-720') || (from === 'horizon-720' && to === 'god')) return 0.8;
+    // Any remaining pair
+    return 1.0;
   }
 
   /**
@@ -464,6 +542,7 @@ export class CameraController {
     if (this.cinematicActive) {
       const cinematic = this.calculateCinematicCamera(satellitePosition, satelliteVelocity, time);
       this.lastCinematicState = cinematic;
+      this.lastVisualState = cinematic;
       return cinematic;
     }
 
@@ -475,9 +554,24 @@ export class CameraController {
       if (tLinear >= 1) {
         this.cinematicBlendOut = null;
       }
+      this.lastVisualState = blended;
       return blended;
     }
 
+    // Smooth mode-switch transition: blend from the captured pre-switch pose to the new one
+    if (this.modeTransition) {
+      const elapsed = Math.max(0, time - this.modeTransition.startTime);
+      const tLinear = Math.min(1, elapsed / this.modeTransition.duration);
+      const t = this.smoothstep(tLinear);
+      const blended = this.blendCameraState(this.modeTransition.from, manualState, t);
+      if (tLinear >= 1) {
+        this.modeTransition = null;
+      }
+      this.lastVisualState = blended;
+      return blended;
+    }
+
+    this.lastVisualState = manualState;
     return manualState;
   }
 
