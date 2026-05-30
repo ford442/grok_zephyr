@@ -173,6 +173,15 @@ This is an active project with exciting opportunities for contribution:
 - **Documentation**: Improve guides, examples, and inline comments
 - **New Features**: Implement view modes, data sources, or analysis tools
 
+### Labels & Issue Organization
+
+We maintain a comprehensive label system for organizing issues and PRs. See [LABELS.md](./LABELS.md) for details on our label categories, colors, and usage guidelines. Labels help us track:
+- Visual upgrades and rendering work
+- Performance improvements
+- Accessibility enhancements
+- Priority levels (P0, P1, P2)
+- Area-specific work (camera, UI, UX, etc.)
+
 ## 📄 License
 
 See LICENSE file for details.
