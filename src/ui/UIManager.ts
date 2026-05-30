@@ -84,6 +84,7 @@ export class UIManager {
 
   private dashboard: IDashboard | null = null;
   private currentQualityLevel: QualityLevel = 'high';
+  private demoAutoEnabled = true;
 
   constructor() {
     this.elements = this.getElements();
@@ -165,7 +166,7 @@ export class UIManager {
     });
 
     this.elements.demoAutoButton?.addEventListener('click', () => {
-      const enabled = !this.elements.demoAutoButton.classList.contains('active');
+      const enabled = !this.demoAutoEnabled;
       this.setDemoAutoEnabled(enabled);
       if (this.onDemoAutoToggleCallback) {
         this.onDemoAutoToggleCallback(enabled);
@@ -291,6 +292,7 @@ export class UIManager {
   }
 
   setDemoAutoEnabled(enabled: boolean): void {
+    this.demoAutoEnabled = enabled;
     this.elements.demoAutoButton?.classList.toggle('active', enabled);
     this.elements.demoAutoButton.textContent = enabled ? 'AUTO DEMO: ON' : 'AUTO DEMO: OFF';
   }
@@ -765,7 +767,7 @@ export class UIManager {
             <button class="vbtn" id="btn4">MOON VIEW</button>
           </div>
           <div class="view-extra-row">
-            <button class="vbtn" id="btnDemo">CINEMATIC DEMO</button>
+            <button class="vbtn" id="btnDemo" data-no-interrupt-demo="true">CINEMATIC DEMO</button>
             <button class="vbtn active" id="btnDemoAuto">AUTO DEMO: ON</button>
           </div>
         </section>

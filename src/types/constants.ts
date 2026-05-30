@@ -96,6 +96,7 @@ export const EARTH_VISUAL = {
 export const UI = {
   FPS_UPDATE_INTERVAL: 0.5,
   STATS_UPDATE_INTERVAL: 1.0,
+  DEMO_IDLE_TIMEOUT_SECONDS: 180,
 } as const;
 
 /** Buffer sizes */

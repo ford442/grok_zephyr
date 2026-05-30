@@ -122,6 +122,10 @@ export class CameraController {
   private cinematicStepIndex = 0;
   private cinematicStepStartTime = 0;
   private lastCinematicState: CameraState | null = null;
+  private readonly cinematicBlendOutDuration = 0.45;
+  private readonly fleetFlySatelliteSwitchSeconds = 9;
+  private readonly fleetFlySamplePrime = 7919;
+  private readonly constellationCenterSampleIndices = [0, 8191, 65535, 131071, 262143, 524287, 786431, 1048575];
   private cinematicBlendOut: { startTime: number; duration: number; from: CameraState } | null = null;
 
   constructor() {
@@ -604,11 +608,13 @@ export class CameraController {
     getVelocity: (index: number, time: number) => Vec3,
     time: number
   ): CameraState {
-    const segment = time / 9;
+    // Switch formation anchor every few seconds to keep motion varied but readable.
+    const segment = time / this.fleetFlySatelliteSwitchSeconds;
     const step = Math.floor(segment);
     const mix = this.smoothstep(segment - step);
-    const idxA = (step * 7919) % CONSTANTS.NUM_SATELLITES;
-    const idxB = ((step + 1) * 7919) % CONSTANTS.NUM_SATELLITES;
+    // Prime multiplier gives deterministic pseudo-random coverage across the constellation.
+    const idxA = (step * this.fleetFlySamplePrime) % CONSTANTS.NUM_SATELLITES;
+    const idxB = ((step + 1) * this.fleetFlySamplePrime) % CONSTANTS.NUM_SATELLITES;
 
     const posA = getPosition(idxA, time);
     const posB = getPosition(idxB, time);
@@ -651,15 +657,19 @@ export class CameraController {
   }
 
   private sampleConstellationCenter(getPosition: (index: number, time: number) => Vec3, time: number): Vec3 {
-    const sampleIndices = [0, 8191, 65535, 131071, 262143, 524287, 786431, 1048575];
+    // Broad, deterministic coverage across the 2^20 Walker slots using a powers-of-two-ish
+    // spread (2^13-1 through 2^20-1 plus endpoints) for stable constellation centering.
     let sum: Vec3 = [0, 0, 0];
-    for (const index of sampleIndices) {
+    for (const index of this.constellationCenterSampleIndices) {
       const p = getPosition(index, time);
       sum = [sum[0] + p[0], sum[1] + p[1], sum[2] + p[2]];
     }
-    return v3scale(sum, 1 / sampleIndices.length);
+    return v3scale(sum, 1 / this.constellationCenterSampleIndices.length);
   }
 
+  /**
+   * Smoothly maps arbitrary input to [0, 1] by clamping first, then applying smoothstep.
+   */
   private smoothstep(t: number): number {
     const clamped = Math.max(0, Math.min(1, t));
     return clamped * clamped * (3 - 2 * clamped);
@@ -694,7 +704,6 @@ export class CameraController {
   }
 
   startCinematic(time: number = performance.now() / 1000): void {
-    this.cinematicStepIndex = this.cinematicStepIndex % this.cinematicSteps.length;
     this.cinematicStepStartTime = time;
     this.cinematicBlendOut = null;
     this.cinematicActive = true;
@@ -709,7 +718,7 @@ export class CameraController {
     if (this.lastCinematicState) {
       this.cinematicBlendOut = {
         startTime: time,
-        duration: 0.45,
+        duration: this.cinematicBlendOutDuration,
         from: this.lastCinematicState,
       };
     }

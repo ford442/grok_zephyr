@@ -17,7 +17,7 @@ import { TrailRenderer } from '@/render/TrailRenderer.js';
 import { EarthAtmosphereRenderer } from '@/earth.js';
 import { genSphere, extractFrustum } from '@/utils/math.js';
 import { getBeamPatternTitle } from '@/patterns.js';
-import { CONSTANTS, BUFFER_SIZES } from '@/types/constants.js';
+import { CONSTANTS, BUFFER_SIZES, UI as UI_CONSTANTS } from '@/types/constants.js';
 import { TLELoader } from '@/data/TLELoader.js';
 import { getBackgroundModeIndex, resolveBackgroundMode, setBackgroundMode } from '@/background.js';
 import {
@@ -156,7 +156,7 @@ class GrokZephyrApp {
 
   /** Demo mode settings */
   private demoAutoEnabled = true;
-  private readonly demoIdleTimeoutSeconds = 180;
+  private readonly demoIdleTimeoutSeconds = UI_CONSTANTS.DEMO_IDLE_TIMEOUT_SECONDS;
   private lastUserActivityTime = performance.now() * 0.001;
 
   /**
@@ -264,7 +264,7 @@ class GrokZephyrApp {
       const target = e.target as HTMLElement | null;
       const button = target?.closest('button') as HTMLButtonElement | null;
       if (!button) return;
-      this.registerUserActivity(button.id !== 'btnDemo');
+      this.registerUserActivity(!button.hasAttribute('data-no-interrupt-demo'));
     });
   }
 
