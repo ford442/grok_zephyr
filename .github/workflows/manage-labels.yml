@@ -1,0 +1,25 @@
+name: Manage Labels
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/manage-labels.yml'
+      - 'scripts/label-config.json'
+
+jobs:
+  manage-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Update labels
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/update_labels.py

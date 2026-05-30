@@ -1,0 +1,64 @@
+{
+  "labels": {
+    "visual-upgrade": {
+      "color": "7c3aed",
+      "description": "Visual upgrade or enhancement"
+    },
+    "rendering": {
+      "color": "0ea5e9",
+      "description": "WebGPU rendering and graphics improvements"
+    },
+    "high-impact": {
+      "color": "dc2626",
+      "description": "High-impact changes with significant visual effect"
+    },
+    "camera": {
+      "color": "8b5cf6",
+      "description": "Camera control and view modes"
+    },
+    "ui": {
+      "color": "06b6d4",
+      "description": "User interface and UI components"
+    },
+    "ux-polish": {
+      "color": "10b981",
+      "description": "UX improvements and polish"
+    },
+    "wow-feature": {
+      "color": "f59e0b",
+      "description": "Impressive new feature or capability"
+    },
+    "performance": {
+      "color": "ec4899",
+      "description": "Performance optimization and improvements"
+    },
+    "accessibility": {
+      "color": "14b8a6",
+      "description": "Accessibility improvements and compliance"
+    },
+    "P0": {
+      "color": "dc2626",
+      "description": "Critical priority - very important"
+    },
+    "P1": {
+      "color": "ea580c",
+      "description": "High priority"
+    },
+    "P2": {
+      "color": "eab308",
+      "description": "Medium priority"
+    },
+    "good-first-issue": {
+      "color": "7c3aed",
+      "description": "Good for newcomers to the project"
+    },
+    "meta": {
+      "color": "6b7280",
+      "description": "Meta discussion or project organization"
+    },
+    "roadmap": {
+      "color": "6b7280",
+      "description": "Roadmap planning and future direction"
+    }
+  }
+}
