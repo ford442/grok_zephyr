@@ -716,11 +716,16 @@ export class UIManager {
         <div class="stat" id="s-visible">Visible  : --</div>
       </div>
       <div id="controls">
-        <button class="vbtn active" id="btn0">720km HORIZON</button>
-        <button class="vbtn" id="btn1">GOD VIEW</button>
-        <button class="vbtn" id="btn2">FLEET POV</button>
-        <button class="vbtn" id="btn3">GROUND VIEW</button>
-        <button class="vbtn" id="btn4">MOON VIEW</button>
+        <section class="control-group control-group-view" aria-label="View Modes">
+          <div class="group-label">VIEW MODES</div>
+          <div class="view-btn-grid">
+            <button class="vbtn active" id="btn0">720km HORIZON</button>
+            <button class="vbtn" id="btn1">GOD VIEW</button>
+            <button class="vbtn" id="btn2">FLEET POV</button>
+            <button class="vbtn" id="btn3">GROUND VIEW</button>
+            <button class="vbtn" id="btn4">MOON VIEW</button>
+          </div>
+        </section>
       </div>
       <div id="horizon-indicator">
         <div>Earth Radius: 6,371 km</div>
