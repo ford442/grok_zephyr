@@ -12,7 +12,7 @@ import { CameraController, type CameraState } from '@/camera/CameraController.js
 import { GroundObserverCamera, GroundObserverPreset } from '@/camera/GroundObserverCamera.js';
 import { UIManager } from '@/ui/UIManager.js';
 import { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
-import { FocusManager } from '@/focus.js';
+import { FocusManager, type ConstellationStats } from '@/focus.js';
 import { TrailRenderer } from '@/render/TrailRenderer.js';
 import { EarthAtmosphereRenderer } from '@/earth.js';
 import { genSphere, extractFrustum } from '@/utils/math.js';
@@ -100,6 +100,8 @@ class GrokZephyrApp {
   private captureVideoButton: HTMLButtonElement | null = null;
   private captureInProgress = false;
   private captureHideElements: HTMLElement[] = [];
+  private dataSourceLabel = 'Procedural Walker';
+  private lastVisibleCount = 0;
   
   // Earth geometry
   private earthVertexBuffer: GPUBuffer | null = null;
@@ -171,6 +173,7 @@ class GrokZephyrApp {
     // Stats update
     this.profiler.onStatsUpdate((stats) => {
       this.ui.updateStats(stats);
+      this.lastVisibleCount = stats.visibleSatellites;
     });
 
     // Pattern button setup
@@ -1031,6 +1034,7 @@ class GrokZephyrApp {
       // Update UI
       this.ui.setFleetCount(CONSTANTS.NUM_SATELLITES);
       this.ui.setDataSource(dataSourceLabel);
+      this.dataSourceLabel = dataSourceLabel;
       this.ui.hideError();
 
       // Parse URL params for initial state
@@ -1165,6 +1169,29 @@ class GrokZephyrApp {
    */
   getTimeScale(): number {
     return this.timeScale;
+  }
+
+  /**
+   * Build the current ConstellationStats snapshot for the satellite inspector.
+   */
+  private buildConstellationStats(): ConstellationStats {
+    const physicsNames = ['Simple', 'Keplerian', 'J2 Perturbed'];
+    // Animation pattern IDs 1 and 2 are beam-pattern modes; IDs 3-5 are animation patterns.
+    // These labels mirror those in UIManager.ts — if patterns are added there, update here too.
+    const animNames: Record<number, string> = {
+      0: 'None',
+      3: 'Smile',
+      4: 'Digital Rain',
+      5: 'Heartbeat',
+    };
+    return {
+      viewModeName: this.camera.getViewMode(),
+      physicsModeName: physicsNames[this.currentPhysicsMode] ?? 'Simple',
+      timeScale: this.timeScale,
+      dataSource: this.dataSourceLabel,
+      visibleCount: this.lastVisibleCount,
+      animationPattern: animNames[this.currentAnimationPattern] ?? 'None',
+    };
   }
 
   /**
@@ -1326,22 +1353,26 @@ class GrokZephyrApp {
     }
 
     // Update any active click focus state
-    if (this.focusManager) {
-      this.focusManager.update(time);
-    }
-
     // Record and update short orbital trails
+    // Calculate camera state once and share across focus manager and trail renderer.
     this.recordTrailSamples(this.simTime);
-    if (this.trailRenderer) {
+    {
       const cameraState = this.camera.calculateCamera(
         (idx, t) => this.buffers!.calculateSatellitePosition(idx, t),
         (idx, t) => this.buffers!.calculateSatelliteVelocity(idx, t),
         time
       );
-      this.trailRenderer.updateGeometry(this.simTime, new Float32Array(cameraState.position));
+
+      if (this.focusManager) {
+        this.focusManager.setCameraPosition(cameraState.position);
+        this.focusManager.setConstellationStats(this.buildConstellationStats());
+        this.focusManager.update(time);
+      }
+
+      if (this.trailRenderer) {
+        this.trailRenderer.updateGeometry(this.simTime, new Float32Array(cameraState.position));
+      }
       this.writeUniforms(time, deltaTime, cameraState);
-    } else {
-      this.writeUniforms(time, deltaTime);
     }
 
     // Create command encoder

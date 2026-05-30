@@ -19,11 +19,35 @@ export type FocusSelection = {
 
 export type FocusSelectionCallback = (selectedIndex: number) => void;
 
+/** Live constellation-level data shown in the stats section of the inspector */
+export type ConstellationStats = {
+  viewModeName: string;
+  physicsModeName: string;
+  timeScale: number;
+  dataSource: string;
+  visibleCount: number;
+  animationPattern: string;
+};
+
+const SHELL_NAMES = ['340 km', '550 km', '1,150 km'];
+
+/** Threshold above which time-scale labels use the k× abbreviation (e.g. 1000× → 1.0k×) */
+const TIME_SCALE_K_THRESHOLD = 1000;
+
 export class FocusManager {
   private selectedIndex = -1;
   private focusOverlay: HTMLDivElement;
   private previousModeIndex = 0;
   private currentTime = 0;
+  private cameraPosition: Vec3 = [0, 0, 0];
+  private constellationStats: ConstellationStats = {
+    viewModeName: '—',
+    physicsModeName: '—',
+    timeScale: 1,
+    dataSource: '—',
+    visibleCount: 0,
+    animationPattern: 'None',
+  };
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -41,6 +65,16 @@ export class FocusManager {
 
   getSelectedIndex(): number {
     return this.selectedIndex;
+  }
+
+  /** Update the current camera position for distance-from-camera calculations. */
+  setCameraPosition(pos: Vec3): void {
+    this.cameraPosition = pos;
+  }
+
+  /** Update the live constellation stats shown in the bottom section of the inspector. */
+  setConstellationStats(stats: ConstellationStats): void {
+    this.constellationStats = stats;
   }
 
   selectSatellite(selection: FocusSelection): void {
@@ -183,29 +217,120 @@ export class FocusManager {
   private createOverlay(): HTMLDivElement {
     const overlay = document.createElement('div');
     overlay.id = 'satellite-focus-info';
-    overlay.className = 'satellite-focus-overlay';
+    overlay.className = 'satellite-inspector';
     document.body.appendChild(overlay);
+    // Use event delegation so the close button works regardless of innerHTML re-renders.
+    overlay.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.inspector-close-btn')) {
+        this.releaseFocus();
+      }
+    });
     return overlay;
   }
 
   private showOverlay(selection: FocusSelection): void {
-    this.focusOverlay.style.display = 'block';
+    this.focusOverlay.classList.remove('satellite-inspector--hidden');
+    this.focusOverlay.classList.add('satellite-inspector--visible');
     this.updateOverlay(selection);
   }
 
   private hideOverlay(): void {
-    this.focusOverlay.style.display = 'none';
+    this.focusOverlay.classList.remove('satellite-inspector--visible');
+    this.focusOverlay.classList.add('satellite-inspector--hidden');
+  }
+
+  private getShellIndex(satelliteIndex: number): number {
+    const data = this.buffers.getOrbitalElementData();
+    // The fourth float of each satellite's orbital-element entry is bit-packed:
+    //   bits 15-8 → shell index (0 = 340 km, 1 = 550 km, 2 = 1 150 km)
+    //   bits  7-0 → colour index
+    const shellData = data[satelliteIndex * 4 + 3];
+    return (shellData >> 8) & 0xff;
   }
 
   private updateOverlay(selection: FocusSelection): void {
-    const { index, altitude, speed } = selection;
-    const velocityMagnitude = speed.toFixed(2);
-    const altitudeKm = altitude.toFixed(1);
+    const { index, altitude, speed, position, velocity } = selection;
+
+    const shellIndex = this.getShellIndex(index);
+    const shellName = SHELL_NAMES[shellIndex] ?? `Shell ${shellIndex}`;
+
+    const distFromCamera = v3len(v3sub(position, this.cameraPosition));
+
+    const vx = velocity[0].toFixed(2);
+    const vy = velocity[1].toFixed(2);
+    const vz = velocity[2].toFixed(2);
+
+    const px = position[0].toFixed(1);
+    const py = position[1].toFixed(1);
+    const pz = position[2].toFixed(1);
+
+    const stats = this.constellationStats;
+    const timeScaleLabel = stats.timeScale >= TIME_SCALE_K_THRESHOLD
+      ? `${(stats.timeScale / TIME_SCALE_K_THRESHOLD).toFixed(1)}k×`
+      : `${stats.timeScale.toFixed(0)}×`;
 
     this.focusOverlay.innerHTML = `
-      <strong>Satellite #${index.toLocaleString()}</strong><br>
-      Altitude: ${altitudeKm} km<br>
-      Speed: ${velocityMagnitude} km/s
+      <div class="inspector-header">
+        <span class="inspector-title"><span aria-label="Satellite">🛰</span> SAT #${index.toLocaleString()}</span>
+        <button class="inspector-close-btn" title="Close (Esc or double-click)">✕</button>
+      </div>
+      <div class="inspector-separator"></div>
+      <div class="inspector-section">
+        <div class="inspector-row">
+          <span class="inspector-label">Shell</span>
+          <span class="inspector-value inspector-accent">${shellName} orbit</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-label">Altitude</span>
+          <span class="inspector-value">${altitude.toFixed(1)} km</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-label">Speed</span>
+          <span class="inspector-value">${speed.toFixed(3)} km/s</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-label">Distance</span>
+          <span class="inspector-value">${distFromCamera.toFixed(0)} km</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-label">ECI Pos</span>
+          <span class="inspector-value inspector-mono">${px}, ${py}, ${pz}</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-label">Velocity</span>
+          <span class="inspector-value inspector-mono">${vx}, ${vy}, ${vz}</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-label">Pattern</span>
+          <span class="inspector-value">${stats.animationPattern}</span>
+        </div>
+      </div>
+      <div class="inspector-divider">
+        <span class="inspector-section-title">CONSTELLATION</span>
+      </div>
+      <div class="inspector-section inspector-section--stats">
+        <div class="inspector-row">
+          <span class="inspector-label">View</span>
+          <span class="inspector-value">${stats.viewModeName}</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-label">Physics</span>
+          <span class="inspector-value">${stats.physicsModeName}</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-label">Time Scale</span>
+          <span class="inspector-value inspector-accent">${timeScaleLabel}</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-label">Visible</span>
+          <span class="inspector-value">${stats.visibleCount.toLocaleString()}</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-label">Source</span>
+          <span class="inspector-value">${stats.dataSource}</span>
+        </div>
+      </div>
+      <div class="inspector-hint">Esc / double-click to release focus</div>
     `;
   }
 }
