@@ -910,8 +910,8 @@ export class PostProcessStack {
     f32[15] = 0; // pad
     f32[16] = width;
     f32[17] = height;
-    f32[18] = width  > 0 ? 1.0 / width  : 0;
-    f32[19] = height > 0 ? 1.0 / height : 0;
+    f32[18] = 1.0 / width;
+    f32[19] = 1.0 / height;
 
     device.queue.writeBuffer(this.lensUniformBuffer, 0, buf);
   }
