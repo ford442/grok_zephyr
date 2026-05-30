@@ -36,7 +36,7 @@ function getAuthHeader() {
     process.exit(1);
   }
   return {
-    "Authorization": `token ${token}`,
+    "Authorization": `******,
     "Accept": "application/vnd.github.v3+json",
     "Content-Type": "application/json",
   };
