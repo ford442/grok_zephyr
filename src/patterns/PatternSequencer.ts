@@ -117,11 +117,11 @@ export class PatternSequencer {
   // Audio analysis state
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
-  private frequencyData: Uint8Array | null = null;
+  private frequencyData: Uint8Array<ArrayBuffer> | null = null;
   
   constructor(
     private numSatellites: number = 1048576,
-    private buffers: SatelliteBufferSet | null = null
+    _buffers: SatelliteBufferSet | null = null
   ) {
     // Allocate pattern data buffer (16 bytes per satellite = 4 floats)
     this.patternData = new Float32Array(numSatellites * 4);
@@ -307,7 +307,7 @@ export class PatternSequencer {
    * Upload pattern data to GPU
    */
   uploadToGPU(device: GPUDevice, buffer: GPUBuffer): void {
-    device.queue.writeBuffer(buffer, 0, this.patternData);
+    device.queue.writeBuffer(buffer, 0, this.patternData.buffer as ArrayBuffer, this.patternData.byteOffset, this.patternData.byteLength);
   }
   
   /**

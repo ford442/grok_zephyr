@@ -38,6 +38,13 @@ export interface DetailedTimings {
   postProcess: number;
 }
 
+/** Options for configuring the PerformanceProfiler */
+export interface PerformanceProfilerOptions {
+  enableGPUTiming: boolean;
+  historySize: number;
+  fpsUpdateInterval: number;
+}
+
 /**
  * Performance Profiler
  * 

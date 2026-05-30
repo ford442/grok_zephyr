@@ -31,10 +31,10 @@ export interface UIElements {
   angleInfo: HTMLElement;
   resetAngleBtn: HTMLElement;
   animationControls: HTMLElement;
-  timeControls: HTMLElement;
-  simTimeDisplay: HTMLElement;
-  timeScaleSlider: HTMLInputElement;
-  timeScaleValue: HTMLElement;
+  timeControls?: HTMLElement;
+  simTimeDisplay?: HTMLElement;
+  timeScaleSlider?: HTMLInputElement;
+  timeScaleValue?: HTMLElement;
 }
 
 /** Animation control options */
@@ -559,12 +559,6 @@ export class UIManager {
   // Time scale control properties
   private onTimeScaleChangeCallback: ((scale: number) => void) | null = null;
   private currentTimeScale: number = 1.0;
-  private timePresets = [
-    { label: '1x', value: 1 },
-    { label: '1h/s', value: 3600 },
-    { label: '1d/s', value: 86400 },
-    { label: '1w/s', value: 604800 },
-  ];
 
   /**
    * Create time scale control UI
