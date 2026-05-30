@@ -99,13 +99,13 @@ export class OnboardingManager {
     closeBtn.addEventListener('click', dismissHandler);
     startBtn.addEventListener('click', dismissHandler);
 
-    // Close on Escape key
+    // Close on Escape key (attached to document for better usability)
     const escapeHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && this.overlayElement === overlay) {
         dismissHandler();
       }
     };
-    overlay.addEventListener('keydown', escapeHandler);
+    document.addEventListener('keydown', escapeHandler);
 
     // Close on background click
     overlay.addEventListener('click', (e: MouseEvent) => {
@@ -139,10 +139,14 @@ export class OnboardingManager {
   }
 
   /**
-   * Show the overlay if not dismissed
+   * Show the overlay if not dismissed (checks WebGPU support first)
    */
   showIfNew(): void {
     if (!OnboardingManager.isDismissed()) {
+      // Skip showing onboarding if WebGPU is not supported at all
+      if (typeof navigator === 'undefined' || !('gpu' in navigator)) {
+        return;
+      }
       this.createOverlay();
     }
   }

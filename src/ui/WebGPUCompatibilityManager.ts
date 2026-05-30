@@ -18,10 +18,10 @@ export class WebGPUCompatibilityManager {
    */
   static detectBrowser(): string {
     const ua = navigator.userAgent;
-    if (ua.includes('Chrome') && !ua.includes('Chromium')) return 'Chrome';
     if (ua.includes('Edge')) return 'Edge';
+    if (ua.includes('Chrome')) return 'Chrome';
     if (ua.includes('Firefox')) return 'Firefox';
-    if (ua.includes('Safari') && !ua.includes('Chrome')) return 'Safari';
+    if (ua.includes('Safari')) return 'Safari';
     return 'Unknown';
   }
 
@@ -129,15 +129,15 @@ export class WebGPUCompatibilityManager {
             ${
               result.severity === 'critical'
                 ? `
-              <button class="option-btn option-download" onclick="window.open('https://www.google.com/chrome/')">
+              <button class="option-btn option-download" id="compat-download-btn">
                 📥 Get Chrome 113+
               </button>
-              <button class="option-btn option-continue" onclick="location.reload()">
+              <button class="option-btn option-continue" id="compat-retry-btn">
                 ↻ Retry
               </button>
             `
                 : `
-              <button class="option-btn option-continue" onclick="this.closest('.compatibility-overlay').style.display='none'">
+              <button class="option-btn option-continue" id="compat-continue-btn">
                 ✓ Continue Anyway
               </button>
             `
@@ -150,6 +150,29 @@ export class WebGPUCompatibilityManager {
         </p>
       </div>
     `;
+
+    // Attach event listeners
+    const downloadBtn = overlay.querySelector('#compat-download-btn') as HTMLButtonElement | null;
+    const retryBtn = overlay.querySelector('#compat-retry-btn') as HTMLButtonElement | null;
+    const continueBtn = overlay.querySelector('#compat-continue-btn') as HTMLButtonElement | null;
+
+    if (downloadBtn) {
+      downloadBtn.addEventListener('click', () => {
+        window.open('https://www.google.com/chrome/', '_blank');
+      });
+    }
+
+    if (retryBtn) {
+      retryBtn.addEventListener('click', () => {
+        location.reload();
+      });
+    }
+
+    if (continueBtn) {
+      continueBtn.addEventListener('click', () => {
+        overlay.style.display = 'none';
+      });
+    }
 
     return overlay;
   }
