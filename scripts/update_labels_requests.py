@@ -5,13 +5,13 @@ This script updates labels with appropriate colors and descriptions for visual &
 
 Usage:
   export GITHUB_TOKEN=<your_token>
-  python3 scripts/update_labels.py
+  python3 scripts/update_labels_requests.py
 """
 
 import os
 import sys
 import json
-import subprocess
+import requests
 
 # GitHub API settings
 OWNER = "ford442"
@@ -89,48 +89,27 @@ LABELS = {
     },
 }
 
-def update_label(token, label_name, color, description):
-    """Update a label using curl."""
-    headers = [
-        f"Authorization: token {token}",
-        "Accept: application/vnd.github.v3+json",
-        "Content-Type: application/json"
-    ]
-    
+def update_label(session, label_name, color, description):
+    """Update a label using requests."""
+    url = f"{BASE_URL}/{label_name}"
     data = {
         "color": color,
         "description": description
     }
     
-    cmd = ["curl", "-s", "-w", "\n%{http_code}", "-X", "PATCH", f"{BASE_URL}/{label_name}"]
-    for header in headers:
-        cmd.extend(["-H", header])
-    cmd.extend(["-d", json.dumps(data)])
-    
     print(f"Updating label: {label_name:20} | Color: {color:6} | Desc: {description[:40]}")
     
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    
-    # Split output and status code
-    lines = result.stdout.strip().rsplit('\n', 1)
-    http_code = lines[-1] if len(lines) > 1 else "000"
-    response_text = lines[0] if len(lines) > 1 else result.stdout
-    
     try:
-        if http_code in ["200", "201"]:
-            print(f"  ✓ Updated (HTTP {http_code})")
+        response = session.patch(url, json=data)
+        if response.status_code in [200, 201]:
+            print(f"  ✓ Updated (HTTP {response.status_code})")
             return True
         else:
-            response = json.loads(response_text) if response_text else {}
-            print(f"  ✗ Failed (HTTP {http_code}): {response.get('message', 'Unknown error')}")
-            if response_text and response_text != response_text.strip():
-                print(f"     Response: {response_text[:100]}")
+            error_msg = response.json().get('message', 'Unknown error') if response.text else 'No response'
+            print(f"  ✗ Failed (HTTP {response.status_code}): {error_msg}")
             return False
-    except json.JSONDecodeError:
-        if response_text:
-            print(f"  ✗ Failed (HTTP {http_code}): {response_text[:100]}")
-        else:
-            print(f"  ✗ Failed (HTTP {http_code}): No response")
+    except requests.RequestException as e:
+        print(f"  ✗ Request failed: {str(e)}")
         return False
 
 def main():
@@ -139,17 +118,25 @@ def main():
     
     if not token:
         print("Error: GITHUB_TOKEN environment variable not set")
-        print("Usage: export GITHUB_TOKEN=<your_token> && python3 scripts/update_labels.py")
+        print("Usage: export GITHUB_TOKEN=<your_token> && python3 scripts/update_labels_requests.py")
         return 1
     
     print(f"Updating GitHub labels for {OWNER}/{REPO}")
     print(f"Total labels to update: {len(LABELS)}\n")
     
+    # Create session with authentication
+    session = requests.Session()
+    session.headers.update({
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json",
+        "Content-Type": "application/json"
+    })
+    
     success_count = 0
     failure_count = 0
     
     for label_name, config in LABELS.items():
-        if update_label(token, label_name, config["color"], config["description"]):
+        if update_label(session, label_name, config["color"], config["description"]):
             success_count += 1
         else:
             failure_count += 1
