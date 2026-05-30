@@ -216,6 +216,12 @@ export class FocusManager {
     overlay.id = 'satellite-focus-info';
     overlay.className = 'satellite-inspector';
     document.body.appendChild(overlay);
+    // Use event delegation so the close button works regardless of innerHTML re-renders.
+    overlay.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.inspector-close-btn')) {
+        this.releaseFocus();
+      }
+    });
     return overlay;
   }
 
@@ -320,9 +326,5 @@ export class FocusManager {
       </div>
       <div class="inspector-hint">Esc / double-click to release focus</div>
     `;
-
-    // Attach close-button handler after innerHTML is set
-    const closeBtn = this.focusOverlay.querySelector<HTMLButtonElement>('.inspector-close-btn');
-    closeBtn?.addEventListener('click', () => this.releaseFocus());
   }
 }

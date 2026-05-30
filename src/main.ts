@@ -1183,7 +1183,7 @@ class GrokZephyrApp {
       5: 'Heartbeat',
     };
     return {
-      viewModeName: this.camera.getViewMode() as string,
+      viewModeName: this.camera.getViewMode(),
       physicsModeName: physicsNames[this.currentPhysicsMode] ?? 'Simple',
       timeScale: this.timeScale,
       dataSource: this.dataSourceLabel,
