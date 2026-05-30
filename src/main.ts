@@ -1176,6 +1176,8 @@ class GrokZephyrApp {
    */
   private buildConstellationStats(): ConstellationStats {
     const physicsNames = ['Simple', 'Keplerian', 'J2 Perturbed'];
+    // Animation pattern IDs 1 and 2 are beam-pattern modes; IDs 3-5 are animation patterns.
+    // These labels mirror those in UIManager.ts — if patterns are added there, update here too.
     const animNames: Record<number, string> = {
       0: 'None',
       3: 'Smile',

@@ -31,6 +31,9 @@ export type ConstellationStats = {
 
 const SHELL_NAMES = ['340 km', '550 km', '1,150 km'];
 
+/** Threshold above which time-scale labels use the k× abbreviation (e.g. 1000× → 1.0k×) */
+const TIME_SCALE_K_THRESHOLD = 1000;
+
 export class FocusManager {
   private selectedIndex = -1;
   private focusOverlay: HTMLDivElement;
@@ -238,6 +241,9 @@ export class FocusManager {
 
   private getShellIndex(satelliteIndex: number): number {
     const data = this.buffers.getOrbitalElementData();
+    // The fourth float of each satellite's orbital-element entry is bit-packed:
+    //   bits 15-8 → shell index (0 = 340 km, 1 = 550 km, 2 = 1 150 km)
+    //   bits  7-0 → colour index
     const shellData = data[satelliteIndex * 4 + 3];
     return (shellData >> 8) & 0xff;
   }
@@ -259,13 +265,13 @@ export class FocusManager {
     const pz = position[2].toFixed(1);
 
     const stats = this.constellationStats;
-    const timeScaleLabel = stats.timeScale >= 1000
-      ? `${(stats.timeScale / 1000).toFixed(1)}k×`
+    const timeScaleLabel = stats.timeScale >= TIME_SCALE_K_THRESHOLD
+      ? `${(stats.timeScale / TIME_SCALE_K_THRESHOLD).toFixed(1)}k×`
       : `${stats.timeScale.toFixed(0)}×`;
 
     this.focusOverlay.innerHTML = `
       <div class="inspector-header">
-        <span class="inspector-title">🛰 SAT #${index.toLocaleString()}</span>
+        <span class="inspector-title"><span aria-label="Satellite">🛰</span> SAT #${index.toLocaleString()}</span>
         <button class="inspector-close-btn" title="Close (Esc or double-click)">✕</button>
       </div>
       <div class="inspector-separator"></div>
