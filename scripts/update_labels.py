@@ -3,7 +3,7 @@
 Script to update GitHub labels for the Grok Zephyr project.
 This script updates labels with appropriate colors and descriptions for visual & polish work.
 
-Usage:
+Usage (from repository root):
   export GITHUB_TOKEN=<your_token>
   python3 scripts/update_labels.py
 """
@@ -17,6 +17,7 @@ import subprocess
 OWNER = "ford442"
 REPO = "grok_zephyr"
 BASE_URL = f"https://api.github.com/repos/{OWNER}/{REPO}/labels"
+UNKNOWN_HTTP_CODE = "000"
 
 # Label definitions with colors and descriptions
 LABELS = {
@@ -87,6 +88,10 @@ LABELS = {
         "color": "6b7280",  # gray
         "description": "Roadmap planning and future direction"
     },
+    "enhancement": {
+        "color": "10b981",  # green
+        "description": "Improvement or new feature request"
+    },
 }
 
 def update_label(token, label_name, color, description):
@@ -113,7 +118,7 @@ def update_label(token, label_name, color, description):
     
     # Split output and status code
     lines = result.stdout.strip().rsplit('\n', 1)
-    http_code = lines[-1] if len(lines) > 1 else "000"
+    http_code = lines[-1] if len(lines) > 1 else UNKNOWN_HTTP_CODE
     response_text = lines[0] if len(lines) > 1 else result.stdout
     
     try:

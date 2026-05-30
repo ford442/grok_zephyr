@@ -3,7 +3,7 @@
 Script to verify the current state of GitHub labels.
 Shows which labels have been updated with the correct colors and descriptions.
 
-Usage:
+Usage (from repository root):
   export GITHUB_TOKEN=<your_token>
   python3 scripts/verify_labels.py
 """
@@ -35,6 +35,7 @@ EXPECTED_LABELS = {
     "good-first-issue": {"color": "7c3aed", "description": "Good for newcomers to the project"},
     "meta": {"color": "6b7280", "description": "Meta discussion or project organization"},
     "roadmap": {"color": "6b7280", "description": "Roadmap planning and future direction"},
+    "enhancement": {"color": "10b981", "description": "Improvement or new feature request"},
 }
 
 def verify_labels(token):
