@@ -142,6 +142,13 @@ html, body {
   grid-column: span 2;
 }
 
+.view-extra-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+
 #pattern-controls,
 #animation-controls,
 #physics-controls,
