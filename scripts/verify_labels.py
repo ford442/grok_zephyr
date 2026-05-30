@@ -50,7 +50,10 @@ def verify_labels(token):
     col_status = 15
     col_current = 15
     col_expected = 15
-    separator_length = col_label + col_status + col_current + col_expected + 3  # +3 for spaces
+    
+    # Create header to measure actual separator length
+    header = f"{'Label':<{col_label}} {'Status':<{col_status}} {'Current Color':<{col_current}} {'Expected Color':<{col_expected}}"
+    separator_length = len(header)
     
     try:
         response = requests.get(BASE_URL, headers=headers)
@@ -66,7 +69,7 @@ def verify_labels(token):
     current_labels = {label["name"]: label for label in labels}
     
     print(f"Verifying labels for {OWNER}/{REPO}\n")
-    print(f"{'Label':<{col_label}} {'Status':<{col_status}} {'Current Color':<{col_current}} {'Expected Color':<{col_expected}}")
+    print(header)
     print("-" * separator_length)
     
     updated_count = 0

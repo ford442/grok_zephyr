@@ -17,7 +17,7 @@ import subprocess
 OWNER = "ford442"
 REPO = "grok_zephyr"
 BASE_URL = f"https://api.github.com/repos/{OWNER}/{REPO}/labels"
-DEFAULT_HTTP_CODE = "000"
+FALLBACK_HTTP_CODE = "000"
 
 # Label definitions with colors and descriptions
 LABELS = {
@@ -118,7 +118,7 @@ def update_label(token, label_name, color, description):
     
     # Split output and status code
     lines = result.stdout.strip().rsplit('\n', 1)
-    http_code = lines[-1] if len(lines) > 1 else DEFAULT_HTTP_CODE
+    http_code = lines[-1] if len(lines) > 1 else FALLBACK_HTTP_CODE
     response_text = lines[0] if len(lines) > 1 else result.stdout
     
     try:
