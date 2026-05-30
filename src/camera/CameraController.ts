@@ -286,12 +286,15 @@ export class CameraController {
   private applyGodInertia(deltaTime: number): void {
     if (this.currentMode !== 'god' || this.mouse.down) return;
 
-    const minV = 0.0005; // degrees – stop below this to avoid float drift
+    // Stop applying below this threshold to avoid floating-point drift
+    const minV = 0.0005; // degrees per 60-fps frame equivalent
     if (Math.abs(this.godVelocity.yaw) < minV && Math.abs(this.godVelocity.pitch) < minV) return;
 
-    // Scale by frames elapsed so the curve is frame-rate independent
-    const frames = deltaTime * 60;
+    // `frames` normalises velocity (stored as degrees/reference-frame) to actual elapsed time.
+    // The GOD_INERTIA_DAMPING constant was tuned at 60 fps; Math.pow makes decay frame-rate independent.
+    const frames = deltaTime * 60; // reference frame rate: 60 fps
 
+    // Signs mirror the drag handler: yaw decreases with rightward dx, pitch increases with downward dy.
     this.cameraAngles.yaw -= this.godVelocity.yaw * frames;
     this.cameraAngles.yaw = ((this.cameraAngles.yaw % 360) + 360) % 360;
 
@@ -436,8 +439,9 @@ export class CameraController {
         this.currentMode = 'horizon-720';
     }
 
-    // Start a smooth cinematic blend from the last rendered pose to the new one
-    if (this.lastVisualState) {
+    // Start a smooth cinematic blend from the last rendered pose to the new one.
+    // Guard: only create a transition when the mode actually changed to avoid a zero-duration blend.
+    if (this.lastVisualState && fromMode !== this.currentMode) {
       this.modeTransition = {
         from: this.lastVisualState,
         startTime: time,
@@ -460,9 +464,9 @@ export class CameraController {
   /**
    * Return the transition duration (seconds) for a given mode pair.
    * Longer transitions for large spatial jumps (e.g. anything ↔ moon).
+   * Callers must ensure `from !== to` before calling this method.
    */
   private getTransitionDuration(from: ViewMode, to: ViewMode): number {
-    if (from === to) return 0;
     // Moon transitions are the longest because the distance change is huge
     if (from === 'moon' || to === 'moon') return 1.4;
     // Fleet POV ↔ ground: close spatial distance, short transition
