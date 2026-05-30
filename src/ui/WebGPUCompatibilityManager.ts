@@ -171,9 +171,21 @@ export class WebGPUCompatibilityManager {
 
     if (continueBtn) {
       continueBtn.addEventListener('click', () => {
-        overlay.style.display = 'none';
+        // Remove the overlay from the DOM instead of just hiding
+        if (overlay.parentElement) {
+          overlay.parentElement.removeChild(overlay);
+        }
       });
     }
+
+    // Allow closing by clicking the overlay background
+    overlay.addEventListener('click', (e: MouseEvent) => {
+      if (e.target === overlay) {
+        if (overlay.parentElement) {
+          overlay.parentElement.removeChild(overlay);
+        }
+      }
+    });
 
     return overlay;
   }

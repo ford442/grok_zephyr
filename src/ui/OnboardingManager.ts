@@ -8,6 +8,8 @@ export class OnboardingManager {
   private static readonly STORAGE_KEY = 'grok-zephyr-onboarding-dismissed';
   private overlayElement: HTMLElement | null = null;
   private escapeHandler: ((e: KeyboardEvent) => void) | null = null;
+  private isDismissing = false;
+  private dismissTimeoutId: number | null = null;
 
   /**
    * Check if onboarding has been dismissed by the user
@@ -128,6 +130,12 @@ export class OnboardingManager {
    * Dismiss the onboarding overlay
    */
   private dismiss(): void {
+    // Prevent multiple simultaneous dismissals
+    if (this.isDismissing) {
+      return;
+    }
+    this.isDismissing = true;
+
     if (this.overlayElement) {
       this.overlayElement.classList.add('dismissing');
       // Remove the Escape key listener to prevent memory leak
@@ -135,10 +143,16 @@ export class OnboardingManager {
         document.removeEventListener('keydown', this.escapeHandler);
         this.escapeHandler = null;
       }
-      setTimeout(() => {
+      // Clear any pending timeout
+      if (this.dismissTimeoutId !== null) {
+        clearTimeout(this.dismissTimeoutId);
+      }
+      // Schedule removal with fade animation
+      this.dismissTimeoutId = window.setTimeout(() => {
         if (this.overlayElement && this.overlayElement.parentElement) {
           this.overlayElement.parentElement.removeChild(this.overlayElement);
         }
+        this.dismissTimeoutId = null;
       }, 300);
     }
     OnboardingManager.markDismissed();

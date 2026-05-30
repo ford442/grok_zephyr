@@ -88,7 +88,8 @@
       <div class="physics-label">PHYSICS MODE</div>
       <button class="physics-btn active" id="phys0" data-physics="0" aria-label="Use simple physics mode">SIMPLE</button>
       <button class="physics-btn" id="phys1" data-physics="1" aria-label="Use Keplerian physics mode">KEPLERIAN</button>
-      <button class="physics-btn disabled" id="phys2" data-physics="2" disabled title="Not yet implemented" aria-label="J2 perturbations physics mode (not yet available)">J2</button>
+      <button class="physics-btn disabled" id="phys2" data-physics="2" disabled aria-disabled="true" aria-describedby="j2-note" aria-label="J2 perturbations physics mode">J2</button>
+      <span id="j2-note" style="display:none;">Not yet implemented</span>
     </section>
 
     <section id="quality-controls" class="control-group" aria-label="Rendering Quality">

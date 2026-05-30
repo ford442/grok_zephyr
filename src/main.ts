@@ -1606,8 +1606,11 @@ class GrokZephyrApp {
     if (isWebGPUError) {
       const compatCheck = WebGPUCompatibilityManager.checkSupport();
       if (!compatCheck.isSupported) {
-        const overlay = WebGPUCompatibilityManager.createCompatibilityOverlay(compatCheck);
-        document.body.appendChild(overlay);
+        // Check if an overlay already exists to prevent duplicates
+        if (!document.querySelector('#webgpu-compatibility-overlay')) {
+          const overlay = WebGPUCompatibilityManager.createCompatibilityOverlay(compatCheck);
+          document.body.appendChild(overlay);
+        }
         return;
       }
     }
