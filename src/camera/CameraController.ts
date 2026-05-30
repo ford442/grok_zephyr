@@ -90,12 +90,21 @@ export class CameraController {
   
   // Fleet POV micro-movement speed (km per frame)
   private readonly FLEET_MOVE_SPEED = 0.08;
+  private readonly FLEET_FAST_MULTIPLIER = 3.0;
+  private readonly FLEET_SLOW_MULTIPLIER = 0.25;
   
   // Keyboard state for Fleet POV movement
   private keys: Record<string, boolean> = {};
   
   // Fleet POV local offset (for WASD micro-movement)
   private fleetOffset: Vec3 = [0, 0, 0];
+
+  // Fleet POV roll state (induced by yaw rate)
+  private fleetRoll = 0;
+  private lastFleetYaw = 0;
+
+  // Fleet POV orbital breathing (gentle idle sway)
+  private fleetIdleTime = 0;
   
   // Camera panning state
   private panOffset: Vec3 = [0, 0, 0];
@@ -106,6 +115,10 @@ export class CameraController {
   private focusSatelliteIndex: number | null = null;
   private focusDistance = 70000;
   private focusTransition: { startTime: number; duration: number; fromDistance: number } | null = null;
+
+  // Orbit Lock: auto-orbit around focused satellite
+  private orbitLockActive = false;
+  private orbitLockSpeed = 8; // degrees per second
   
   // Callbacks
   private modeChangeCallback: ((mode: ViewMode, name: string, altitude: string) => void) | null = null;
@@ -216,14 +229,24 @@ export class CameraController {
     });
 
     // Wheel - zoom distance (works in all modes)
+    // God View uses exponential curve for comfortable close/far zoom
     canvas.addEventListener('wheel', (e) => {
       this.handleUserInteraction();
       e.preventDefault();
-      const zoomSpeed = 40;
-      this.cameraAngles.distance = Math.max(
-        500,
-        Math.min(180000, this.cameraAngles.distance + e.deltaY * zoomSpeed)
-      );
+      if (this.currentMode === 'god' || this.focusSatelliteIndex !== null) {
+        // Exponential zoom: multiply distance by a factor per scroll tick
+        const zoomFactor = 1 + Math.sign(e.deltaY) * 0.08;
+        this.cameraAngles.distance = Math.max(
+          500,
+          Math.min(180000, this.cameraAngles.distance * zoomFactor)
+        );
+      } else {
+        const zoomSpeed = 40;
+        this.cameraAngles.distance = Math.max(
+          500,
+          Math.min(180000, this.cameraAngles.distance + e.deltaY * zoomSpeed)
+        );
+      }
       
       // Also update godView distance
       if (this.currentMode === 'god') {
@@ -239,10 +262,14 @@ export class CameraController {
     // Set initial cursor
     canvas.style.cursor = 'grab';
     
-    // Keyboard input for Fleet POV micro-movement
+    // Keyboard input for Fleet POV micro-movement and hotkeys
     window.addEventListener('keydown', (e) => {
       this.handleUserInteraction();
       this.keys[e.key.toLowerCase()] = true;
+      // 'O' hotkey toggles orbit lock on focused satellite
+      if (e.key.toLowerCase() === 'o') {
+        this.toggleOrbitLock();
+      }
     });
     window.addEventListener('keyup', (e) => {
       this.keys[e.key.toLowerCase()] = false;
@@ -277,6 +304,11 @@ export class CameraController {
   update(deltaTime: number): void {
     this.applyGodInertia(deltaTime);
     this.applyKeyboardPanning(deltaTime);
+    // Orbit Lock: slowly orbit the focused satellite
+    if (this.orbitLockActive && this.focusSatelliteIndex !== null) {
+      this.cameraAngles.yaw += this.orbitLockSpeed * deltaTime;
+      this.cameraAngles.yaw = ((this.cameraAngles.yaw % 360) + 360) % 360;
+    }
   }
 
   /**
@@ -318,10 +350,12 @@ export class CameraController {
   }
 
   private applyKeyboardPanning(deltaTime: number): void {
+    // Skip Shift+WASD panning in Fleet POV (Shift is speed modifier there)
     const right = (this.keys['arrowright'] ? 1 : 0) - (this.keys['arrowleft'] ? 1 : 0);
     const up = (this.keys['arrowup'] ? 1 : 0) - (this.keys['arrowdown'] ? 1 : 0);
-    const shiftRight = this.keys['shift'] ? ((this.keys['d'] ? 1 : 0) - (this.keys['a'] ? 1 : 0)) : 0;
-    const shiftUp = this.keys['shift'] ? ((this.keys['w'] ? 1 : 0) - (this.keys['s'] ? 1 : 0)) : 0;
+    const useShiftPan = this.keys['shift'] && this.currentMode !== 'sat-pov';
+    const shiftRight = useShiftPan ? ((this.keys['d'] ? 1 : 0) - (this.keys['a'] ? 1 : 0)) : 0;
+    const shiftUp = useShiftPan ? ((this.keys['w'] ? 1 : 0) - (this.keys['s'] ? 1 : 0)) : 0;
 
     const panX = right + shiftRight;
     const panY = up + shiftUp;
@@ -506,11 +540,35 @@ export class CameraController {
   }
 
   /**
+   * Toggle Orbit Lock mode: camera slowly orbits the focused satellite.
+   * If no satellite is focused, this is a no-op.
+   */
+  toggleOrbitLock(): void {
+    if (this.focusSatelliteIndex === null) return;
+    this.orbitLockActive = !this.orbitLockActive;
+  }
+
+  /**
+   * Check if orbit lock is currently active.
+   */
+  isOrbitLocked(): boolean {
+    return this.orbitLockActive;
+  }
+
+  /**
+   * Set orbit lock speed in degrees per second.
+   */
+  setOrbitLockSpeed(degreesPerSecond: number): void {
+    this.orbitLockSpeed = degreesPerSecond;
+  }
+
+  /**
    * Clear active satellite focus.
    */
   clearFocus(): void {
     this.focusSatelliteIndex = null;
     this.focusTransition = null;
+    this.orbitLockActive = false;
   }
 
   /**
@@ -941,14 +999,20 @@ export class CameraController {
     // Re-orthogonalize up from right × forward
     const localUp = v3norm(v3cross(right, forward));
     
-    // Apply WASD micro-movement in local frame
-    const moveSpeed = this.FLEET_MOVE_SPEED;
+    // Apply WASD micro-movement in local frame with speed modifiers
+    // Shift = fast (3x), Ctrl = slow (0.25x)
+    let moveSpeed = this.FLEET_MOVE_SPEED;
+    if (this.keys['shift']) moveSpeed *= this.FLEET_FAST_MULTIPLIER;
+    if (this.keys['control']) moveSpeed *= this.FLEET_SLOW_MULTIPLIER;
+
+    const isMoving = this.keys['w'] || this.keys['s'] || this.keys['a'] || this.keys['q'] || this.keys['d'] || this.keys['e'] || this.keys[' '] || this.keys['x'];
+
     if (this.keys['w']) this.fleetOffset = v3add(this.fleetOffset, v3scale(forward, moveSpeed));
     if (this.keys['s']) this.fleetOffset = v3add(this.fleetOffset, v3scale(forward, -moveSpeed));
     if (this.keys['a'] || this.keys['q']) this.fleetOffset = v3add(this.fleetOffset, v3scale(right, -moveSpeed));
     if (this.keys['d'] || this.keys['e']) this.fleetOffset = v3add(this.fleetOffset, v3scale(right, moveSpeed));
     if (this.keys[' ']) this.fleetOffset = v3add(this.fleetOffset, v3scale(localUp, moveSpeed));
-    if (this.keys['shift']) this.fleetOffset = v3add(this.fleetOffset, v3scale(localUp, -moveSpeed));
+    if (this.keys['x']) this.fleetOffset = v3add(this.fleetOffset, v3scale(localUp, -moveSpeed));
     
     // Dampen offset back toward zero (keeps pilot anchored)
     this.fleetOffset = v3scale(this.fleetOffset, 0.98);
@@ -960,6 +1024,15 @@ export class CameraController {
     // Full 360° yaw + wide pitch for head look
     const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
     const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
+
+    // Subtle roll when yawing hard (immersion)
+    const yawDelta = this.cameraAngles.yaw - this.lastFleetYaw;
+    this.lastFleetYaw = this.cameraAngles.yaw;
+    // Smoothly approach target roll based on yaw rate, max ±8 degrees
+    const targetRoll = Math.max(-8, Math.min(8, -yawDelta * 1.5)) * MATH.DEG_TO_RAD;
+    this.fleetRoll += (targetRoll - this.fleetRoll) * 0.08;
+    // Decay roll back to zero
+    this.fleetRoll *= 0.95;
     
     // Rotate the forward direction by yaw around localUp, then by pitch around right
     const cosY = Math.cos(yaw);
@@ -991,11 +1064,28 @@ export class CameraController {
     
     // Compute actual up for the view (perpendicular to lookDir in the plane of localUp)
     const viewRight = v3norm(v3cross(lookDir, localUp));
-    const viewUp = v3norm(v3cross(viewRight, lookDir));
+    let viewUp = v3norm(v3cross(viewRight, lookDir));
+
+    // Apply roll to up vector for immersion during yaw
+    if (Math.abs(this.fleetRoll) > 0.0001) {
+      const cosR = Math.cos(this.fleetRoll);
+      const sinR = Math.sin(this.fleetRoll);
+      viewUp = v3norm(v3add(v3scale(viewUp, cosR), v3scale(viewRight, sinR)));
+    }
     
-    // Subtle head bob based on orbital motion
-    const bob = Math.sin(time * 1.7) * 0.3;
-    const bobbedPos: Vec3 = v3add(position, v3scale(localUp, bob));
+    // Orbital breathing: gentle position sway when idle (no movement keys pressed)
+    if (!isMoving) {
+      this.fleetIdleTime += 0.016; // ~60fps frame time
+    } else {
+      this.fleetIdleTime = 0;
+    }
+    const breathIntensity = Math.min(1.0, this.fleetIdleTime * 0.5); // ramp up over 2s
+    const breathX = Math.sin(time * 0.4) * 0.15 * breathIntensity;
+    const breathY = Math.cos(time * 0.3) * 0.1 * breathIntensity;
+
+    // Subtle head bob based on orbital motion + breathing
+    const bob = Math.sin(time * 1.7) * 0.3 + breathY;
+    const bobbedPos: Vec3 = v3add(v3add(position, v3scale(localUp, bob)), v3scale(right, breathX));
     
     return {
       position: bobbedPos,
