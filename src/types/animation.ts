@@ -137,6 +137,7 @@ export interface LensEffectsConfig {
     enabled: boolean;
     intensity: number;
     smoothness: number;
+    roundness: number;     // power applied to radial distance (1–4)
   };
 }
 
@@ -214,6 +215,7 @@ export interface PostProcessConfig {
   sharpness: SharpnessConfig;
   autoExposure: AutoExposureConfig;
   tonemapping: 'aces' | 'reinhard' | 'filmic';
+  lensEffects: LensEffectsConfig;
 }
 
 /** Multi-resolution bloom pyramid configuration */
@@ -306,6 +308,30 @@ export const DEFAULT_ANIMATION_CONFIG: AnimationConfig = {
   },
 };
 
+/** Default lens effects configuration (High preset values) */
+export const DEFAULT_LENS_EFFECTS_CONFIG: LensEffectsConfig = {
+  chromaticAberration: {
+    enabled: true,
+    strength: 0.003,
+  },
+  lensFlare: {
+    enabled: false,
+    intensity: 0.5,
+    anamorphic: false,
+  },
+  starburst: {
+    enabled: false,
+    points: 6,
+    intensity: 0.4,
+  },
+  vignetting: {
+    enabled: true,
+    intensity: 0.4,
+    smoothness: 1.0,
+    roundness: 2.0,
+  },
+};
+
 /** Default post-process configuration */
 export const DEFAULT_POSTPROCESS_CONFIG: PostProcessConfig = {
   colorGrading: {
@@ -334,6 +360,7 @@ export const DEFAULT_POSTPROCESS_CONFIG: PostProcessConfig = {
     maxExposure: 8.0,
   },
   tonemapping: 'aces',
+  lensEffects: DEFAULT_LENS_EFFECTS_CONFIG,
 };
 
 /** Default bloom configuration (balanced quality) */
@@ -354,6 +381,12 @@ export const QUALITY_PRESETS: Record<QualityPreset, Partial<QualitySettings>> = 
     beams: { enabled: false, maxSteps: 4, stepSize: 50.0, density: 0.1, mieAsymmetry: 0.7 },
     trails: { enabled: true, maxLength: 2, fadeOut: 1.0, colorByShell: true, ribbonWidth: 20.0 },
     bloom: { threshold: 0.85, knee: 0.05, intensity: 1.4, levels: 2, anamorphicEnabled: false, anamorphicRatio: 0.0 },
+    lens: {
+      chromaticAberration: { enabled: false, strength: 0.0 },
+      lensFlare: { enabled: false, intensity: 0.0, anamorphic: false },
+      starburst: { enabled: false, points: 6, intensity: 0.0 },
+      vignetting: { enabled: false, intensity: 0.0, smoothness: 1.0, roundness: 2.0 },
+    },
   },
   medium: {
     lod: { ...DEFAULT_LOD_CONFIG, taaEnabled: true, motionBlurEnabled: false },
@@ -361,6 +394,12 @@ export const QUALITY_PRESETS: Record<QualityPreset, Partial<QualitySettings>> = 
     beams: { enabled: true, maxSteps: 6, stepSize: 40.0, density: 0.15, mieAsymmetry: 0.75 },
     trails: { enabled: true, maxLength: 5, fadeOut: 2.0, colorByShell: true, ribbonWidth: 30.0 },
     bloom: { threshold: 0.80, knee: 0.08, intensity: 1.6, levels: 3, anamorphicEnabled: false, anamorphicRatio: 0.0 },
+    lens: {
+      chromaticAberration: { enabled: false, strength: 0.0 },
+      lensFlare: { enabled: false, intensity: 0.0, anamorphic: false },
+      starburst: { enabled: false, points: 6, intensity: 0.0 },
+      vignetting: { enabled: true, intensity: 0.3, smoothness: 1.0, roundness: 2.0 },
+    },
   },
   high: {
     lod: DEFAULT_LOD_CONFIG,
@@ -368,6 +407,12 @@ export const QUALITY_PRESETS: Record<QualityPreset, Partial<QualitySettings>> = 
     beams: { enabled: true, maxSteps: 8, stepSize: 30.0, density: 0.2, mieAsymmetry: 0.8 },
     trails: { enabled: true, maxLength: 10, fadeOut: 3.0, colorByShell: true, ribbonWidth: 40.0 },
     bloom: { threshold: 0.75, knee: 0.10, intensity: 1.8, levels: 4, anamorphicEnabled: false, anamorphicRatio: 0.0 },
+    lens: {
+      chromaticAberration: { enabled: true, strength: 0.003 },
+      lensFlare: { enabled: false, intensity: 0.5, anamorphic: false },
+      starburst: { enabled: false, points: 6, intensity: 0.4 },
+      vignetting: { enabled: true, intensity: 0.4, smoothness: 1.0, roundness: 2.0 },
+    },
   },
   ultra: {
     lod: { ...DEFAULT_LOD_CONFIG, msaaSamples: 8 },
@@ -375,6 +420,12 @@ export const QUALITY_PRESETS: Record<QualityPreset, Partial<QualitySettings>> = 
     beams: { enabled: true, maxSteps: 16, stepSize: 20.0, density: 0.3, mieAsymmetry: 0.85 },
     trails: { enabled: true, maxLength: 20, fadeOut: 5.0, colorByShell: true, ribbonWidth: 50.0 },
     bloom: { threshold: 0.70, knee: 0.12, intensity: 2.0, levels: 5, anamorphicEnabled: false, anamorphicRatio: 0.0 },
+    lens: {
+      chromaticAberration: { enabled: true, strength: 0.004 },
+      lensFlare: { enabled: true, intensity: 0.6, anamorphic: false },
+      starburst: { enabled: true, points: 6, intensity: 0.5 },
+      vignetting: { enabled: true, intensity: 0.45, smoothness: 1.0, roundness: 2.0 },
+    },
   },
   cinematic: {
     lod: { ...DEFAULT_LOD_CONFIG, msaaSamples: 8 },
@@ -382,5 +433,11 @@ export const QUALITY_PRESETS: Record<QualityPreset, Partial<QualitySettings>> = 
     beams: { enabled: true, maxSteps: 16, stepSize: 20.0, density: 0.3, mieAsymmetry: 0.85 },
     trails: { enabled: true, maxLength: 20, fadeOut: 5.0, colorByShell: true, ribbonWidth: 50.0 },
     bloom: { threshold: 0.65, knee: 0.15, intensity: 2.2, levels: 5, anamorphicEnabled: true, anamorphicRatio: 0.35 },
+    lens: {
+      chromaticAberration: { enabled: true, strength: 0.005 },
+      lensFlare: { enabled: true, intensity: 0.8, anamorphic: true },
+      starburst: { enabled: true, points: 6, intensity: 0.7 },
+      vignetting: { enabled: true, intensity: 0.5, smoothness: 1.0, roundness: 2.0 },
+    },
   },
 };
