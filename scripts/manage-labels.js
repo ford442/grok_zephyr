@@ -66,8 +66,13 @@ async function createOrUpdateLabel(label) {
       });
       
       if (!response.ok) {
-        const error = await response.json();
-        console.error(`Failed to update label ${label.name}:`, error);
+        let error = {};
+        try {
+          error = await response.json();
+        } catch {
+          error = { message: response.statusText };
+        }
+        console.error(`Failed to update label ${label.name}:`, error.message || error);
         return false;
       }
     } else {
@@ -84,8 +89,13 @@ async function createOrUpdateLabel(label) {
       });
       
       if (!response.ok) {
-        const error = await response.json();
-        console.error(`Failed to create label ${label.name}:`, error);
+        let error = {};
+        try {
+          error = await response.json();
+        } catch {
+          error = { message: response.statusText };
+        }
+        console.error(`Failed to create label ${label.name}:`, error.message || error);
         return false;
       }
     }
@@ -93,7 +103,7 @@ async function createOrUpdateLabel(label) {
     console.log(`✓ Label "${label.name}" synced successfully`);
     return true;
   } catch (error) {
-    console.error(`Error processing label ${label.name}:`, error);
+    console.error(`Error processing label ${label.name}:`, error.message);
     return false;
   }
 }
@@ -111,15 +121,20 @@ async function deleteLabel(labelName) {
     });
     
     if (!response.ok && response.status !== 404) {
-      const error = await response.json();
-      console.error(`Failed to delete label ${labelName}:`, error);
+      let error = {};
+      try {
+        error = await response.json();
+      } catch {
+        error = { message: response.statusText };
+      }
+      console.error(`Failed to delete label ${labelName}:`, error.message || error);
       return false;
     }
     
     console.log(`✓ Label "${labelName}" deleted successfully`);
     return true;
   } catch (error) {
-    console.error(`Error deleting label ${labelName}:`, error);
+    console.error(`Error deleting label ${labelName}:`, error.message);
     return false;
   }
 }
@@ -134,8 +149,13 @@ async function listLabels() {
     const response = await fetch(url, { headers });
     
     if (!response.ok) {
-      const error = await response.json();
-      console.error("Failed to fetch labels:", error);
+      let error = {};
+      try {
+        error = await response.json();
+      } catch {
+        error = { message: response.statusText };
+      }
+      console.error("Failed to fetch labels:", error.message || error);
       return false;
     }
     
@@ -154,7 +174,7 @@ async function listLabels() {
     
     return true;
   } catch (error) {
-    console.error("Error fetching labels:", error);
+    console.error("Error fetching labels:", error.message);
     return false;
   }
 }
