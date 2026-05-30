@@ -27,6 +27,26 @@ export interface AtmosphereQualitySettings {
   hazeStrength: number;
 }
 
+/** Volumetric beam (god-ray) settings within a quality preset */
+export interface VolumetricBeamQualitySettings {
+  /** Enable the ray-marched volumetric beam pass. Only recommended for Cinematic. */
+  enabled: boolean;
+  /** Ray-march step count per beam (lower = faster, higher = more accurate). */
+  maxSteps: number;
+  /** Scattering density coefficient (0–1). */
+  density: number;
+  /** Beam light intensity multiplier. */
+  intensity: number;
+  /** Mie asymmetry g-factor (0 = isotropic, 1 = fully forward). */
+  mieG: number;
+  /** Volumetric beam radius in km. */
+  beamRadius: number;
+  /** Ambient light fraction added to every sample (0–0.2). */
+  ambientFactor: number;
+  /** Whether to apply Earth shadow occlusion. */
+  earthShadow: boolean;
+}
+
 /** Full quality preset definition */
 export interface QualityPreset {
   level: QualityLevel;
@@ -36,6 +56,8 @@ export interface QualityPreset {
   atmosphere: AtmosphereQualitySettings;
   /** Whether TAA should be enabled for this quality tier */
   taaEnabled: boolean;
+  /** Volumetric beam (god-ray) pass settings */
+  volumetricBeams: VolumetricBeamQualitySettings;
 }
 
 /** All built-in quality presets */
@@ -58,6 +80,16 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
       cloudScale: 1.0,
       hazeStrength: 0,
     },
+    volumetricBeams: {
+      enabled: false,
+      maxSteps: 4,
+      density: 0.06,
+      intensity: 1.5,
+      mieG: 0.6,
+      beamRadius: 80.0,
+      ambientFactor: 0.05,
+      earthShadow: false,
+    },
   },
 
   balanced: {
@@ -77,6 +109,16 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
       cloudSpeed: 0.015,
       cloudScale: 1.004,
       hazeStrength: 0.18,
+    },
+    volumetricBeams: {
+      enabled: false,
+      maxSteps: 6,
+      density: 0.07,
+      intensity: 1.8,
+      mieG: 0.65,
+      beamRadius: 80.0,
+      ambientFactor: 0.05,
+      earthShadow: false,
     },
   },
 
@@ -98,6 +140,16 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
       cloudScale: 1.006,
       hazeStrength: 0.28,
     },
+    volumetricBeams: {
+      enabled: false,
+      maxSteps: 8,
+      density: 0.08,
+      intensity: 2.0,
+      mieG: 0.7,
+      beamRadius: 80.0,
+      ambientFactor: 0.05,
+      earthShadow: true,
+    },
   },
 
   cinematic: {
@@ -117,6 +169,16 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
       cloudSpeed: 0.02,
       cloudScale: 1.008,
       hazeStrength: 0.40,
+    },
+    volumetricBeams: {
+      enabled: true,
+      maxSteps: 8,
+      density: 0.08,
+      intensity: 2.0,
+      mieG: 0.7,
+      beamRadius: 80.0,
+      ambientFactor: 0.05,
+      earthShadow: true,
     },
   },
 };

@@ -8,6 +8,7 @@ import { WebGPUContext, WebGPUError } from '@/core/WebGPUContext.js';
 import { SatelliteGPUBuffer } from '@/core/SatelliteGPUBuffer.js';
 import { RenderPipeline } from '@/render/RenderPipeline.js';
 import { PostProcessStack } from '@/render/PostProcessStack.js';
+import { VolumetricBeamRenderer } from '@/render/VolumetricBeamRenderer.js';
 import { CameraController, type CameraState } from '@/camera/CameraController.js';
 import { GroundObserverCamera, GroundObserverPreset } from '@/camera/GroundObserverCamera.js';
 import { UIManager } from '@/ui/UIManager.js';
@@ -83,6 +84,7 @@ class GrokZephyrApp {
   private buffers: SatelliteGPUBuffer | null = null;
   private pipeline: RenderPipeline | null = null;
   private postProcessStack: PostProcessStack | null = null;
+  private volumetricBeamRenderer: VolumetricBeamRenderer | null = null;
   private camera: CameraController;
   private groundObserver: GroundObserverCamera;
   private ui: UIManager;
@@ -937,11 +939,62 @@ class GrokZephyrApp {
       }
     }
 
+    // Apply volumetric beam settings
+    this.applyVolumetricBeamPreset(preset.volumetricBeams.enabled, {
+      maxSteps:     preset.volumetricBeams.maxSteps,
+      density:      preset.volumetricBeams.density,
+      intensity:    preset.volumetricBeams.intensity,
+      mieG:         preset.volumetricBeams.mieG,
+      beamRadius:   preset.volumetricBeams.beamRadius,
+      ambientFactor:preset.volumetricBeams.ambientFactor,
+      earthShadow:  preset.volumetricBeams.earthShadow,
+    });
+
     // Update UI
     this.ui.setActiveQualityButton(level);
     saveQualityLevel(level);
 
     console.log(`🎨 Quality preset: ${preset.label} — ${preset.description}`);
+  }
+
+  /**
+   * Enable or disable the volumetric beam (god-ray) renderer and push config.
+   *
+   * When `enabled` is true and the renderer has not been created yet, it is
+   * lazily initialised here.  When `enabled` is false the renderer is destroyed
+   * to free GPU memory.
+   */
+  private applyVolumetricBeamPreset(
+    enabled: boolean,
+    config: { maxSteps?: number; density?: number; intensity?: number } = {},
+  ): void {
+    if (!enabled) {
+      if (this.volumetricBeamRenderer) {
+        this.volumetricBeamRenderer.destroy();
+        this.volumetricBeamRenderer = null;
+        console.log('✨ Volumetric beams: disabled');
+      }
+      return;
+    }
+
+    // Only create if we have the required GPU resources
+    if (!this.context || !this.buffers || !this.pipeline) return;
+
+    const size = this.getDrawableSize();
+    if (!size) return;
+
+    if (!this.volumetricBeamRenderer) {
+      const buffers = this.buffers.getBuffers();
+      this.volumetricBeamRenderer = new VolumetricBeamRenderer(
+        this.context,
+        buffers.beams,
+        buffers.uniforms,
+      );
+      this.volumetricBeamRenderer.initialize(size.width, size.height);
+      console.log('✨ Volumetric beams: enabled (Cinematic)');
+    }
+
+    this.volumetricBeamRenderer.setConfig(config);
   }
 
   /**
@@ -1182,6 +1235,7 @@ class GrokZephyrApp {
     this.context.resize(width, height);
     this.pipeline.resize(width, height);
     this.postProcessStack?.resize(width, height);
+    this.volumetricBeamRenderer?.resize(width, height);
     this.buffers.updateBloomUniforms(width, height);
   }
 
@@ -1467,6 +1521,13 @@ class GrokZephyrApp {
     if (this.trailRenderer) {
       this.pipeline.encodeTrailPass(encoder, this.trailRenderer);
     }
+
+    // Pass 2.6: Volumetric beams (Cinematic quality only)
+    // Ray-march at half resolution, then composite additively into HDR.
+    if (this.volumetricBeamRenderer) {
+      this.volumetricBeamRenderer.encodeRaymarchPass(encoder);
+      this.volumetricBeamRenderer.encodeCompositePass(encoder, this.pipeline.getHDRView());
+    }
     
     // Passes 3-5: Bloom
     this.pipeline.encodeBloomPasses(encoder);
@@ -1638,6 +1699,7 @@ class GrokZephyrApp {
     }
     this.pipeline?.destroy();
     this.postProcessStack?.destroy();
+    this.volumetricBeamRenderer?.destroy();
     this.buffers?.destroy();
     this.context?.destroy();
     this.profiler.destroy();
