@@ -529,7 +529,6 @@ export class AnimationEngine {
       const x = positions[i * 4 + 0];
       const y = positions[i * 4 + 1];
       const r = Math.sqrt(x * x + y * y);
-      const theta = Math.atan2(y, x);
       
       // Check if in galaxy radius
       if (r > 3500 || r < 200) {
@@ -537,12 +536,7 @@ export class AnimationEngine {
         continue;
       }
       
-      // Calculate closest arm
-      const numArms = 3;
-      const armOffset = (theta / (Math.PI * 2)) * numArms;
-      const _armIndex = Math.floor(armOffset) % numArms;
-      void _armIndex; // computed but not yet used for feature assignment
-      
+      // TODO: use theta + arm index for per-arm feature assignment
       this.featureAssignments.set(i, 'text_pixel'); // Generic feature
     }
   }
