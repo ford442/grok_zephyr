@@ -990,6 +990,18 @@ export class RenderPipeline {
   }
 
   /**
+   * Get the HDR render target view.
+   * Used by the volumetric beam renderer to composite god-ray results
+   * additively into the scene after the main render pass.
+   */
+  getHDRView(): GPUTextureView {
+    if (!this.renderTargets) {
+      throw new Error('RenderPipeline not initialized');
+    }
+    return this.renderTargets.hdrView;
+  }
+
+  /**
    * Get render targets
    */
   getRenderTargets(): RenderTargets | null {
