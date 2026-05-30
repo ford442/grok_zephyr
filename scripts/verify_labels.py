@@ -45,6 +45,13 @@ def verify_labels(token):
         "Accept": "application/vnd.github.v3+json",
     }
     
+    # Column widths for output formatting
+    col_label = 20
+    col_status = 15
+    col_current = 15
+    col_expected = 15
+    separator_length = col_label + col_status + col_current + col_expected + 3  # +3 for spaces
+    
     try:
         response = requests.get(BASE_URL, headers=headers)
         if response.status_code != 200:
@@ -59,8 +66,8 @@ def verify_labels(token):
     current_labels = {label["name"]: label for label in labels}
     
     print(f"Verifying labels for {OWNER}/{REPO}\n")
-    print(f"{'Label':<20} {'Status':<15} {'Current Color':<15} {'Expected Color':<15}")
-    print("-" * 65)
+    print(f"{'Label':<{col_label}} {'Status':<{col_status}} {'Current Color':<{col_current}} {'Expected Color':<{col_expected}}")
+    print("-" * separator_length)
     
     updated_count = 0
     needs_update_count = 0
@@ -68,7 +75,7 @@ def verify_labels(token):
     
     for label_name, expected in EXPECTED_LABELS.items():
         if label_name not in current_labels:
-            print(f"{label_name:<20} {'MISSING':<15}")
+            print(f"{label_name:<{col_label}} {'MISSING':<{col_status}}")
             missing_count += 1
         else:
             current = current_labels[label_name]
@@ -82,7 +89,7 @@ def verify_labels(token):
                 status = "✗ NEEDS UPDATE"
                 needs_update_count += 1
             
-            print(f"{label_name:<20} {status:<15} {current['color']:<15} {expected['color']:<15}")
+            print(f"{label_name:<{col_label}} {status:<{col_status}} {current['color']:<{col_current}} {expected['color']:<{col_expected}}")
     
     print(f"\n{'Summary:':<20}")
     print(f"  Updated: {updated_count}")
