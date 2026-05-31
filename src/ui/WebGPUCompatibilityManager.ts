@@ -56,6 +56,27 @@ export class WebGPUCompatibilityManager {
    * Get browser-specific suggestions
    */
   private static getSuggestionsForBrowser(browser: string): string[] {
+    const ua = navigator.userAgent;
+    const isIOS = /iPhone|iPad|iPod/.test(ua);
+    const isAndroid = /Android/.test(ua);
+
+    if (isIOS) {
+      return [
+        'WebGPU requires iOS / iPadOS 17.4 or newer.',
+        'Update your device in Settings → General → Software Update.',
+        'In Safari, enable WebGPU under Settings → Apps → Safari → Advanced → Experimental Features.',
+        'For best results on mobile, use the latest version of Safari or Chrome for iOS.',
+      ];
+    }
+
+    if (isAndroid) {
+      return [
+        'WebGPU is supported in Chrome for Android 113 or newer.',
+        'Update Chrome via the Play Store and make sure it is version 113+.',
+        'Samsung Internet 21+ also supports WebGPU.',
+      ];
+    }
+
     const suggestions: Record<string, string[]> = {
       Chrome: [
         'You already have Chrome! Just make sure it\'s version 113 or newer.',
@@ -81,7 +102,7 @@ export class WebGPUCompatibilityManager {
       ],
     };
 
-    return suggestions[browser] || suggestions.Unknown;
+    return suggestions[browser] ?? suggestions.Unknown;
   }
 
   /**

@@ -138,6 +138,9 @@ class GrokZephyrApp {
     this.setupCallbacks();
   }
 
+  /** Cached mobile device detection (computed once at startup) */
+  private readonly isMobileDevice = GrokZephyrApp.detectMobileDevice();
+
   /** Current beam pattern mode (0=chaos, 1=GROK, 2=X logo) */
   private currentPatternMode = 1;
 
@@ -278,6 +281,23 @@ class GrokZephyrApp {
     if (interruptCinematic && this.camera.isCinematicActive()) {
       this.camera.stopCinematic();
     }
+  }
+
+  /**
+   * Heuristically detect a mobile or tablet device.
+   * Uses navigator.userAgentData when available (modern browsers), falls back to UA string.
+   * Result is cached as `isMobileDevice` — do not call in hot paths.
+   */
+  private static detectMobileDevice(): boolean {
+    if (navigator.maxTouchPoints > 1) {
+      // userAgentData is more reliable than UA strings but not universally available
+      if ('userAgentData' in navigator) {
+        const data = (navigator as { userAgentData?: { mobile?: boolean } }).userAgentData;
+        if (data && typeof data.mobile === 'boolean') return data.mobile;
+      }
+      return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    }
+    return false;
   }
 
   /**
@@ -1092,7 +1112,8 @@ class GrokZephyrApp {
       this.pipeline = new RenderPipeline(this.context, bufferSet);
       
       // Set initial canvas size and initialize pipeline
-      const dpr = window.devicePixelRatio || 1;
+      const rawDpr = window.devicePixelRatio || 1;
+      const dpr = this.isMobileDevice ? Math.min(rawDpr, 1.5) : rawDpr;
       const width = Math.floor(this.canvas.clientWidth * dpr);
       const height = Math.floor(this.canvas.clientHeight * dpr);
       
@@ -1144,8 +1165,17 @@ class GrokZephyrApp {
       // Determine initial quality level using the precedence:
       //   1. ?preset= URL parameter (highest priority — explicit user request)
       //   2. localStorage saved value (user's last session choice)
-      //   3. 'high' (built-in default)
-      const initialQuality = urlParams.qualityLevel ?? loadSavedQualityLevel();
+      //   3. 'balanced' on mobile (save fill-rate), 'high' on desktop
+      let savedQuality: QualityLevel | null = null;
+      try {
+        const stored = localStorage.getItem('grokzephyr-quality') as QualityLevel | null;
+        if (stored && stored in QUALITY_PRESETS) savedQuality = stored;
+      } catch { /* localStorage unavailable — proceed without saved value */ }
+
+      const initialQuality: QualityLevel =
+        urlParams.qualityLevel ??
+        savedQuality ??
+        (this.isMobileDevice ? 'balanced' : 'high');
       this.currentQualityLevel = initialQuality;
 
       // Apply initial quality preset (this also updates the UI buttons)
@@ -1212,7 +1242,8 @@ class GrokZephyrApp {
   }
 
   private getDrawableSize(): { width: number; height: number } | null {
-    const dpr = window.devicePixelRatio || 1;
+    const rawDpr = window.devicePixelRatio || 1;
+    const dpr = this.isMobileDevice ? Math.min(rawDpr, 1.5) : rawDpr;
     const width = Math.floor(this.canvas.clientWidth * dpr);
     const height = Math.floor(this.canvas.clientHeight * dpr);
     return width > 0 && height > 0 ? { width, height } : null;

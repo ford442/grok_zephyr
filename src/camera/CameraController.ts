@@ -77,12 +77,24 @@ export class CameraController {
   // Constants
   private readonly PITCH_LIMIT = 89;
   private readonly MOUSE_SENSITIVITY = 0.25;
-  
+  // Tuned separately from mouse — finger travel covers more physical distance per pixel
+  private readonly TOUCH_SENSITIVITY = 0.25;
+
   // Mouse state
   private mouse: MouseState = {
     down: false,
     lastX: 0,
     lastY: 0,
+  };
+
+  // Touch state (up to 2 active pointers)
+  private touchState = {
+    active: new Map<number, { x: number; y: number }>(),
+    lastPinchDist: 0,
+    lastCentroid: { x: 0, y: 0 },
+    lastTapTime: 0,
+    lastTapX: 0,
+    lastTapY: 0,
   };
   
   // Canvas reference for pointer lock
@@ -274,6 +286,135 @@ export class CameraController {
     });
     window.addEventListener('keyup', (e) => {
       this.keys[e.key.toLowerCase()] = false;
+    });
+
+    // Suppress browser pinch-zoom and scroll on the canvas
+    canvas.style.touchAction = 'none';
+
+    // Touch: single-finger rotate, two-finger pinch-zoom + pan, double-tap reset
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      this.handleUserInteraction();
+      for (const t of e.changedTouches) {
+        this.touchState.active.set(t.identifier, { x: t.clientX, y: t.clientY });
+      }
+      const count = this.touchState.active.size;
+      if (count === 1) {
+        const touch = [...this.touchState.active.values()][0];
+        this.mouse.lastX = touch.x;
+        this.mouse.lastY = touch.y;
+        this.mouseMode = 'rotate';
+        this.mouse.down = true;
+      } else if (count === 2) {
+        this.mouse.down = false;
+        this.mouseMode = null;
+        const [a, b] = [...this.touchState.active.values()];
+        this.touchState.lastPinchDist = Math.hypot(b.x - a.x, b.y - a.y);
+        this.touchState.lastCentroid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        this.touchState.active.set(t.identifier, { x: t.clientX, y: t.clientY });
+      }
+      const count = this.touchState.active.size;
+      if (count === 1) {
+        const touch = [...this.touchState.active.values()][0];
+        const dx = touch.x - this.mouse.lastX;
+        const dy = touch.y - this.mouse.lastY;
+
+        this.cameraAngles.yaw -= dx * this.TOUCH_SENSITIVITY;
+        this.cameraAngles.yaw = ((this.cameraAngles.yaw % 360) + 360) % 360;
+        this.cameraAngles.pitch += dy * this.TOUCH_SENSITIVITY;
+        const pitchLimit = this.currentMode === 'sat-pov' ? 89 : this.PITCH_LIMIT;
+        this.cameraAngles.pitch = Math.max(-pitchLimit, Math.min(pitchLimit, this.cameraAngles.pitch));
+
+        if (this.currentMode === 'god') {
+          this.godView.yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
+          this.godView.pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
+          this.godVelocity.yaw = dx * this.TOUCH_SENSITIVITY;
+          this.godVelocity.pitch = dy * this.TOUCH_SENSITIVITY;
+        }
+        if (this.angleChangeCallback) {
+          this.angleChangeCallback(this.cameraAngles.yaw, this.cameraAngles.pitch);
+        }
+        this.mouse.lastX = touch.x;
+        this.mouse.lastY = touch.y;
+      } else if (count === 2) {
+        const [a, b] = [...this.touchState.active.values()];
+        const newDist = Math.hypot(b.x - a.x, b.y - a.y);
+        const newCentroid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+
+        // Pinch-zoom: ratio > 1 = fingers spreading = zoom in = smaller distance
+        if (this.touchState.lastPinchDist > 0) {
+          const ratio = newDist / this.touchState.lastPinchDist;
+          this.cameraAngles.distance = Math.max(
+            500,
+            Math.min(180000, this.cameraAngles.distance / ratio)
+          );
+          if (this.currentMode === 'god') {
+            this.godView.distance = this.cameraAngles.distance;
+          }
+        }
+
+        // Two-finger pan: centroid translation
+        const ddx = newCentroid.x - this.touchState.lastCentroid.x;
+        const ddy = newCentroid.y - this.touchState.lastCentroid.y;
+        if (ddx !== 0 || ddy !== 0) {
+          this.panBy(-ddx, ddy);
+        }
+
+        this.touchState.lastPinchDist = newDist;
+        this.touchState.lastCentroid = newCentroid;
+      }
+    }, { passive: false });
+
+    const endTouch = (e: TouchEvent): void => {
+      e.preventDefault();
+      for (const t of e.changedTouches) {
+        this.touchState.active.delete(t.identifier);
+      }
+      const count = this.touchState.active.size;
+      if (count === 0) {
+        this.mouse.down = false;
+        this.mouseMode = null;
+        // Double-tap: reset camera when two taps land within 350 ms and 50 px
+        const now = performance.now();
+        const lastTouch = e.changedTouches[0];
+        if (lastTouch) {
+          const dt = now - this.touchState.lastTapTime;
+          const dx = lastTouch.clientX - this.touchState.lastTapX;
+          const dy = lastTouch.clientY - this.touchState.lastTapY;
+          if (dt < 350 && Math.hypot(dx, dy) < 50) {
+            this.resetCameraAngle();
+            this.touchState.lastTapTime = 0;
+          } else {
+            this.touchState.lastTapTime = now;
+            this.touchState.lastTapX = lastTouch.clientX;
+            this.touchState.lastTapY = lastTouch.clientY;
+          }
+        }
+      } else if (count === 1) {
+        // Transitioned from 2 fingers to 1: restore single-touch tracking
+        const touch = [...this.touchState.active.values()][0];
+        this.mouse.lastX = touch.x;
+        this.mouse.lastY = touch.y;
+        this.mouse.down = true;
+        this.mouseMode = 'rotate';
+      }
+    };
+    canvas.addEventListener('touchend', endTouch, { passive: false });
+    canvas.addEventListener('touchcancel', endTouch, { passive: false });
+
+    // Clear touch state when page is backgrounded (e.g., iOS multitask, phone call)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        this.touchState.active.clear();
+        this.mouse.down = false;
+        this.mouseMode = null;
+      }
     });
   }
   

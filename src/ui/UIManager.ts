@@ -90,6 +90,7 @@ export class UIManager {
     this.elements = this.getElements();
     this.setupEventListeners();
     this.createAnimationControls();
+    this.setupMobileMenu();
   }
 
   /**
@@ -235,8 +236,37 @@ export class UIManager {
   }
 
   /**
-   * Create additional animation controls (speed slider, loop toggle)
+   * Wire up hamburger button for mobile controls panel toggle (≤767px).
    */
+  private setupMobileMenu(): void {
+    const toggle = document.getElementById('menu-toggle');
+    const controls = this.elements.controls;
+    if (!toggle || !controls) return;
+
+    const setOpen = (open: boolean): void => {
+      controls.classList.toggle('mobile-open', open);
+      toggle.textContent = open ? '✕' : '☰';
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    };
+
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setOpen(!controls.classList.contains('mobile-open'));
+    });
+
+    // Close when tapping outside the controls panel or the toggle button
+    document.addEventListener('click', (e) => {
+      if (
+        controls.classList.contains('mobile-open') &&
+        !controls.contains(e.target as Node) &&
+        !toggle.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    });
+  }
+
+
   private createAnimationControls(): void {
     const container = document.createElement('div');
     container.className = 'animation-controls-extended';
