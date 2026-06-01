@@ -10,6 +10,9 @@ import type { QualityLevel } from '@/core/QualityPresets.js';
 import { QUALITY_PRESETS } from '@/core/QualityPresets.js';
 import type { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
 
+type ExposureMode = 'auto' | 'manual';
+type TonemapMode = 0 | 1 | 2 | 3;
+
 /** UI element references */
 export interface UIElements {
   altitude: HTMLElement;
@@ -27,6 +30,15 @@ export interface UIElements {
   animationButtons: HTMLButtonElement[];
   physicsButtons: HTMLButtonElement[];
   qualityButtons: HTMLButtonElement[];
+  audioToggleButton?: HTMLButtonElement;
+  trailsToggleButton?: HTMLButtonElement;
+  trailsLengthSelect?: HTMLSelectElement;
+  exposureModeSelect?: HTMLSelectElement;
+  manualExposureSlider?: HTMLInputElement;
+  manualExposureValue?: HTMLElement;
+  exposureSpeedSlider?: HTMLInputElement;
+  exposureSpeedValue?: HTMLElement;
+  tonemapModeSelect?: HTMLSelectElement;
   horizonIndicator: HTMLElement;
   angleInfo: HTMLElement;
   resetAngleBtn: HTMLElement;
@@ -74,6 +86,13 @@ export class UIManager {
   private onLoopToggleCallback: ((loop: boolean) => void) | null = null;
   private onDemoToggleCallback: (() => void) | null = null;
   private onDemoAutoToggleCallback: ((enabled: boolean) => void) | null = null;
+  private onAudioToggleCallback: ((muted: boolean) => void) | null = null;
+  private onTrailsToggleCallback: ((enabled: boolean) => void) | null = null;
+  private onTrailLengthChangeCallback: ((mode: 'short' | 'medium' | 'long') => void) | null = null;
+  private onExposureModeChangeCallback: ((mode: ExposureMode) => void) | null = null;
+  private onManualExposureChangeCallback: ((value: number) => void) | null = null;
+  private onExposureAdaptationSpeedChangeCallback: ((value: number) => void) | null = null;
+  private onTonemapModeChangeCallback: ((mode: TonemapMode) => void) | null = null;
   
   private animationState: AnimationUIState = {
     currentPattern: 'grok',
@@ -138,6 +157,15 @@ export class UIManager {
         document.getElementById('qhigh') as HTMLButtonElement,
         document.getElementById('qcine') as HTMLButtonElement,
       ],
+      audioToggleButton: (document.getElementById('audioToggle') as HTMLButtonElement | null) ?? undefined,
+      trailsToggleButton: (document.getElementById('trailsToggle') as HTMLButtonElement | null) ?? undefined,
+      trailsLengthSelect: (document.getElementById('trailsLength') as HTMLSelectElement | null) ?? undefined,
+      exposureModeSelect: (document.getElementById('exposureMode') as HTMLSelectElement | null) ?? undefined,
+      manualExposureSlider: (document.getElementById('manualExposure') as HTMLInputElement | null) ?? undefined,
+      manualExposureValue: (document.getElementById('manualExposureValue') as HTMLElement | null) ?? undefined,
+      exposureSpeedSlider: (document.getElementById('exposureSpeed') as HTMLInputElement | null) ?? undefined,
+      exposureSpeedValue: (document.getElementById('exposureSpeedValue') as HTMLElement | null) ?? undefined,
+      tonemapModeSelect: (document.getElementById('tonemapMode') as HTMLSelectElement | null) ?? undefined,
       horizonIndicator: getEl('horizon-indicator'),
       angleInfo: getEl('angleInfo'),
       resetAngleBtn: getEl('resetAngle'),
@@ -232,6 +260,70 @@ export class UIManager {
           this.onQualityChangeCallback(level);
         }
       });
+    });
+
+    this.elements.audioToggleButton?.addEventListener('click', () => {
+      const nextMuted = this.elements.audioToggleButton?.classList.contains('active') ?? true;
+      this.setAudioMuted(nextMuted);
+      if (this.onAudioToggleCallback) {
+        this.onAudioToggleCallback(nextMuted);
+      }
+    });
+
+    this.elements.trailsToggleButton?.addEventListener('click', () => {
+      const nextEnabled = !(this.elements.trailsToggleButton?.classList.contains('active') ?? false);
+      this.setTrailsEnabled(nextEnabled);
+      if (this.onTrailsToggleCallback) {
+        this.onTrailsToggleCallback(nextEnabled);
+      }
+    });
+
+    this.elements.trailsLengthSelect?.addEventListener('change', () => {
+      const raw = this.elements.trailsLengthSelect?.value ?? 'medium';
+      const mode: 'short' | 'medium' | 'long' = raw === 'short' || raw === 'long' ? raw : 'medium';
+      if (this.onTrailLengthChangeCallback) {
+        this.onTrailLengthChangeCallback(mode);
+      }
+    });
+
+    this.elements.exposureModeSelect?.addEventListener('change', () => {
+      const raw = this.elements.exposureModeSelect?.value;
+      const mode: ExposureMode = raw === 'manual' ? 'manual' : 'auto';
+      const manualDisabled = mode === 'auto';
+      if (this.elements.manualExposureSlider) {
+        this.elements.manualExposureSlider.disabled = manualDisabled;
+      }
+      if (this.onExposureModeChangeCallback) {
+        this.onExposureModeChangeCallback(mode);
+      }
+    });
+
+    this.elements.manualExposureSlider?.addEventListener('input', () => {
+      const value = Number(this.elements.manualExposureSlider?.value ?? 1);
+      if (this.elements.manualExposureValue) {
+        this.elements.manualExposureValue.textContent = `${value.toFixed(2)}x`;
+      }
+      if (this.onManualExposureChangeCallback) {
+        this.onManualExposureChangeCallback(value);
+      }
+    });
+
+    this.elements.exposureSpeedSlider?.addEventListener('input', () => {
+      const value = Number(this.elements.exposureSpeedSlider?.value ?? 1.8);
+      if (this.elements.exposureSpeedValue) {
+        this.elements.exposureSpeedValue.textContent = value.toFixed(1);
+      }
+      if (this.onExposureAdaptationSpeedChangeCallback) {
+        this.onExposureAdaptationSpeedChangeCallback(value);
+      }
+    });
+
+    this.elements.tonemapModeSelect?.addEventListener('change', () => {
+      const parsed = Number(this.elements.tonemapModeSelect?.value ?? 0);
+      const mode: TonemapMode = (parsed >= 0 && parsed <= 3 ? parsed : 0) as TonemapMode;
+      if (this.onTonemapModeChangeCallback) {
+        this.onTonemapModeChangeCallback(mode);
+      }
     });
   }
 
@@ -584,6 +676,89 @@ export class UIManager {
 
   onDemoAutoToggle(callback: (enabled: boolean) => void): void {
     this.onDemoAutoToggleCallback = callback;
+  }
+
+  onAudioToggle(callback: (muted: boolean) => void): void {
+    this.onAudioToggleCallback = callback;
+  }
+
+  onTrailsToggle(callback: (enabled: boolean) => void): void {
+    this.onTrailsToggleCallback = callback;
+  }
+
+  onTrailLengthChange(callback: (mode: 'short' | 'medium' | 'long') => void): void {
+    this.onTrailLengthChangeCallback = callback;
+  }
+
+  onExposureModeChange(callback: (mode: ExposureMode) => void): void {
+    this.onExposureModeChangeCallback = callback;
+  }
+
+  onManualExposureChange(callback: (value: number) => void): void {
+    this.onManualExposureChangeCallback = callback;
+  }
+
+  onExposureAdaptationSpeedChange(callback: (value: number) => void): void {
+    this.onExposureAdaptationSpeedChangeCallback = callback;
+  }
+
+  onTonemapModeChange(callback: (mode: TonemapMode) => void): void {
+    this.onTonemapModeChangeCallback = callback;
+  }
+
+  setAudioMuted(muted: boolean): void {
+    const btn = this.elements.audioToggleButton;
+    if (!btn) return;
+    btn.textContent = muted ? 'AUDIO OFF' : 'AUDIO ON';
+    btn.classList.toggle('active', !muted);
+    btn.setAttribute('aria-pressed', muted ? 'false' : 'true');
+    btn.setAttribute('title', muted ? 'Enable audio' : 'Mute audio');
+  }
+
+  setTrailsEnabled(enabled: boolean): void {
+    const btn = this.elements.trailsToggleButton;
+    if (!btn) return;
+    btn.textContent = enabled ? 'TRAILS ON' : 'TRAILS OFF';
+    btn.classList.toggle('active', enabled);
+    btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  }
+
+  setTrailLengthMode(mode: 'short' | 'medium' | 'long'): void {
+    const sel = this.elements.trailsLengthSelect;
+    if (!sel) return;
+    sel.value = mode;
+  }
+
+  setExposureControls(settings: {
+    mode: ExposureMode;
+    manualExposure: number;
+    adaptationSpeed: number;
+    tonemapMode: TonemapMode;
+  }): void {
+    const modeSel = this.elements.exposureModeSelect;
+    const manualSlider = this.elements.manualExposureSlider;
+    const manualValue = this.elements.manualExposureValue;
+    const speedSlider = this.elements.exposureSpeedSlider;
+    const speedValue = this.elements.exposureSpeedValue;
+    const tonemapSel = this.elements.tonemapModeSelect;
+
+    if (modeSel) modeSel.value = settings.mode;
+    if (manualSlider) {
+      manualSlider.value = settings.manualExposure.toFixed(2);
+      manualSlider.disabled = settings.mode === 'auto';
+    }
+    if (manualValue) {
+      manualValue.textContent = `${settings.manualExposure.toFixed(2)}x`;
+    }
+    if (speedSlider) {
+      speedSlider.value = settings.adaptationSpeed.toFixed(1);
+    }
+    if (speedValue) {
+      speedValue.textContent = settings.adaptationSpeed.toFixed(1);
+    }
+    if (tonemapSel) {
+      tonemapSel.value = String(settings.tonemapMode);
+    }
   }
 
   // Time scale control properties

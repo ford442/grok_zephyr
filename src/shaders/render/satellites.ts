@@ -18,6 +18,16 @@ struct PatternParams {
 }
 @group(0) @binding(3) var<uniform> params : PatternParams;
 
+struct MotionBlurUni {
+  prev_view_proj : mat4x4f,
+  inv_view_proj : mat4x4f,
+  camera_strength : f32,
+  satellite_stretch : f32,
+  delta_time : f32,
+  tap_count : u32,
+}
+@group(0) @binding(4) var<uniform> motion : MotionBlurUni;
+
 struct VOut {
   @builtin(position) cp : vec4f,
   @location(0) uv       : vec2f,
@@ -320,7 +330,31 @@ fn vs(
   let bsize = clamp(1200.0 / max(dist, 50.0), 0.4, 60.0) *
               select(0.0, 1.0, dist < 150000.0) * shellSize * groundScale;
   let offset = (qv.x * right + qv.y * up) * bsize;
-  let fpos = wp + offset;
+  let curClip = uni.view_proj * vec4f(wp, 1.0);
+  let prevClip = motion.prev_view_proj * vec4f(wp, 1.0);
+  let curNdc = curClip.xy / max(curClip.w, 1e-5);
+  let prevNdc = prevClip.xy / max(prevClip.w, 1e-5);
+
+  // Approximate orbital tangent when true per-satellite velocity is unavailable.
+  var axis = vec3f(0.0, 0.0, 1.0);
+  if (abs(dot(normalize(wp), axis)) > 0.96) {
+    axis = vec3f(0.0, 1.0, 0.0);
+  }
+  let tangent = normalize(cross(axis, normalize(wp)));
+  let futurePos = wp + tangent * (7.6 * max(motion.delta_time, 0.0));
+  let futureClip = uni.view_proj * vec4f(futurePos, 1.0);
+  let futureNdc = futureClip.xy / max(futureClip.w, 1e-5);
+
+  let cameraMotion = curNdc - prevNdc;
+  let orbitalMotion = futureNdc - curNdc;
+  let screenMotion = cameraMotion + orbitalMotion;
+  let motionLen = length(screenMotion);
+  let motionDir2 = select(vec2f(0.0, 0.0), screenMotion / motionLen, motionLen > 1e-5);
+  let trailingMask = clamp(dot(-qv, motionDir2), 0.0, 1.0);
+  let stretch = clamp(motionLen * 380.0 * motion.satellite_stretch, 0.0, 2.4) * trailingMask;
+  let stretchWorld = (motionDir2.x * right + motionDir2.y * up) * bsize * stretch;
+
+  let fpos = wp + offset + stretchWorld;
 
   let baseColor = sat_color(u32(abs(cdat)) % 7u);
   let shellTint = shellColorShift(shellIdx);
@@ -377,6 +411,9 @@ fn vs(
     // selectionBoost already provides the per-satellite brightness lift; no extra multiplier needed
     out.bright = (pattern * atten + glint * atten) * selectionBoost;
   }
+
+  let trailFade = 1.0 - clamp(trailingMask * motionLen * 90.0, 0.0, 0.5);
+  out.bright *= trailFade;
 
   out.shell = f32(shellIdx);
   out.highlight = isHighlighted;

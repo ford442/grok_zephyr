@@ -48,8 +48,8 @@ export class RenderTargetManager {
     // Depth buffer
     const depth = device.createTexture({
       size: { width, height },
-      format: 'depth24plus',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      format: 'depth32float',
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
       label: 'Depth Buffer'
     });
 

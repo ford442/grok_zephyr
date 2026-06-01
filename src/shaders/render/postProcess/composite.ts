@@ -8,6 +8,8 @@
  *   2 === linearSamp
  *   3 === uni       (shared Uni uniform buffer === for uni.time)
  *   4 === bloomUni  (BloomCompositeUni: intensity + anamorphic control)
+ *   5 === exposureState (storage: adapted exposure f32[1])
+ *   6 === tonemapUni (Tonemap controls)
  *
  * NOTE: The `Uni` struct below MUST match the layout in src/shaders/uniforms.ts exactly.
  * If fields are added to the shared struct, update this copy to keep the byte offsets aligned.
@@ -31,12 +33,19 @@ struct Uni {
   sun_position   : vec4f,
 };
 
-// Bloom composite parameters — written by RenderPipeline.updateBloomCompositeUni()
+// Bloom composite parameters — written by RenderPipeline.writeBloomCompositeUni()
 struct BloomCompositeUni {
   bloomIntensity    : f32,
   anamorphicEnabled : u32,   // 1 = enabled, 0 = disabled
   anamorphicRatio   : f32,
   pad               : f32,
+};
+
+struct TonemapUni {
+  autoExposure   : u32, // 1 = auto, 0 = manual
+  tonemapMode    : u32, // 0=ACES, 1=AgX, 2=Reinhard, 3=Uncharted2
+  manualExposure : f32,
+  pad0           : f32,
 };
 
 struct VSOut {
@@ -63,6 +72,8 @@ fn vs(@builtin(vertex_index) vid: u32) -> VSOut {
 @group(0) @binding(2) var linearSamp: sampler;
 @group(0) @binding(3) var<uniform>  uni: Uni;
 @group(0) @binding(4) var<uniform>  bloomUni: BloomCompositeUni;
+@group(0) @binding(5) var<storage, read> exposureState: array<f32, 1>;
+@group(0) @binding(6) var<uniform> tonemapUni: TonemapUni;
 
 const GAMMA           : f32 = 2.2;
 const VIGNETTE_STRENGTH: f32 = 0.4;
@@ -78,6 +89,32 @@ fn acesToneMapping(hdr: vec3f) -> vec3f {
   let d = 0.59;
   let e = 0.14;
   return clamp((hdr * (a * hdr + b)) / (hdr * (c * hdr + d) + e), vec3f(0.0), vec3f(1.0));
+}
+
+fn agxToneMapping(hdr: vec3f) -> vec3f {
+  let m = mat3x3f(
+    vec3f(0.84247906, 0.0784336, 0.07922375),
+    vec3f(0.04232824, 0.87846864, 0.07916613),
+    vec3f(0.04237565, 0.0784336, 0.87914297)
+  );
+  let v = max(m * max(hdr, vec3f(0.0)), vec3f(0.0));
+  let x = (v * (v + 0.0245786) - 0.000090537) / (v * (0.983729 * v + 0.432951) + 0.238081);
+  return clamp(x, vec3f(0.0), vec3f(1.0));
+}
+
+fn reinhardModified(hdr: vec3f) -> vec3f {
+  let whitePoint = 4.0;
+  return clamp((hdr * (1.0 + hdr / (whitePoint * whitePoint))) / (1.0 + hdr), vec3f(0.0), vec3f(1.0));
+}
+
+fn uncharted2ToneMapping(x: vec3f) -> vec3f {
+  let A = 0.15;
+  let B = 0.50;
+  let C = 0.10;
+  let D = 0.20;
+  let E = 0.02;
+  let F = 0.30;
+  return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
 }
 
 fn applyVignette(color: vec3f, uv: vec2f) -> vec3f {
@@ -129,7 +166,30 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   }
 
   let hdr = scene + bloom * bloomUni.bloomIntensity + streak * bloomUni.anamorphicRatio;
-  let mapped = acesToneMapping(hdr);
+  let autoExposure = max(0.01, exposureState[0]);
+  let exposure = select(max(0.01, tonemapUni.manualExposure), autoExposure, tonemapUni.autoExposure != 0u);
+  let exposed = hdr * exposure;
+
+  var mapped = acesToneMapping(exposed);
+  switch (tonemapUni.tonemapMode) {
+    case 1u: {
+      mapped = agxToneMapping(exposed);
+    }
+    case 2u: {
+      mapped = reinhardModified(exposed);
+    }
+    case 3u: {
+      let whitePoint = 11.2;
+      mapped = clamp(
+        uncharted2ToneMapping(exposed * 2.0) / uncharted2ToneMapping(vec3f(whitePoint)),
+        vec3f(0.0),
+        vec3f(1.0)
+      );
+    }
+    default: {
+      mapped = acesToneMapping(exposed);
+    }
+  }
   let gammaCorrected = pow(max(mapped, vec3f(0.0)), vec3f(1.0 / GAMMA));
 
   // Vignette

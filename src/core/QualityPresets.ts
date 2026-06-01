@@ -21,6 +21,7 @@ export interface TrailQualitySettings {
 /** Atmosphere rendering settings within a quality preset */
 export interface AtmosphereQualitySettings {
   enabled: boolean;
+  scatteringLUT: boolean;
   cloudAlpha: number;
   cloudSpeed: number;
   cloudScale: number;
@@ -47,6 +48,35 @@ export interface VolumetricBeamQualitySettings {
   earthShadow: boolean;
 }
 
+export type DepthOfFieldFocusMode = 'auto-center' | 'satellite-track' | 'surface-distance' | 'earth-center';
+
+/** Depth-of-field settings within a quality preset */
+export interface DepthOfFieldQualitySettings {
+  enabled: boolean;
+  focusMode: DepthOfFieldFocusMode;
+  /** Used when focusMode = 'surface-distance' */
+  surfaceDistanceKm: number;
+  /** Maximum CoC radius in pixels at full resolution */
+  maxBlurPx: number;
+  /** CoC sensitivity scaling factor */
+  cocScale: number;
+  /** Focus interpolation rate (1/s) */
+  transitionRate: number;
+  /** Bilateral similarity shaping for CoC mismatch */
+  depthSigma: number;
+}
+
+/** Motion blur settings within a quality preset */
+export interface MotionBlurQualitySettings {
+  enabled: boolean;
+  /** Screen-space camera blur multiplier */
+  cameraStrength: number;
+  /** Per-satellite billboard stretch multiplier */
+  satelliteStretch: number;
+  /** Sample count along motion direction (8-16 recommended) */
+  tapCount: number;
+}
+
 /** Full quality preset definition */
 export interface QualityPreset {
   level: QualityLevel;
@@ -58,6 +88,10 @@ export interface QualityPreset {
   taaEnabled: boolean;
   /** Volumetric beam (god-ray) pass settings */
   volumetricBeams: VolumetricBeamQualitySettings;
+  /** Depth-of-field post effect settings */
+  depthOfField: DepthOfFieldQualitySettings;
+  /** Camera + per-satellite motion blur */
+  motionBlur: MotionBlurQualitySettings;
 }
 
 /** All built-in quality presets */
@@ -75,6 +109,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     },
     atmosphere: {
       enabled: false,
+      scatteringLUT: false,
       cloudAlpha: 0,
       cloudSpeed: 0,
       cloudScale: 1.0,
@@ -89,6 +124,21 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
       beamRadius: 80.0,
       ambientFactor: 0.05,
       earthShadow: false,
+    },
+    depthOfField: {
+      enabled: false,
+      focusMode: 'auto-center',
+      surfaceDistanceKm: 1200,
+      maxBlurPx: 0,
+      cocScale: 0,
+      transitionRate: 4.0,
+      depthSigma: 1.6,
+    },
+    motionBlur: {
+      enabled: false,
+      cameraStrength: 0.0,
+      satelliteStretch: 0.0,
+      tapCount: 8,
     },
   },
 
@@ -105,6 +155,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     },
     atmosphere: {
       enabled: true,
+      scatteringLUT: false,
       cloudAlpha: 0.25,
       cloudSpeed: 0.015,
       cloudScale: 1.004,
@@ -119,6 +170,21 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
       beamRadius: 80.0,
       ambientFactor: 0.05,
       earthShadow: false,
+    },
+    depthOfField: {
+      enabled: false,
+      focusMode: 'auto-center',
+      surfaceDistanceKm: 1200,
+      maxBlurPx: 0,
+      cocScale: 0,
+      transitionRate: 4.0,
+      depthSigma: 1.6,
+    },
+    motionBlur: {
+      enabled: true,
+      cameraStrength: 0.55,
+      satelliteStretch: 0.35,
+      tapCount: 8,
     },
   },
 
@@ -135,6 +201,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     },
     atmosphere: {
       enabled: true,
+      scatteringLUT: true,
       cloudAlpha: 0.38,
       cloudSpeed: 0.02,
       cloudScale: 1.006,
@@ -149,6 +216,21 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
       beamRadius: 80.0,
       ambientFactor: 0.05,
       earthShadow: true,
+    },
+    depthOfField: {
+      enabled: false,
+      focusMode: 'auto-center',
+      surfaceDistanceKm: 1200,
+      maxBlurPx: 0,
+      cocScale: 0,
+      transitionRate: 4.0,
+      depthSigma: 1.6,
+    },
+    motionBlur: {
+      enabled: true,
+      cameraStrength: 0.8,
+      satelliteStretch: 0.6,
+      tapCount: 12,
     },
   },
 
@@ -165,6 +247,7 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     },
     atmosphere: {
       enabled: true,
+      scatteringLUT: true,
       cloudAlpha: 0.50,
       cloudSpeed: 0.02,
       cloudScale: 1.008,
@@ -179,6 +262,21 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
       beamRadius: 80.0,
       ambientFactor: 0.05,
       earthShadow: true,
+    },
+    depthOfField: {
+      enabled: true,
+      focusMode: 'satellite-track',
+      surfaceDistanceKm: 1400,
+      maxBlurPx: 12,
+      cocScale: 1.6,
+      transitionRate: 3.0,
+      depthSigma: 1.4,
+    },
+    motionBlur: {
+      enabled: true,
+      cameraStrength: 1.0,
+      satelliteStretch: 0.85,
+      tapCount: 16,
     },
   },
 };

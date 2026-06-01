@@ -79,6 +79,7 @@ export class CameraController {
   private readonly MOUSE_SENSITIVITY = 0.25;
   // Tuned separately from mouse — finger travel covers more physical distance per pixel
   private readonly TOUCH_SENSITIVITY = 0.25;
+  private readonly TOUCH_ROTATION_SENSITIVITY = 0.6;
 
   // Mouse state
   private mouse: MouseState = {
@@ -91,6 +92,7 @@ export class CameraController {
   private touchState = {
     active: new Map<number, { x: number; y: number }>(),
     lastPinchDist: 0,
+    lastAngleRad: 0,
     lastCentroid: { x: 0, y: 0 },
     lastTapTime: 0,
     lastTapX: 0,
@@ -113,6 +115,7 @@ export class CameraController {
 
   // Fleet POV roll state (induced by yaw rate)
   private fleetRoll = 0;
+  private fleetTouchRoll = 0;
   private lastFleetYaw = 0;
 
   // Fleet POV orbital breathing (gentle idle sway)
@@ -138,6 +141,7 @@ export class CameraController {
   private angleChangeCallback: ((yaw: number, pitch: number) => void) | null = null;
   private cinematicChangeCallback: ((active: boolean) => void) | null = null;
   private userInteractionCallback: (() => void) | null = null;
+  private touchDoubleTapCallback: ((x: number, y: number) => void) | null = null;
 
   private readonly cinematicSteps: CinematicStep[] = [
     { id: 'horizon-drift', duration: 52 },
@@ -247,12 +251,8 @@ export class CameraController {
       this.handleUserInteraction();
       e.preventDefault();
       if (this.currentMode === 'god' || this.focusSatelliteIndex !== null) {
-        // Exponential zoom: multiply distance by a factor per scroll tick
-        const zoomFactor = 1 + Math.sign(e.deltaY) * 0.08;
-        this.cameraAngles.distance = Math.max(
-          500,
-          Math.min(180000, this.cameraAngles.distance * zoomFactor)
-        );
+        // Exponential zoom shared with touch pinch gesture.
+        this.applyExponentialZoomSteps(Math.sign(e.deltaY));
       } else {
         const zoomSpeed = 40;
         this.cameraAngles.distance = Math.max(
@@ -291,11 +291,13 @@ export class CameraController {
     // Suppress browser pinch-zoom and scroll on the canvas
     canvas.style.touchAction = 'none';
 
-    // Touch: single-finger rotate, two-finger pinch-zoom + pan, double-tap reset
+    // Touch: single-finger rotate, two-finger pinch-zoom + rotate + pan, double-tap focus
     canvas.addEventListener('touchstart', (e) => {
       e.preventDefault();
       this.handleUserInteraction();
-      for (const t of e.changedTouches) {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches.item(i);
+        if (!t) continue;
         this.touchState.active.set(t.identifier, { x: t.clientX, y: t.clientY });
       }
       const count = this.touchState.active.size;
@@ -308,15 +310,18 @@ export class CameraController {
       } else if (count === 2) {
         this.mouse.down = false;
         this.mouseMode = null;
-        const [a, b] = [...this.touchState.active.values()];
+        const [a, b] = this.getTouchPair();
         this.touchState.lastPinchDist = Math.hypot(b.x - a.x, b.y - a.y);
+        this.touchState.lastAngleRad = Math.atan2(b.y - a.y, b.x - a.x);
         this.touchState.lastCentroid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       }
     }, { passive: false });
 
     canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
-      for (const t of e.changedTouches) {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches.item(i);
+        if (!t) continue;
         this.touchState.active.set(t.identifier, { x: t.clientX, y: t.clientY });
       }
       const count = this.touchState.active.size;
@@ -343,44 +348,68 @@ export class CameraController {
         this.mouse.lastX = touch.x;
         this.mouse.lastY = touch.y;
       } else if (count === 2) {
-        const [a, b] = [...this.touchState.active.values()];
+        const [a, b] = this.getTouchPair();
         const newDist = Math.hypot(b.x - a.x, b.y - a.y);
+        const newAngleRad = Math.atan2(b.y - a.y, b.x - a.x);
         const newCentroid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-
-        // Pinch-zoom: ratio > 1 = fingers spreading = zoom in = smaller distance
-        if (this.touchState.lastPinchDist > 0) {
-          const ratio = newDist / this.touchState.lastPinchDist;
-          this.cameraAngles.distance = Math.max(
-            500,
-            Math.min(180000, this.cameraAngles.distance / ratio)
-          );
-          if (this.currentMode === 'god') {
-            this.godView.distance = this.cameraAngles.distance;
-          }
-        }
-
-        // Two-finger pan: centroid translation
         const ddx = newCentroid.x - this.touchState.lastCentroid.x;
         const ddy = newCentroid.y - this.touchState.lastCentroid.y;
-        if (ddx !== 0 || ddy !== 0) {
+
+        const minGestureSpanPx = 18;
+        const hasStableSpan = newDist >= minGestureSpanPx && this.touchState.lastPinchDist >= minGestureSpanPx;
+        const ratio = hasStableSpan && this.touchState.lastPinchDist > 0
+          ? newDist / this.touchState.lastPinchDist
+          : 1;
+        const pinchStrength = Math.abs(Math.log(Math.max(1e-6, ratio)));
+        const panStrength = Math.hypot(ddx, ddy) * 0.003;
+        const angleDeltaRaw = newAngleRad - this.touchState.lastAngleRad;
+        const angleDelta = Math.atan2(Math.sin(angleDeltaRaw), Math.cos(angleDeltaRaw));
+        const rotateStrength = Math.abs(angleDelta);
+
+        // Gesture arbitration: apply only the strongest signal to avoid accidental mixed input.
+        if (pinchStrength >= panStrength && pinchStrength >= rotateStrength && hasStableSpan) {
+          const zoomSteps = -Math.log(Math.max(1e-6, ratio)) / Math.log(1.08);
+          this.applyExponentialZoomSteps(zoomSteps);
+        } else if (rotateStrength > 0.03 && hasStableSpan) {
+          if (this.currentMode === 'sat-pov') {
+            const maxTouchRoll = 18 * MATH.DEG_TO_RAD;
+            this.fleetTouchRoll = Math.max(
+              -maxTouchRoll,
+              Math.min(maxTouchRoll, this.fleetTouchRoll + angleDelta * this.TOUCH_ROTATION_SENSITIVITY)
+            );
+          } else {
+            const rotateDeg = angleDelta * MATH.RAD_TO_DEG * this.TOUCH_ROTATION_SENSITIVITY;
+            this.cameraAngles.yaw -= rotateDeg;
+            this.cameraAngles.yaw = ((this.cameraAngles.yaw % 360) + 360) % 360;
+            if (this.currentMode === 'god') {
+              this.godView.yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
+            }
+            if (this.angleChangeCallback) {
+              this.angleChangeCallback(this.cameraAngles.yaw, this.cameraAngles.pitch);
+            }
+          }
+        } else if (ddx !== 0 || ddy !== 0) {
           this.panBy(-ddx, ddy);
         }
 
         this.touchState.lastPinchDist = newDist;
+        this.touchState.lastAngleRad = newAngleRad;
         this.touchState.lastCentroid = newCentroid;
       }
     }, { passive: false });
 
     const endTouch = (e: TouchEvent): void => {
       e.preventDefault();
-      for (const t of e.changedTouches) {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches.item(i);
+        if (!t) continue;
         this.touchState.active.delete(t.identifier);
       }
       const count = this.touchState.active.size;
       if (count === 0) {
         this.mouse.down = false;
         this.mouseMode = null;
-        // Double-tap: reset camera when two taps land within 350 ms and 50 px
+        // Double-tap: focus nearest satellite under touch when available.
         const now = performance.now();
         const lastTouch = e.changedTouches[0];
         if (lastTouch) {
@@ -388,7 +417,11 @@ export class CameraController {
           const dx = lastTouch.clientX - this.touchState.lastTapX;
           const dy = lastTouch.clientY - this.touchState.lastTapY;
           if (dt < 350 && Math.hypot(dx, dy) < 50) {
-            this.resetCameraAngle();
+            if (this.touchDoubleTapCallback) {
+              this.touchDoubleTapCallback(lastTouch.clientX, lastTouch.clientY);
+            } else {
+              this.resetCameraAngle();
+            }
             this.touchState.lastTapTime = 0;
           } else {
             this.touchState.lastTapTime = now;
@@ -403,6 +436,11 @@ export class CameraController {
         this.mouse.lastY = touch.y;
         this.mouse.down = true;
         this.mouseMode = 'rotate';
+      } else if (count === 2) {
+        const [a, b] = this.getTouchPair();
+        this.touchState.lastPinchDist = Math.hypot(b.x - a.x, b.y - a.y);
+        this.touchState.lastAngleRad = Math.atan2(b.y - a.y, b.x - a.x);
+        this.touchState.lastCentroid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       }
     };
     canvas.addEventListener('touchend', endTouch, { passive: false });
@@ -412,10 +450,30 @@ export class CameraController {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         this.touchState.active.clear();
+        this.touchState.lastPinchDist = 0;
+        this.touchState.lastAngleRad = 0;
         this.mouse.down = false;
         this.mouseMode = null;
       }
     });
+  }
+
+  private getTouchPair(): [{ x: number; y: number }, { x: number; y: number }] {
+    const sorted = [...this.touchState.active.entries()].sort((a, b) => a[0] - b[0]);
+    return [sorted[0][1], sorted[1][1]];
+  }
+
+  private applyExponentialZoomSteps(steps: number): void {
+    if (!Number.isFinite(steps) || steps === 0) return;
+    const zoomFactor = Math.pow(1.08, steps);
+    this.cameraAngles.distance = Math.max(
+      500,
+      Math.min(180000, this.cameraAngles.distance * zoomFactor)
+    );
+
+    if (this.currentMode === 'god') {
+      this.godView.distance = this.cameraAngles.distance;
+    }
   }
   
   /**
@@ -430,6 +488,8 @@ export class CameraController {
     this.godView.yaw = 0;
     this.godView.pitch = 0.35;
     this.godView.distance = CAMERA.GOD_VIEW_DISTANCE;
+    this.fleetRoll = 0;
+    this.fleetTouchRoll = 0;
 
     // Clear inertia and any active transition so the reset is crisp
     this.godVelocity.yaw = 0;
@@ -1175,6 +1235,7 @@ export class CameraController {
     this.fleetRoll += (targetRoll - this.fleetRoll) * 0.08;
     // Decay roll back to zero
     this.fleetRoll *= 0.95;
+    this.fleetTouchRoll *= 0.985;
     
     // Rotate the forward direction by yaw around localUp, then by pitch around right
     const cosY = Math.cos(yaw);
@@ -1209,9 +1270,10 @@ export class CameraController {
     let viewUp = v3norm(v3cross(viewRight, lookDir));
 
     // Apply roll to up vector for immersion during yaw
-    if (Math.abs(this.fleetRoll) > 0.0001) {
-      const cosR = Math.cos(this.fleetRoll);
-      const sinR = Math.sin(this.fleetRoll);
+    const effectiveRoll = this.fleetRoll + this.fleetTouchRoll;
+    if (Math.abs(effectiveRoll) > 0.0001) {
+      const cosR = Math.cos(effectiveRoll);
+      const sinR = Math.sin(effectiveRoll);
       viewUp = v3norm(v3add(v3scale(viewUp, cosR), v3scale(viewRight, sinR)));
     }
     
@@ -1466,6 +1528,10 @@ export class CameraController {
 
   onUserInteraction(callback: () => void): void {
     this.userInteractionCallback = callback;
+  }
+
+  onTouchDoubleTap(callback: (x: number, y: number) => void): void {
+    this.touchDoubleTapCallback = callback;
   }
 
   /**

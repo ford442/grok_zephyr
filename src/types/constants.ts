@@ -54,7 +54,7 @@ export const CAMERA = {
 /** Rendering settings */
 export const RENDER = {
   HDR_FORMAT: 'rgba16float' as GPUTextureFormat,
-  DEPTH_FORMAT: 'depth24plus' as GPUTextureFormat,
+  DEPTH_FORMAT: 'depth32float' as GPUTextureFormat,
   SWAPCHAIN_FORMAT: 'bgra8unorm' as GPUTextureFormat,
   BLOOM_THRESHOLD: 0.75,
   BLOOM_INTENSITY: 1.8,

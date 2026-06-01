@@ -6,6 +6,16 @@
 
 import type { TLEData } from '@/types/index.js';
 
+export interface ParsedTLELine2 {
+  inclinationDeg: number;
+  raanDeg: number;
+  eccentricity: number;
+  argPerigeeDeg: number;
+  meanAnomalyDeg: number;
+  meanMotionRevPerDay: number;
+  altitudeKm: number;
+}
+
 /**
  * TLE Loader
  * 
@@ -17,6 +27,9 @@ export class TLELoader {
    */
   static async fromFile(url: string): Promise<TLEData[]> {
     const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch TLE data (${response.status} ${response.statusText})`);
+    }
     const text = await response.text();
     return TLELoader.parse(text);
   }
@@ -47,6 +60,53 @@ export class TLELoader {
     }
     
     return tles;
+  }
+
+  /**
+   * Parse a TLE line 2 record into orbital values and derived altitude.
+   * Returns null when line 2 is malformed or missing numeric fields.
+   */
+  static parseLine2(line2: string): ParsedTLELine2 | null {
+    if (!line2?.startsWith('2 ')) return null;
+
+    const inclinationDeg = Number.parseFloat(line2.substring(8, 16).trim());
+    const raanDeg = Number.parseFloat(line2.substring(17, 25).trim());
+    const eccentricityRaw = line2.substring(26, 33).trim();
+    const argPerigeeDeg = Number.parseFloat(line2.substring(34, 42).trim());
+    const meanAnomalyDeg = Number.parseFloat(line2.substring(43, 51).trim());
+    const meanMotionRevPerDay = Number.parseFloat(line2.substring(52, 63).trim());
+
+    const eccentricity = Number.parseFloat(`0.${eccentricityRaw}`);
+    const altitudeKm = TLELoader.deriveAltitudeKmFromMeanMotion(meanMotionRevPerDay);
+
+    if (
+      !Number.isFinite(inclinationDeg) ||
+      !Number.isFinite(raanDeg) ||
+      !Number.isFinite(eccentricity) ||
+      !Number.isFinite(argPerigeeDeg) ||
+      !Number.isFinite(meanAnomalyDeg) ||
+      !Number.isFinite(meanMotionRevPerDay) ||
+      !Number.isFinite(altitudeKm)
+    ) {
+      return null;
+    }
+
+    return {
+      inclinationDeg,
+      raanDeg,
+      eccentricity,
+      argPerigeeDeg,
+      meanAnomalyDeg,
+      meanMotionRevPerDay,
+      altitudeKm,
+    };
+  }
+
+  static deriveAltitudeKmFromMeanMotion(meanMotionRevPerDay: number): number {
+    const nRadPerSec = meanMotionRevPerDay * (2 * Math.PI) / 86400;
+    const MU = 398600.4418;
+    const semiMajorKm = Math.pow(MU / (nRadPerSec * nRadPerSec), 1 / 3);
+    return semiMajorKm - 6371.0;
   }
   
   /**

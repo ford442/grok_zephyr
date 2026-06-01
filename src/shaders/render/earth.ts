@@ -9,11 +9,24 @@ export const EARTH_SHADER = UNIFORM_STRUCT + /* wgsl */ `
 struct VIn  { @location(0) pos:vec3f, @location(1) nrm:vec3f }
 struct VOut { @builtin(position) cp:vec4f, @location(0) wp:vec3f, @location(1) n:vec3f }
 
+struct AtmosphereSettings {
+  scatteringEnabled: u32,
+  _pad0: u32,
+  hazeStrength: f32,
+  _pad1: f32,
+}
+
+@group(0) @binding(1) var atmosphereLUT: texture_2d<f32>;
+@group(0) @binding(2) var atmosphereSampler: sampler;
+@group(0) @binding(3) var<uniform> atmosphereSettings: AtmosphereSettings;
+
 const PI: f32 = 3.14159265;
 const EARTH_SIDEREAL_PERIOD: f32 = 86164.0;  // seconds — one sidereal day
 const TWILIGHT_COS_HALF:     f32 = 0.12;     // ≈ 6.9° angular half-width of twilight band
 const NIGHT_START:           f32 = 0.08;     // sun-dot threshold where night begins
 const NIGHT_END:             f32 = -0.06;    // sun-dot threshold where night is full
+const RAYLEIGH_COEFF = vec3f(5.8e-3, 13.5e-3, 33.1e-3);
+const MIE_COEFF = vec3f(2.1e-2);
 
 @vertex fn vs(v:VIn) -> VOut {
   var o:VOut;
@@ -310,6 +323,20 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
   // Cloud visibility fades to zero on the deep night side, with a soft twilight fringe
   let cloudVisibility = smoothstep(-TWILIGHT_COS_HALF, TWILIGHT_COS_HALF, sunDot);
   surf = mix(surf, cloudEdgeColor, cloudAlpha * cloudVisibility);
+
+  if (atmosphereSettings.scatteringEnabled != 0u) {
+    let cosViewZenith = dot(N, viewDir);
+    let lutUV = vec2f(cosViewZenith * 0.5 + 0.5, sunDot * 0.5 + 0.5);
+    let od = textureSample(atmosphereLUT, atmosphereSampler, lutUV).rg;
+    let transmittance = exp(-(RAYLEIGH_COEFF * od.r + MIE_COEFF * od.g));
+
+    let sunOD = textureSample(atmosphereLUT, atmosphereSampler, vec2f(1.0, sunDot * 0.5 + 0.5)).rg;
+    let sunTint = exp(-(RAYLEIGH_COEFF * sunOD.r + MIE_COEFF * sunOD.g));
+    let haze = atmosphereSettings.hazeStrength * pow(horizonFactor, 1.35);
+
+    surf *= mix(vec3f(1.0), transmittance, clamp(haze, 0.0, 1.0));
+    surf = mix(surf, sunTint * vec3f(0.14, 0.22, 0.36), clamp(haze * 0.25, 0.0, 0.35));
+  }
 
   return vec4f(surf + cityWarm, 1.0);
 }

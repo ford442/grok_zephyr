@@ -9,13 +9,17 @@
     "build:standalone": "vite build --mode standalone",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:ui": "vitest --ui",
     "deploy": "npm run build && echo 'Deploy to gh-pages: copy dist/ contents to gh-pages branch'"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "@vitest/ui": "^4.1.7",
     "@webgpu/types": "^0.1.69",
     "typescript": "^5.9.3",
-    "vite": "^5.0.0"
+    "vite": "^5.0.0",
+    "vitest": "^4.1.7"
   },
   "dependencies": {
     "satellite.js": "^5.0.0"

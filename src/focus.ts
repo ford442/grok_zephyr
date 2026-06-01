@@ -17,7 +17,7 @@ export type FocusSelection = {
   speed: number;
 };
 
-export type FocusSelectionCallback = (selectedIndex: number) => void;
+export type FocusSelectionCallback = (selection: FocusSelection | null) => void;
 
 /** Live constellation-level data shown in the stats section of the inspector */
 export type ConstellationStats = {
@@ -82,7 +82,7 @@ export class FocusManager {
     this.previousModeIndex = this.camera.getViewModeIndex();
     this.camera.setFocusSatellite(selection.index, 70, this.currentTime);
 
-    this.selectionChanged(this.selectedIndex);
+    this.selectionChanged(selection);
     this.showOverlay(selection);
   }
 
@@ -92,7 +92,7 @@ export class FocusManager {
     this.hideOverlay();
     this.camera.clearFocus();
     this.camera.setViewMode(this.previousModeIndex);
-    this.selectionChanged(-1);
+    this.selectionChanged(null);
   }
 
   update(time: number): void {
@@ -292,11 +292,11 @@ export class FocusManager {
           <span class="inspector-label">Distance</span>
           <span class="inspector-value">${distFromCamera.toFixed(0)} km</span>
         </div>
-        <div class="inspector-row">
+        <div class="inspector-row inspector-row--secondary">
           <span class="inspector-label">ECI Pos</span>
           <span class="inspector-value inspector-mono">${px}, ${py}, ${pz}</span>
         </div>
-        <div class="inspector-row">
+        <div class="inspector-row inspector-row--secondary">
           <span class="inspector-label">Velocity</span>
           <span class="inspector-value inspector-mono">${vx}, ${vy}, ${vz}</span>
         </div>

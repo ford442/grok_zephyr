@@ -16,6 +16,17 @@ import { UNIFORM_STRUCT } from '../uniforms.js';
 export const STARS_SHADER = UNIFORM_STRUCT + /* wgsl */ `
 struct VSOut { @builtin(position) pos:vec4f, @location(0) uv:vec2f };
 
+struct AtmosphereSettings {
+  scatteringEnabled: u32,
+  _pad0: u32,
+  hazeStrength: f32,
+  _pad1: f32,
+}
+
+@group(0) @binding(1) var atmosphereLUT: texture_2d<f32>;
+@group(0) @binding(2) var atmosphereSampler: sampler;
+@group(0) @binding(3) var<uniform> atmosphereSettings: AtmosphereSettings;
+
 @vertex fn vs(@builtin(vertex_index) vi:u32) -> VSOut {
   const pts = array<vec2f,3>(vec2f(-1,-1),vec2f(3,-1),vec2f(-1,3));
   var o:VSOut;
@@ -25,6 +36,8 @@ struct VSOut { @builtin(position) pos:vec4f, @location(0) uv:vec2f };
 }
 
 const PI: f32 = 3.14159265;
+const RAYLEIGH_COEFF = vec3f(5.8e-3, 13.5e-3, 33.1e-3);
+const MIE_COEFF = vec3f(2.1e-2);
 
 // ── Hash / noise ─────────────────────────────────────────────────────────────
 
@@ -211,6 +224,21 @@ fn starLayer(dir:vec3f, cellsPerRad:f32, density:f32, twinklePower:f32) -> vec3f
                          uni.background_mode == 2u);
   var color = sky + stars * 1.05 + atmosphere;
   color *= modeBoost;
+
+  if (atmosphereSettings.scatteringEnabled != 0u) {
+    let upDir = normalize(uni.camera_pos.xyz);
+    let cosViewZenith = clamp(dot(dir, upDir), -1.0, 1.0);
+    let cosSunZenith = clamp(dot(normalize(uni.sun_position.xyz), upDir), -1.0, 1.0);
+    let lutUV = vec2f(cosViewZenith * 0.5 + 0.5, cosSunZenith * 0.5 + 0.5);
+    let od = textureSample(atmosphereLUT, atmosphereSampler, lutUV).rg;
+    let transmittance = exp(-(RAYLEIGH_COEFF * od.r + MIE_COEFF * od.g));
+    let sunOD = textureSample(atmosphereLUT, atmosphereSampler, vec2f(1.0, cosSunZenith * 0.5 + 0.5)).rg;
+    let sunTint = exp(-(RAYLEIGH_COEFF * sunOD.r + MIE_COEFF * sunOD.g));
+    let horizon = smoothstep(0.35, -0.15, cosViewZenith);
+    let extinction = mix(vec3f(1.0), transmittance, clamp(atmosphereSettings.hazeStrength * horizon, 0.0, 1.0));
+    let redden = mix(vec3f(1.0), sunTint, clamp(horizon * 0.8, 0.0, 0.8));
+    color *= extinction * redden;
+  }
 
   // Soft gamma lift (keeps very dark regions slightly luminous)
   color = pow(max(color, vec3f(0.0)), vec3f(0.96, 0.97, 0.99));

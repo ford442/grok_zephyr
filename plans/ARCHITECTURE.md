@@ -37,11 +37,11 @@ grok_zephyr/
     │   ├── orbital_compute.wgsl  # Orbital mechanics compute
     │   ├── stars.wgsl            # Starfield background
     │   ├── earth.wgsl            # Earth sphere
-    │   ├── atmosphere.wgsl       # Atmospheric limb glow
+    │   ├── render/atmosphere.ts  # Atmospheric scattering shader
     │   ├── satellites.wgsl       # Satellite billboards
     │   ├── bloom_threshold.wgsl  # Bloom extraction
     │   ├── bloom_blur.wgsl       # Gaussian blur
-    │   ├── composite.wgsl        # Tonemapping composite
+    │   ├── render/postProcess/composite.ts # Tonemapping composite shader source
     │   └── index.ts              # Shader exports
     ├── physics/
     │   └── OrbitalPropagator.ts  # Placeholder for SGP4

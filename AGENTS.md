@@ -19,7 +19,7 @@ The simulation renders a real-time light show with RGB beam projections from sat
 | Physics | satellite.js 5.0+ (SGP4 dependency, but GPU propagation is custom Keplerian) |
 | Package Manager | npm |
 | Deployment | Python 3 + Paramiko (SFTP) |
-| Testing | **None currently** — no test framework or test files exist |
+| Testing | Vitest (`npm run test`) with initial coverage for math + TLE parsing |
 
 ## Project Structure
 
@@ -105,11 +105,8 @@ grok_zephyr/
         ├── uniforms.wgsl         # Shared uniform struct (WGSL)
         ├── constellation_optics.wgsl
         ├── orbital_compute.wgsl
-        ├── composite.wgsl
-        ├── atmosphere.wgsl
         ├── sky_strips_compute.wgsl
         ├── bloom_threshold.wgsl
-        ├── earth_atmosphere.wgsl
         ├── satellite_render.wgsl
         ├── satellites_lod.wgsl
         ├── taa.wgsl
@@ -117,7 +114,6 @@ grok_zephyr/
         ├── stars.wgsl
         ├── lens_effects.wgsl
         ├── bloom_blur.wgsl
-        ├── earth_atmosphere_enhanced.wgsl
         ├── projection_billboard.wgsl
         ├── volumetric_beams.wgsl
         ├── earth.wgsl
@@ -397,16 +393,15 @@ WebGPU requires a secure context (HTTPS or localhost).
 
 ## Testing
 
-**There are currently no tests in this project.** No test framework (Jest, Vitest, Playwright, etc.) is configured, and no test files exist.
+The project uses **Vitest** (Node environment) with colocated `*.test.ts` files.
 
-If you add tests, the recommended approach is:
-- Use **Vitest** (aligns with the Vite build system)
-- Place tests next to source files (`*.test.ts`) or in a `tests/` directory
-- Priority test areas:
-  1. `src/utils/math.ts` — matrix operations, vector math, frustum extraction
-  2. `src/data/TLELoader.ts` — TLE parsing logic
-  3. `src/core/SatelliteGPUBuffer.ts` — CPU-side position/velocity calculations
-  4. `src/camera/CameraController.ts` — camera state calculations for each view mode
+Current covered modules:
+1. `src/utils/math.ts` — matrix/vector operations and frustum extraction
+2. `src/data/TLELoader.ts` — parsing, line2 orbital extraction, and fetch handling
+
+Recommended next targets:
+1. `src/core/SatelliteGPUBuffer.ts` — CPU-side position/velocity calculations
+2. `src/camera/CameraController.ts` — camera state calculations for each view mode
 
 ## Deployment
 

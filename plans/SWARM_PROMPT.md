@@ -22,7 +22,7 @@ All 5 agents have completed their visual enhancement tasks for the Grok Zephyr W
 
 ### AGENT 2: @vfx-magician - Atmosphere & Lens Effects ✅
 **Files Created:**
-- `src/shaders/earth_atmosphere_enhanced.wgsl` - Physically-based atmospheric scattering
+- `src/shaders/render/atmosphere.ts` - Physically-based atmospheric scattering
 - `src/shaders/lens_effects.wgsl` - Cinematic lens effects
 
 **Features:**

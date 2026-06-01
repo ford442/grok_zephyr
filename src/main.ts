@@ -6,17 +6,18 @@
 
 import { WebGPUContext, WebGPUError } from '@/core/WebGPUContext.js';
 import { SatelliteGPUBuffer } from '@/core/SatelliteGPUBuffer.js';
-import { RenderPipeline } from '@/render/RenderPipeline.js';
+import { RenderPipeline, type TonemapMode } from '@/render/RenderPipeline.js';
 import { PostProcessStack } from '@/render/PostProcessStack.js';
 import { VolumetricBeamRenderer } from '@/render/VolumetricBeamRenderer.js';
 import { CameraController, type CameraState } from '@/camera/CameraController.js';
 import { GroundObserverCamera, GroundObserverPreset } from '@/camera/GroundObserverCamera.js';
 import { UIManager } from '@/ui/UIManager.js';
 import { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
-import { FocusManager, type ConstellationStats } from '@/focus.js';
+import { FocusManager, type ConstellationStats, type FocusSelection } from '@/focus.js';
+import { AudioEngine } from '@/audio/AudioEngine.js';
 import { TrailRenderer } from '@/render/TrailRenderer.js';
 import { EarthAtmosphereRenderer } from '@/earth.js';
-import { genSphere, extractFrustum } from '@/utils/math.js';
+import { genSphere, extractFrustum, mat4inv } from '@/utils/math.js';
 import { getBeamPatternTitle } from '@/patterns.js';
 import { CONSTANTS, BUFFER_SIZES, UI as UI_CONSTANTS } from '@/types/constants.js';
 import { TLELoader } from '@/data/TLELoader.js';
@@ -24,12 +25,12 @@ import { getBackgroundModeIndex, resolveBackgroundMode, setBackgroundMode } from
 import {
   type QualityLevel,
   QUALITY_PRESETS,
-  loadSavedQualityLevel,
   saveQualityLevel,
   parseQualityParam,
 } from '@/core/QualityPresets.js';
 import { OnboardingManager } from '@/ui/OnboardingManager.js';
 import { WebGPUCompatibilityManager } from '@/ui/WebGPUCompatibilityManager.js';
+import type { TrailConfig } from '@/types/animation.js';
 
 import './styles.css';
 import './styles/onboarding.css';
@@ -71,6 +72,55 @@ const TIMING_ESTIMATES = {
   POST_DISABLED: 0.5,       // Post-process time when disabled
 };
 
+type ExposureMode = 'auto' | 'manual';
+
+interface ExposureRuntimeSettings {
+  mode: ExposureMode;
+  manualExposure: number;
+  adaptationSpeed: number;
+  tonemapMode: TonemapMode;
+}
+
+const EXPOSURE_STORAGE_KEY = 'grokzephyr-exposure';
+
+const DEFAULT_EXPOSURE_SETTINGS: ExposureRuntimeSettings = {
+  mode: 'auto',
+  manualExposure: 1.0,
+  adaptationSpeed: 1.8,
+  tonemapMode: 0,
+};
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function parseSavedExposureSettings(): ExposureRuntimeSettings {
+  try {
+    const raw = localStorage.getItem(EXPOSURE_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_EXPOSURE_SETTINGS };
+    const parsed = JSON.parse(raw) as Partial<ExposureRuntimeSettings>;
+    const mode: ExposureMode = parsed.mode === 'manual' ? 'manual' : 'auto';
+    const tonemapCandidate = Number(parsed.tonemapMode);
+    const tonemapMode: TonemapMode = (tonemapCandidate >= 0 && tonemapCandidate <= 3 ? tonemapCandidate : 0) as TonemapMode;
+    return {
+      mode,
+      manualExposure: clamp(Number(parsed.manualExposure) || 1.0, 0.1, 10.0),
+      adaptationSpeed: clamp(Number(parsed.adaptationSpeed) || 1.8, 0.1, 5.0),
+      tonemapMode,
+    };
+  } catch {
+    return { ...DEFAULT_EXPOSURE_SETTINGS };
+  }
+}
+
+function saveExposureSettings(settings: ExposureRuntimeSettings): void {
+  try {
+    localStorage.setItem(EXPOSURE_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // localStorage may be unavailable; ignore persistence failures.
+  }
+}
+
 /**
  * Main Application Class
  */
@@ -89,6 +139,7 @@ class GrokZephyrApp {
   private groundObserver: GroundObserverCamera;
   private ui: UIManager;
   private profiler: PerformanceProfiler;
+  private audio: AudioEngine;
   private focusManager: FocusManager | null = null;
   private trailRenderer: TrailRenderer | null = null;
   private earthAtmosphereRenderer: EarthAtmosphereRenderer | null = null;
@@ -120,18 +171,32 @@ class GrokZephyrApp {
   private readonly resizeListener = () => {
     this.handleResize();
   };
+  private readonly orientationChangeListener = () => {
+    this.updateMobileViewportPresentation();
+    this.handleResize();
+  };
+  private readonly orientationLockGestureListener = () => {
+    this.tryLockLandscapeOrientation();
+  };
+  private orientationLockAttempted = false;
+  private trailSamplePhase = 0;
+  private trailToggleOverride: boolean | null = null;
+  private trailLengthMode: 'short' | 'medium' | 'long' = 'medium';
+  private exposureSettings: ExposureRuntimeSettings = parseSavedExposureSettings();
 
   constructor() {
     const canvas = document.getElementById('gpu-canvas') as HTMLCanvasElement;
     if (!canvas) {
       throw new Error('Canvas element #gpu-canvas not found');
     }
+
     this.canvas = canvas;
     
     this.camera = new CameraController();
     this.groundObserver = new GroundObserverCamera();
     this.ui = new UIManager();
     this.profiler = new PerformanceProfiler();
+    this.audio = new AudioEngine();
     this.patternNameDisplay = document.getElementById('patternName');
     
     // Setup callbacks
@@ -140,6 +205,7 @@ class GrokZephyrApp {
 
   /** Cached mobile device detection (computed once at startup) */
   private readonly isMobileDevice = GrokZephyrApp.detectMobileDevice();
+  private readonly mobileDefaultQuality: QualityLevel = GrokZephyrApp.detectMobileDefaultQuality();
 
   /** Current beam pattern mode (0=chaos, 1=GROK, 2=X logo) */
   private currentPatternMode = 1;
@@ -176,6 +242,8 @@ class GrokZephyrApp {
       this.ui.setViewMode(name, altitude);
       this.ui.setActiveButton(this.camera.getViewModeIndex());
       this.updateGroundObserverOverlay();
+      this.audio.setViewMode(_mode);
+      this.audio.playModeWhoosh();
     });
 
     // UI view change updates camera
@@ -189,6 +257,7 @@ class GrokZephyrApp {
 
     this.camera.onUserInteraction(() => {
       this.registerUserActivity(true);
+      void this.audio.unlock();
     });
 
     this.ui.onDemoToggle(() => {
@@ -204,9 +273,38 @@ class GrokZephyrApp {
       this.demoAutoEnabled = enabled;
       this.registerUserActivity(false);
     });
+    this.ui.onAudioToggle((muted) => {
+      void this.audio.setMuted(muted);
+    });
+    this.ui.setAudioMuted(this.audio.isMuted());
+    this.ui.onTrailsToggle((enabled) => {
+      this.trailToggleOverride = enabled;
+      this.applyQualityPreset(this.currentQualityLevel);
+    });
+    this.ui.onTrailLengthChange((mode) => {
+      this.trailLengthMode = mode;
+      this.applyQualityPreset(this.currentQualityLevel);
+    });
+    this.ui.onExposureModeChange((mode) => {
+      this.exposureSettings.mode = mode;
+      this.applyExposureSettings();
+    });
+    this.ui.onManualExposureChange((value) => {
+      this.exposureSettings.manualExposure = clamp(value, 0.1, 10.0);
+      this.applyExposureSettings();
+    });
+    this.ui.onExposureAdaptationSpeedChange((value) => {
+      this.exposureSettings.adaptationSpeed = clamp(value, 0.1, 5.0);
+      this.applyExposureSettings();
+    });
+    this.ui.onTonemapModeChange((mode) => {
+      this.exposureSettings.tonemapMode = mode;
+      this.applyExposureSettings();
+    });
 
     this.ui.setDemoActive(false);
     this.ui.setDemoAutoEnabled(this.demoAutoEnabled);
+    this.ui.setExposureControls(this.exposureSettings);
 
     // Stats update
     this.profiler.onStatsUpdate((stats) => {
@@ -246,6 +344,9 @@ class GrokZephyrApp {
     this.camera.onAngleChange((yaw, pitch) => {
       this.updateAngleDisplay(yaw, pitch);
     });
+    this.camera.onTouchDoubleTap((x, y) => {
+      this.focusSatelliteAtScreenPoint(x, y);
+    });
     
     // Reset angle button
     const resetBtn = document.getElementById('resetAngle');
@@ -273,11 +374,22 @@ class GrokZephyrApp {
       const button = target?.closest('button') as HTMLButtonElement | null;
       if (!button) return;
       this.registerUserActivity(!button.hasAttribute('data-no-interrupt-demo'));
+      if (this.shouldPlayButtonTick(button)) {
+        this.audio.playButtonTick();
+      }
     });
+  }
+
+  private shouldPlayButtonTick(button: HTMLButtonElement): boolean {
+    if (/^btn[0-4]$/.test(button.id)) return false;
+    if (button.id.startsWith('pbtn')) return false;
+    if (button.id === 'capVideoStart') return false;
+    return true;
   }
 
   private registerUserActivity(interruptCinematic: boolean): void {
     this.lastUserActivityTime = performance.now() * 0.001;
+    void this.audio.unlock();
     if (interruptCinematic && this.camera.isCinematicActive()) {
       this.camera.stopCinematic();
     }
@@ -298,6 +410,27 @@ class GrokZephyrApp {
       return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
     }
     return false;
+  }
+
+  /**
+   * Choose a safer default quality level for mobile hardware.
+   * Keeps desktop defaults untouched while preferring lower fill-rate on constrained devices.
+   */
+  private static detectMobileDefaultQuality(): QualityLevel {
+    if (!GrokZephyrApp.detectMobileDevice()) {
+      return 'high';
+    }
+
+    const nav = navigator as Navigator & { deviceMemory?: number };
+    const deviceMemory = nav.deviceMemory ?? 0;
+    const cores = navigator.hardwareConcurrency || 0;
+    const isAndroid = /Android/i.test(navigator.userAgent);
+
+    const lowMemory = deviceMemory > 0 && deviceMemory <= 4;
+    const lowCoreCount = cores > 0 && cores <= 4;
+    const constrainedAndroid = isAndroid && ((deviceMemory > 0 && deviceMemory <= 6) || (cores > 0 && cores <= 6));
+
+    return (lowMemory || lowCoreCount || constrainedAndroid) ? 'low' : 'balanced';
   }
 
   /**
@@ -582,6 +715,7 @@ class GrokZephyrApp {
         this.addCaptureToGallery(url, 'image', filename);
         this.downloadUrl(url, filename);
       });
+      this.audio.playCaptureToggle(false);
       this.setCaptureStatus(`Saved PNG ${scale}x`);
     } catch (error) {
       console.error('Capture failed:', error);
@@ -610,6 +744,7 @@ class GrokZephyrApp {
     this.captureInProgress = true;
     if (this.captureVideoButton) this.captureVideoButton.disabled = true;
     this.setCaptureStatus(`Recording ${durationSeconds}s...`);
+    this.audio.playCaptureToggle(true);
 
     try {
       await this.withCaptureUIVisibility(async () => {
@@ -665,6 +800,7 @@ class GrokZephyrApp {
         this.addCaptureToGallery(url, 'video', filename);
         this.downloadUrl(url, filename);
       });
+      this.audio.playCaptureToggle(false);
       this.setCaptureStatus('Saved video clip');
     } catch (error) {
       console.error('Video capture failed:', error);
@@ -686,6 +822,10 @@ class GrokZephyrApp {
   }
 
   private handleCanvasClick(event: MouseEvent): void {
+    this.focusSatelliteAtScreenPoint(event.clientX, event.clientY);
+  }
+
+  private focusSatelliteAtScreenPoint(clientX: number, clientY: number): void {
     if (!this.focusManager || !this.buffers || !this.context) return;
     const time = this.lastTime || performance.now() / 1000;
     const cameraState = this.camera.calculateCamera(
@@ -696,9 +836,57 @@ class GrokZephyrApp {
 
     const aspect = this.canvas.clientWidth / this.canvas.clientHeight;
     const { viewProjection } = this.camera.buildViewProjection(cameraState, aspect);
-    const selection = this.focusManager.raycast(event.clientX, event.clientY, cameraState, viewProjection, time);
+    const selection = this.focusManager.raycast(clientX, clientY, cameraState, viewProjection, time);
     if (selection) {
       this.focusManager.selectSatellite(selection);
+    }
+  }
+
+  private setupMobileOrientationSupport(): void {
+    if (!this.isMobileDevice) return;
+    this.updateMobileViewportPresentation();
+    window.addEventListener('orientationchange', this.orientationChangeListener);
+    window.addEventListener('pointerdown', this.orientationLockGestureListener, { passive: true });
+    window.addEventListener('touchstart', this.orientationLockGestureListener, { passive: true });
+  }
+
+  private tryLockLandscapeOrientation(): void {
+    if (this.orientationLockAttempted) return;
+    this.orientationLockAttempted = true;
+    window.removeEventListener('pointerdown', this.orientationLockGestureListener);
+    window.removeEventListener('touchstart', this.orientationLockGestureListener);
+
+    if (!('orientation' in screen)) return;
+    const orientation = screen.orientation as ScreenOrientation & {
+      lock?: (orientation: 'any' | 'natural' | 'landscape' | 'portrait' | 'portrait-primary' | 'portrait-secondary' | 'landscape-primary' | 'landscape-secondary') => Promise<void>;
+    };
+    if (typeof orientation.lock !== 'function') return;
+
+    orientation.lock('landscape').catch(() => {
+      // Ignore lock errors (unsupported, denied, or unavailable without fullscreen).
+    });
+  }
+
+  private updateMobileViewportPresentation(): void {
+    if (!this.isMobileDevice) return;
+
+    const portrait = window.innerHeight > window.innerWidth;
+    document.body.classList.toggle('is-portrait-mobile', portrait);
+
+    if (portrait) {
+      const letterboxAspect = 16 / 9;
+      const letterboxHeight = Math.max(1, Math.floor(window.innerWidth / letterboxAspect));
+      const height = Math.min(window.innerHeight, letterboxHeight);
+      const top = Math.max(0, Math.floor((window.innerHeight - height) * 0.5));
+      this.canvas.style.width = '100vw';
+      this.canvas.style.height = `${height}px`;
+      this.canvas.style.top = `${top}px`;
+      this.canvas.style.left = '0px';
+    } else {
+      this.canvas.style.width = '100vw';
+      this.canvas.style.height = '100vh';
+      this.canvas.style.top = '0px';
+      this.canvas.style.left = '0px';
     }
   }
 
@@ -771,6 +959,7 @@ class GrokZephyrApp {
     this.context.writeBuffer(this.buffers.getBuffers().beamParams, beamParamsData);
     this.writePatternParamsBuffer();
     this.updatePatternTitle();
+    this.audio.playPatternChange(mode);
     
     const modeNames = ['CHAOS', 'GROK', '𝕏 LOGO'];
     console.log(`🔄 Beam pattern switched to: ${modeNames[mode]}`);
@@ -800,6 +989,13 @@ class GrokZephyrApp {
     this.writePatternParamsBuffer();
   }
 
+  private handleFocusSelectionChange(selection: FocusSelection | null): void {
+    this.updateSelectedSatelliteIndex(selection?.index ?? -1);
+    if (selection) {
+      this.audio.playFocusChime(selection.altitude);
+    }
+  }
+
   setGroundViewEnabled(enabled: boolean): void {
     this.groundViewEnabled = enabled;
     this.earthAtmosphereRenderer?.setEnabled(enabled);
@@ -826,19 +1022,40 @@ class GrokZephyrApp {
     }
   }
 
-  /**
-   * Record sampled trail positions for a sparse subset of satellites.
-   * Keeps performance high by using a coarse 1-in-4096 sampling pattern.
-   */
-  private recordTrailSamples(time: number): void {
-    if (!this.trailRenderer || !this.buffers) return;
+  private recordTrailSamplesForCamera(time: number, cameraState: CameraState): void {
+    if (!this.trailRenderer || !this.buffers || !this.trailRenderer.isEnabled()) return;
 
     const orbitalData = this.buffers.getOrbitalElementData();
-    const sampleStride = 4096; // 256 trails across 1M satellites
-    const position = new Float32Array(3);
+    const sampleCount = this.trailRenderer.getSamplingBudget();
+    if (sampleCount <= 0) return;
+    const sampleStride = Math.max(1, Math.floor(CONSTANTS.NUM_SATELLITES / sampleCount));
+    const phase = this.trailSamplePhase % sampleStride;
+    this.trailSamplePhase++;
 
-    for (let idx = 0; idx < CONSTANTS.NUM_SATELLITES; idx += sampleStride) {
+    const position = new Float32Array(3);
+    const cameraForward = new Float32Array([
+      cameraState.target[0] - cameraState.position[0],
+      cameraState.target[1] - cameraState.position[1],
+      cameraState.target[2] - cameraState.position[2],
+    ]);
+    const forwardLen = Math.hypot(cameraForward[0], cameraForward[1], cameraForward[2]) || 1.0;
+    cameraForward[0] /= forwardLen;
+    cameraForward[1] /= forwardLen;
+    cameraForward[2] /= forwardLen;
+    const cameraPos = new Float32Array(cameraState.position);
+    const maxDistance = this.camera.getViewMode() === 'moon' ? 240000 : this.camera.getViewMode() === 'god' ? 140000 : 90000;
+    const visibilityDotThreshold = this.camera.getViewMode() === 'god' ? -0.35 : -0.2;
+
+    for (let idx = phase; idx < CONSTANTS.NUM_SATELLITES; idx += sampleStride) {
       const satPos = this.buffers.calculateSatellitePosition(idx, time);
+      const dx = satPos[0] - cameraPos[0];
+      const dy = satPos[1] - cameraPos[1];
+      const dz = satPos[2] - cameraPos[2];
+      const dist = Math.hypot(dx, dy, dz);
+      if (dist > maxDistance) continue;
+      const invDist = dist > 1e-3 ? 1.0 / dist : 0.0;
+      const facing = (dx * cameraForward[0] + dy * cameraForward[1] + dz * cameraForward[2]) * invDist;
+      if (facing < visibilityDotThreshold) continue;
       position[0] = satPos[0];
       position[1] = satPos[1];
       position[2] = satPos[2];
@@ -914,6 +1131,19 @@ class GrokZephyrApp {
     return this.currentQualityLevel;
   }
 
+  private applyExposureSettings(): void {
+    this.exposureSettings.manualExposure = clamp(this.exposureSettings.manualExposure, 0.1, 10.0);
+    this.exposureSettings.adaptationSpeed = clamp(this.exposureSettings.adaptationSpeed, 0.1, 5.0);
+    this.pipeline?.setExposureSettings({
+      autoEnabled: this.exposureSettings.mode === 'auto',
+      manualExposure: this.exposureSettings.manualExposure,
+      adaptationSpeed: this.exposureSettings.adaptationSpeed,
+      tonemapMode: this.exposureSettings.tonemapMode,
+    });
+    this.ui.setExposureControls(this.exposureSettings);
+    saveExposureSettings(this.exposureSettings);
+  }
+
   /**
    * Apply a quality preset to all affected renderers.
    *
@@ -923,16 +1153,11 @@ class GrokZephyrApp {
   applyQualityPreset(level: QualityLevel): void {
     const preset = QUALITY_PRESETS[level];
     this.currentQualityLevel = level;
+    const effectiveTrail = this.getEffectiveTrailConfig(level);
 
     // Apply trail settings
     if (this.trailRenderer) {
-      this.trailRenderer.setConfig({
-        enabled: preset.trail.enabled,
-        maxLength: preset.trail.maxLength,
-        fadeOut: preset.trail.fadeOut,
-        ribbonWidth: preset.trail.ribbonWidth,
-        colorByShell: true,
-      });
+      this.trailRenderer.setConfig(effectiveTrail);
     }
 
     // Apply atmosphere settings
@@ -945,6 +1170,10 @@ class GrokZephyrApp {
         hazeStrength: preset.atmosphere.hazeStrength,
       });
     }
+    this.pipeline?.setAtmosphereScatteringConfig(
+      preset.atmosphere.scatteringLUT,
+      preset.atmosphere.hazeStrength
+    );
 
     // Apply TAA setting from quality preset
     if (this.postProcessStack) {
@@ -970,8 +1199,13 @@ class GrokZephyrApp {
       earthShadow:  preset.volumetricBeams.earthShadow,
     });
 
+    this.pipeline?.setDepthOfFieldConfig(preset.depthOfField);
+    this.pipeline?.setMotionBlurConfig(preset.motionBlur);
+
     // Update UI
     this.ui.setActiveQualityButton(level);
+    this.ui.setTrailsEnabled(effectiveTrail.enabled);
+    this.ui.setTrailLengthMode(this.trailLengthMode);
     saveQualityLevel(level);
 
     console.log(`🎨 Quality preset: ${preset.label} — ${preset.description}`);
@@ -986,7 +1220,15 @@ class GrokZephyrApp {
    */
   private applyVolumetricBeamPreset(
     enabled: boolean,
-    config: { maxSteps?: number; density?: number; intensity?: number } = {},
+    config: {
+      maxSteps?: number;
+      density?: number;
+      intensity?: number;
+      mieG?: number;
+      beamRadius?: number;
+      ambientFactor?: number;
+      earthShadow?: boolean;
+    } = {},
   ): void {
     if (!enabled) {
       if (this.volumetricBeamRenderer) {
@@ -1066,6 +1308,7 @@ class GrokZephyrApp {
       
       // Attach camera to canvas
       this.camera.attachToCanvas(this.canvas);
+      this.setupMobileOrientationSupport();
       
       // Initialize buffers
       this.buffers = new SatelliteGPUBuffer(this.context);
@@ -1076,7 +1319,7 @@ class GrokZephyrApp {
         this.canvas,
         this.camera,
         this.buffers,
-        (index) => this.updateSelectedSatelliteIndex(index)
+        (selection) => this.handleFocusSelectionChange(selection)
       );
 
       // Load orbital data: TLE if requested via query param, else procedural Walker
@@ -1136,7 +1379,7 @@ class GrokZephyrApp {
       this.postProcessStack.initialize(width, height);
 
       this.trailRenderer = new TrailRenderer(this.context, {
-        enabled: true,
+        enabled: false,
         maxLength: 45,
         fadeOut: 45,
         colorByShell: true,
@@ -1165,21 +1408,24 @@ class GrokZephyrApp {
       // Determine initial quality level using the precedence:
       //   1. ?preset= URL parameter (highest priority — explicit user request)
       //   2. localStorage saved value (user's last session choice)
-      //   3. 'balanced' on mobile (save fill-rate), 'high' on desktop
+      //   3. hardware-safe default on mobile, 'high' on desktop
       let savedQuality: QualityLevel | null = null;
       try {
         const stored = localStorage.getItem('grokzephyr-quality') as QualityLevel | null;
         if (stored && stored in QUALITY_PRESETS) savedQuality = stored;
-      } catch { /* localStorage unavailable — proceed without saved value */ }
+      } catch {
+        // localStorage unavailable — proceed without saved value
+      }
 
       const initialQuality: QualityLevel =
         urlParams.qualityLevel ??
         savedQuality ??
-        (this.isMobileDevice ? 'balanced' : 'high');
+        (this.isMobileDevice ? this.mobileDefaultQuality : 'high');
       this.currentQualityLevel = initialQuality;
 
       // Apply initial quality preset (this also updates the UI buttons)
       this.applyQualityPreset(initialQuality);
+      this.applyExposureSettings();
 
       // Apply URL param overrides for view mode, physics, and beam pattern
       const initialViewMode = urlParams.viewMode ?? 0;
@@ -1253,6 +1499,7 @@ class GrokZephyrApp {
    * Handle window resize
    */
   private handleResize(): void {
+    this.updateMobileViewportPresentation();
     if (!this.context || !this.buffers || !this.pipeline) return;
 
     const size = this.getDrawableSize();
@@ -1343,6 +1590,7 @@ class GrokZephyrApp {
     );
     
     const { viewProjection, view } = this.camera.buildViewProjection(cameraState, aspect);
+    const inverseViewProjection = mat4inv(viewProjection);
     const { right, up } = this.camera.getCameraAxes(view);
     
     // Extract frustum planes
@@ -1423,6 +1671,7 @@ class GrokZephyrApp {
     
     // Write to GPU
     this.context.writeBuffer(this.buffers.getBuffers().uniforms, uniformData);
+    this.pipeline?.setMotionBlurFrameData(viewProjection, inverseViewProjection, viewMode, deltaTime);
     
     // Update beam params time
     this.updateBeamParamsTime(time);
@@ -1494,27 +1743,40 @@ class GrokZephyrApp {
     }
 
     // Update any active click focus state
-    // Record and update short orbital trails
     // Calculate camera state once and share across focus manager and trail renderer.
-    this.recordTrailSamples(this.simTime);
-    {
-      const cameraState = this.camera.calculateCamera(
-        (idx, t) => this.buffers!.calculateSatellitePosition(idx, t),
-        (idx, t) => this.buffers!.calculateSatelliteVelocity(idx, t),
-        time
-      );
+    const cameraState = this.camera.calculateCamera(
+      (idx, t) => this.buffers!.calculateSatellitePosition(idx, t),
+      (idx, t) => this.buffers!.calculateSatelliteVelocity(idx, t),
+      time
+    );
+    this.recordTrailSamplesForCamera(this.simTime, cameraState);
 
-      if (this.focusManager) {
-        this.focusManager.setCameraPosition(cameraState.position);
-        this.focusManager.setConstellationStats(this.buildConstellationStats());
-        this.focusManager.update(time);
-      }
-
-      if (this.trailRenderer) {
-        this.trailRenderer.updateGeometry(this.simTime, new Float32Array(cameraState.position));
-      }
-      this.writeUniforms(time, deltaTime, cameraState);
+    if (this.focusManager) {
+      this.focusManager.setCameraPosition(cameraState.position);
+      this.focusManager.setConstellationStats(this.buildConstellationStats());
+      this.focusManager.update(time);
     }
+
+    if (this.trailRenderer) {
+      const forward = new Float32Array([
+        cameraState.target[0] - cameraState.position[0],
+        cameraState.target[1] - cameraState.position[1],
+        cameraState.target[2] - cameraState.position[2],
+      ]);
+      const fLen = Math.hypot(forward[0], forward[1], forward[2]) || 1.0;
+      forward[0] /= fLen;
+      forward[1] /= fLen;
+      forward[2] /= fLen;
+      this.trailRenderer.updateGeometry(this.simTime, new Float32Array(cameraState.position), forward);
+    }
+    this.writeUniforms(time, deltaTime, cameraState);
+    this.pipeline.updateDepthOfFieldFocus(
+      cameraState.position,
+      this.selectedSatelliteIndex,
+      time,
+      deltaTime,
+      (idx, t) => this.buffers!.calculateSatellitePosition(idx, t)
+    );
 
     // Create command encoder
     const encoder = this.context.createCommandEncoder('frame');
@@ -1560,8 +1822,12 @@ class GrokZephyrApp {
       this.volumetricBeamRenderer.encodeCompositePass(encoder, this.pipeline.getHDRView());
     }
     
+    const sceneSourceView = this.pipeline.encodeDepthOfFieldPasses(encoder);
+    const motionBlurSourceView = this.pipeline.encodeMotionBlurPass(encoder, sceneSourceView);
+    this.pipeline.encodeAutoExposurePasses(encoder, motionBlurSourceView, deltaTime);
+
     // Passes 3-5: Bloom
-    this.pipeline.encodeBloomPasses(encoder);
+    this.pipeline.encodeBloomPasses(encoder, motionBlurSourceView);
     
     // Pass 6: Composite + (optionally) post-process to screen
     const { width: canvasWidth, height: canvasHeight } = this.context.getCanvasSize();
@@ -1574,7 +1840,8 @@ class GrokZephyrApp {
         encoder,
         this.pipeline.getCompositeIntermediateView(),
         canvasWidth,
-        canvasHeight
+        canvasHeight,
+        motionBlurSourceView
       );
       this.postProcessStack.execute(
         encoder,
@@ -1586,7 +1853,7 @@ class GrokZephyrApp {
       );
     } else {
       // Fallback: direct composite to screen (legacy path).
-      this.pipeline.encodeCompositePass(encoder, screenView, canvasWidth, canvasHeight);
+      this.pipeline.encodeCompositePass(encoder, screenView, canvasWidth, canvasHeight, motionBlurSourceView);
     }
     
     // Submit
@@ -1617,15 +1884,14 @@ class GrokZephyrApp {
    */
   private recordPassTimings(): void {
     const preset = QUALITY_PRESETS[this.currentQualityLevel];
+    const effectiveTrail = this.getEffectiveTrailConfig(this.currentQualityLevel);
     
     // Estimate pass timings based on quality settings using TIMING_ESTIMATES constants
-    const computeMultiplier = preset.trail.enabled ? TIMING_ESTIMATES.COMPUTE_TRAIL_MULT : TIMING_ESTIMATES.COMPUTE_NO_TRAIL_MULT;
+    const computeMultiplier = effectiveTrail.enabled ? TIMING_ESTIMATES.COMPUTE_TRAIL_MULT : TIMING_ESTIMATES.COMPUTE_NO_TRAIL_MULT;
     const computeTime = TIMING_ESTIMATES.BASE_COMPUTE * computeMultiplier;
-    
     const sceneMultiplier = preset.atmosphere.enabled ? TIMING_ESTIMATES.SCENE_ATMOSPHERE_MULT : 1.0;
     const sceneTime = TIMING_ESTIMATES.BASE_SCENE * sceneMultiplier;
-    
-    const bloomTime = preset.trail.enabled ? TIMING_ESTIMATES.BASE_BLOOM : TIMING_ESTIMATES.BLOOM_DISABLED;
+    const bloomTime = effectiveTrail.enabled ? TIMING_ESTIMATES.BASE_BLOOM : TIMING_ESTIMATES.BLOOM_DISABLED;
     
     const postProcessTime = this.postProcessStack ? TIMING_ESTIMATES.BASE_POST : TIMING_ESTIMATES.POST_DISABLED;
     
@@ -1634,6 +1900,19 @@ class GrokZephyrApp {
     this.profiler.recordSceneTime(sceneTime);
     this.profiler.recordBloomTime(bloomTime);
     this.profiler.recordPostProcessTime(postProcessTime);
+  }
+
+  private getEffectiveTrailConfig(level: QualityLevel): TrailConfig {
+    const base = QUALITY_PRESETS[level].trail;
+    const lengthScale = this.trailLengthMode === 'short' ? 0.55 : this.trailLengthMode === 'long' ? 1.65 : 1.0;
+    const enabled = this.trailToggleOverride ?? base.enabled;
+    return {
+      enabled,
+      maxLength: Math.max(8, Math.round(base.maxLength * lengthScale)),
+      fadeOut: Math.max(8, Math.round(base.fadeOut * lengthScale)),
+      colorByShell: true,
+      ribbonWidth: Math.max(2.5, base.ribbonWidth * (this.trailLengthMode === 'long' ? 1.12 : 1.0)),
+    };
   }
 
   /**
@@ -1719,6 +1998,9 @@ class GrokZephyrApp {
   destroy(): void {
     this.stop();
     window.removeEventListener('resize', this.resizeListener);
+    window.removeEventListener('orientationchange', this.orientationChangeListener);
+    window.removeEventListener('pointerdown', this.orientationLockGestureListener);
+    window.removeEventListener('touchstart', this.orientationLockGestureListener);
     this.ui.destroyDashboard();
     if (this.captureGallery) {
       this.captureGallery.querySelectorAll<HTMLAnchorElement>('.capture-gallery-item').forEach((item) => {
@@ -1736,6 +2018,7 @@ class GrokZephyrApp {
     this.profiler.destroy();
     this.earthVertexBuffer?.destroy();
     this.earthIndexBuffer?.destroy();
+    this.audio.destroy();
   }
 }
 
