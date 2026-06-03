@@ -1,0 +1,51 @@
+name: Validate Labels Configuration
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/labels.json'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Validate labels.json
+        run: |
+          # Check if labels.json is valid JSON
+          node -e "
+            const fs = require('fs');
+            const content = fs.readFileSync('scripts/labels.json', 'utf-8');
+            const labels = JSON.parse(content);
+            
+            if (!labels.labels || !Array.isArray(labels.labels)) {
+              throw new Error('Invalid labels structure: missing or invalid labels array');
+            }
+            
+            let errors = [];
+            labels.labels.forEach((label, index) => {
+              if (!label.name) errors.push(\`Label \${index}: missing name\`);
+              if (!label.color) errors.push(\`Label \${index}: missing color\`);
+              if (!/^[0-9a-fA-F]{6}$/.test(label.color)) errors.push(\`Label \${index}: invalid color format (must be 6 hex digits)\`);
+              if (!label.description) errors.push(\`Label \${index}: missing description\`);
+            });
+            
+            if (errors.length > 0) {
+              console.error('Validation errors:');
+              errors.forEach(e => console.error('  - ' + e));
+              process.exit(1);
+            }
+            
+            console.log(\`✓ Valid labels configuration with \${labels.labels.length} labels\`);
+          "

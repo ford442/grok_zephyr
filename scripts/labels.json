@@ -1,0 +1,84 @@
+{
+  "labels": [
+    {
+      "name": "visual-upgrade",
+      "color": "6A0DAD",
+      "description": "Core visual/rendering enhancement or upgrade"
+    },
+    {
+      "name": "rendering",
+      "color": "0366D6",
+      "description": "Related to rendering engine, graphics, or visual output"
+    },
+    {
+      "name": "high-impact",
+      "color": "D73A49",
+      "description": "High-impact visual or feature work"
+    },
+    {
+      "name": "camera",
+      "color": "1F6FEB",
+      "description": "Related to camera control or camera systems"
+    },
+    {
+      "name": "ui",
+      "color": "0052CC",
+      "description": "User interface improvements or changes"
+    },
+    {
+      "name": "ux-polish",
+      "color": "A2AAAD",
+      "description": "UX polish, refinement, or quality-of-life improvements"
+    },
+    {
+      "name": "wow-feature",
+      "color": "F5A623",
+      "description": "Exciting, high-value feature work"
+    },
+    {
+      "name": "performance",
+      "color": "28A745",
+      "description": "Performance optimization or efficiency improvements"
+    },
+    {
+      "name": "accessibility",
+      "color": "6F42C1",
+      "description": "Accessibility improvements or features"
+    },
+    {
+      "name": "P0",
+      "color": "FF0000",
+      "description": "Priority 0 - Critical, very important"
+    },
+    {
+      "name": "P1",
+      "color": "FFA500",
+      "description": "Priority 1 - Important"
+    },
+    {
+      "name": "P2",
+      "color": "CCCCCC",
+      "description": "Priority 2 - Nice to have"
+    },
+    {
+      "name": "good-first-issue",
+      "color": "7057FF",
+      "description": "Good issue for first-time contributors"
+    },
+    {
+      "name": "meta",
+      "color": "3F51B5",
+      "description": "Meta issue or discussion"
+    },
+    {
+      "name": "roadmap",
+      "color": "3F51B5",
+      "description": "Related to project roadmap or planning"
+    },
+    {
+      "name": "enhancement",
+      "color": "A2AAAD",
+      "description": "Enhancement or improvement to existing features"
+    }
+  ]
+}
