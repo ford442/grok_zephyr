@@ -42,11 +42,10 @@ fn safeNormalize(v: vec2f) -> vec2f {
 
 @fragment
 fn fs(i: VSOut) -> @location(0) vec4f {
-  let depth = textureSample(depthTex, linSamp, i.uv);
-  let base = textureSample(sceneTex, linSamp, i.uv);
-  if (depth >= 0.999999 || mb.camera_strength <= 0.0001) {
-    return base;
-  }
+  let depthDims = textureDimensions(depthTex);
+  let depthCoord = clamp(vec2i(i.uv * vec2f(depthDims)), vec2i(0), vec2i(depthDims) - vec2i(1));
+  let depth = textureLoad(depthTex, depthCoord, 0);
+  let base = textureSampleLevel(sceneTex, linSamp, i.uv, 0.0);
 
   let ndcNow = vec2f(i.uv * 2.0 - 1.0);
   let clipNow = vec4f(ndcNow, depth, 1.0);
@@ -60,9 +59,7 @@ fn fs(i: VSOut) -> @location(0) vec4f {
   motion = clamp(motion, vec2f(-0.025), vec2f(0.025));
 
   let taps = clamp(i32(mb.tap_count), 1, 16);
-  if (length(motion) < 1e-5 || taps == 1) {
-    return base;
-  }
+  let shouldBlur = depth < 0.999999 && mb.camera_strength > 0.0001 && length(motion) >= 1e-5 && taps > 1;
 
   let dir = safeNormalize(motion);
   let len = length(motion);
@@ -70,18 +67,18 @@ fn fs(i: VSOut) -> @location(0) vec4f {
   var wsum = 0.0;
 
   for (var t = 0; t < 16; t++) {
-    if (t >= taps) {
-      break;
-    }
-    let u = (f32(t) + 0.5) / f32(taps);
+    let activeTap = t < taps;
+    let u = (f32(t) + 0.5) / f32(max(taps, 1));
     let centered = (u - 0.5) * 2.0;
-    let weight = 1.0 - abs(centered);
+    let weight = select(0.0, 1.0 - abs(centered), shouldBlur && activeTap);
     let sampleUv = i.uv + dir * (centered * len);
-    let c = textureSample(sceneTex, linSamp, sampleUv).rgb;
+    let c = textureSampleLevel(sceneTex, linSamp, sampleUv, 0.0).rgb;
     accum += c * weight;
     wsum += weight;
   }
 
-  return vec4f(accum / max(wsum, 1e-5), base.a);
+  let blurred = accum / max(wsum, 1e-5);
+  let color = select(base.rgb, blurred, shouldBlur);
+  return vec4f(color, base.a);
 }
 `;

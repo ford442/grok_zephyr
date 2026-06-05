@@ -393,7 +393,7 @@ export class PostProcessStack {
           pad: f32,
         };
         
-        @group(0) @binding(0) var taaUniforms: TAAUniforms;
+        @group(0) @binding(0) var<uniform> taaUniforms: TAAUniforms;
         @group(0) @binding(1) var currentFrame: texture_2d<f32>;
         @group(0) @binding(2) var historyFrame: texture_2d<f32>;
         @group(0) @binding(3) var linearSampler: sampler;
@@ -632,7 +632,7 @@ export class PostProcessStack {
           pad3: f32,
         };
         
-        @group(0) @binding(0) var gradingUniforms: GradingUniforms;
+        @group(0) @binding(0) var<uniform> gradingUniforms: GradingUniforms;
         @group(0) @binding(1) var sourceTexture: texture_2d<f32>;
         @group(0) @binding(2) var linearSampler: sampler;
         
@@ -687,7 +687,7 @@ export class PostProcessStack {
           pad: vec2f,
         };
         
-        @group(0) @binding(0) var grainUniforms: GrainUniforms;
+        @group(0) @binding(0) var<uniform> grainUniforms: GrainUniforms;
         @group(0) @binding(1) var sourceTexture: texture_2d<f32>;
         @group(0) @binding(2) var linearSampler: sampler;
         
@@ -738,7 +738,7 @@ export class PostProcessStack {
           pad: vec3f,
         };
         
-        @group(0) @binding(0) var sharpnessUniforms: SharpnessUniforms;
+        @group(0) @binding(0) var<uniform> sharpnessUniforms: SharpnessUniforms;
         @group(0) @binding(1) var sourceTexture: texture_2d<f32>;
         @group(0) @binding(2) var linearSampler: sampler;
         
