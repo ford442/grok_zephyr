@@ -1075,9 +1075,12 @@ class GrokZephyrApp {
         const mode = parseInt(target.dataset.pattern || '3');
         this.setAnimationPattern(mode);
         
-        // Update active state
+        // Reflect toggle state: if pattern was toggled off (currentAnimationPattern=0),
+        // clear all active classes; otherwise highlight the clicked button.
         animButtons.forEach(b => b.classList.remove('active'));
-        target.classList.add('active');
+        if (this.currentAnimationPattern !== 0) {
+          target.classList.add('active');
+        }
       });
     });
   }

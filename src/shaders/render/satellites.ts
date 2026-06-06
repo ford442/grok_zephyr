@@ -325,10 +325,14 @@ fn vs(
   let shellIdx = ii / 349525u;
   let shellSize = shellSizeScale(shellIdx);
 
-  // Increased max distance from 14000 to 150000 to support ground/Moon views
   let groundScale = select(1.0, 0.72, ((uni.view_mode >> 16u) & 1u) == 1u);
-  let bsize = clamp(1200.0 / max(dist, 50.0), 0.4, 60.0) *
-              select(0.0, 1.0, dist < 150000.0) * shellSize * groundScale;
+  // Moon view (mode 4) sits at 384,400 km — scale billboards up and lift the 150k km cutoff
+  // so the constellation appears as a visible glowing ring around Earth.
+  let isMoonView = (uni.view_mode & 0xFFFFu) == 4u;
+  let moonBillboardScale = select(1.0, 750.0, isMoonView);
+  let maxVisibleDist     = select(150000.0, 500000.0, isMoonView);
+  let bsize = clamp(1200.0 / max(dist, 50.0), 0.4, 60.0) * moonBillboardScale *
+              select(0.0, 1.0, dist < maxVisibleDist) * shellSize * groundScale;
   let offset = (qv.x * right + qv.y * up) * bsize;
   let curClip = uni.view_proj * vec4f(wp, 1.0);
   let prevClip = motion.prev_view_proj * vec4f(wp, 1.0);
@@ -366,7 +370,9 @@ fn vs(
 
   let phase = cdat * 0.15 + uni.time * 0.8;
   let pattern = 0.35 + 0.65 * (0.5 + 0.5 * sin(phase));
-  let atten = 1.0 / (1.0 + dist * 0.00075);
+  // From the Moon (~384k km), atten would be ~0.003; boost it so the constellation glows visibly.
+  let moonAttenBoost = select(1.0, 250.0, isMoonView);
+  let atten = 1.0 / (1.0 + dist * 0.00075) * moonAttenBoost;
   let selectionBoost = 1.0 + isHighlighted * 1.5;
 
   // Solar panel glint simulation
