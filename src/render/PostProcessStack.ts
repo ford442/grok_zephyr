@@ -117,7 +117,7 @@ export class PostProcessStack {
     });
 
     this.sharpnessUniformBuffer = device.createBuffer({
-      size: 16,
+      size: 32,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -879,7 +879,7 @@ export class PostProcessStack {
 
   private updateSharpnessUniforms(): void {
     const device = this.context.getDevice();
-    const data = new Float32Array([this.config.sharpness.strength, 0, 0, 0]);
+    const data = new Float32Array([this.config.sharpness.strength, 0, 0, 0, 0, 0, 0, 0]);
     device.queue.writeBuffer(this.sharpnessUniformBuffer, 0, data);
   }
 

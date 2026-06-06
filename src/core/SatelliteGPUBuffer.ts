@@ -67,7 +67,7 @@ export interface SatelliteBufferSet {
   patterns: GPUBuffer;
   /** Sky Strips: Uniform buffer for pattern compute shader */
   skyStripUniforms: GPUBuffer;
-  /** Smile V2: Uniform buffer for animation state (64 bytes aligned) */
+  /** Smile V2: Uniform buffer for animation state (96 bytes) */
   smileV2Uniforms: GPUBuffer;
   /** Smile V2: Trail buffer for phase 6 trails (2 frames × 16 bytes) */
   trailBuffer: GPUBuffer;
@@ -328,7 +328,7 @@ export class SatelliteGPUBuffer {
     ppU32[0] = 0;   // pattern_mode
     ppF32[1] = 0;   // animation_time
     ppF32[2] = 0;   // seed
-    ppF32[3] = 0;   // padding
+    ppU32[3] = 0;   // selected_satellite
     this.context.writeBuffer(patternParams, patternParamsData);
 
     // Create per-satellite RGBA color buffer (rgba8unorm packed as u32, 4 MB)
@@ -359,9 +359,9 @@ export class SatelliteGPUBuffer {
     this.context.writeBuffer(patterns, patternData);
     console.log(`[SatelliteGPUBuffer] Pattern buffer: ${(patternBufferSize / 1024 / 1024).toFixed(2)} MB (Sky Strips)`);
 
-    // Create Sky Strips uniform buffer (32 bytes)
-    const skyStripUniforms = this.context.createUniformBuffer(32);
-    const skyStripUniformsData = new Float32Array(8);
+    // Create Sky Strips uniform buffer (48 bytes to match WGSL struct)
+    const skyStripUniforms = this.context.createUniformBuffer(48);
+    const skyStripUniformsData = new Float32Array(12);
     skyStripUniformsData[0] = 0;    // time
     skyStripUniformsData[1] = 0;    // beatIntensity
     skyStripUniformsData[2] = 0;    // beatPulse
@@ -370,15 +370,12 @@ export class SatelliteGPUBuffer {
     skyStripUniformsData[5] = 1.0;  // patternBlend
     skyStripUniformsData[6] = 15;   // morseSpeed
     skyStripUniformsData[7] = 0.1;  // sparkleDensity
+    // [8..11] reserved vec4f (already zero)
     this.context.writeBuffer(skyStripUniforms, skyStripUniformsData);
 
-    // Create Smile V2 uniform buffer (64 bytes aligned)
-    const smileV2Uniforms = this.context.createUniformBuffer(64);
-    const smileV2UniformsData = new Float32Array(16);
-    smileV2UniformsData[0] = 0;   // global_time
-    smileV2UniformsData[1] = 0;   // transition_alpha
-    smileV2UniformsData[2] = 0;   // target_mode
-    smileV2UniformsData[3] = 0;   // morph_progress
+    // Create Smile V2 uniform buffer (96 bytes to match WGSL SmileV2Params)
+    const smileV2Uniforms = this.context.createUniformBuffer(96);
+    const smileV2UniformsData = new Float32Array(24); // 96 bytes, all zero
     this.context.writeBuffer(smileV2Uniforms, smileV2UniformsData);
 
     // Create Smile V2 trail buffer (2 frames × vec4f per satellite)
@@ -756,8 +753,8 @@ export class SatelliteGPUBuffer {
    * - Pattern params (16 bytes)
    * - Colors (4 MB)
    * - Patterns (16 MB)
-   * - Sky strip uniforms (32 bytes)
-   * - Smile V2 uniforms (64 bytes)
+   * - Sky strip uniforms (48 bytes)
+   * - Smile V2 uniforms (96 bytes)
    * - Trail buffer (32 MB)
    */
   getMemoryUsage(): number {
@@ -783,8 +780,8 @@ export class SatelliteGPUBuffer {
       total += 16;                    // patternParams
       total += numSats * 4;           // colors (4 MB)
       total += numSats * 16;          // patterns (16 MB)
-      total += 32;                    // skyStripUniforms
-      total += 64;                    // smileV2Uniforms
+      total += 48;                    // skyStripUniforms
+      total += 96;                    // smileV2Uniforms
       total += numSats * 16 * 2;      // trailBuffer (32 MB, 2 frames)
     }
     

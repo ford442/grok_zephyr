@@ -241,12 +241,18 @@ export class SmileV2Pipeline {
    * Update uniform buffer with current animation state
    */
   updateUniforms(uniforms: SmileV2Uniforms): void {
-    const data = new Float32Array(16); // 64 bytes = 16 floats
-    data[0] = uniforms.global_time;
-    data[1] = uniforms.transition_alpha;
-    data[2] = uniforms.target_mode;
-    data[3] = uniforms.morph_progress;
-    // data[4-15]: reserved padding (already zero)
+    // SmileV2Params WGSL layout (96 bytes):
+    // [0] cycle_time, [1] global_time, [2] speed_multiplier, [3] _pad0,
+    // [4] transition_alpha, [5] morph_target, [6] transition_duration, [7] _pad1,
+    // [8..10] ref_nadir, [11] pad, [12..14] ref_east, [15] pad,
+    // [16..18] ref_north, [19] pad, [20] morph_mode (u32), [21..23] _pad2
+    const data = new Float32Array(24);
+    data[0] = uniforms.global_time;   // cycle_time (reuse global_time)
+    data[1] = uniforms.global_time;   // global_time
+    data[2] = 1.0;                    // speed_multiplier
+    data[4] = uniforms.transition_alpha;
+    data[5] = uniforms.target_mode;   // morph_target
+    // ref vectors and morph_mode default to 0 (already zeroed)
 
     this.context.writeBuffer(this.buffers.smileV2Uniforms, data);
   }

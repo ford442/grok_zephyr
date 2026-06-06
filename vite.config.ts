@@ -126,6 +126,7 @@ export default defineConfig(({ mode }) => {
   return {
     root: '.',
     publicDir: 'public',
+    base: './',
     
     build: {
       outDir: 'dist',
@@ -136,6 +137,8 @@ export default defineConfig(({ mode }) => {
           main: resolve(__dirname, 'index.html'),
         },
         output: {
+          chunkFileNames: 'assets/[name]-[hash].js',
+          entryFileNames: 'assets/[name]-[hash].js',
           manualChunks: isStandalone ? undefined : {
             'webgpu-core': ['./src/core/WebGPUContext.ts', './src/core/SatelliteGPUBuffer.ts'],
             'render': ['./src/render/RenderPipeline.ts'],
