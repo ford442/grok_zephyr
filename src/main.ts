@@ -1,36 +1,6 @@
-/**
- * Grok Zephyr - Main Entry Point
- * 
- * WebGPU-powered orbital simulation with 1M+ satellites.
- */
 
-import { WebGPUContext, WebGPUError } from '@/core/WebGPUContext.js';
-import { SatelliteGPUBuffer } from '@/core/SatelliteGPUBuffer.js';
-import { RenderPipeline, type TonemapMode } from '@/render/RenderPipeline.js';
-import { PostProcessStack } from '@/render/PostProcessStack.js';
-import { VolumetricBeamRenderer } from '@/render/VolumetricBeamRenderer.js';
-import { CameraController, type CameraState } from '@/camera/CameraController.js';
-import { GroundObserverCamera, GroundObserverPreset } from '@/camera/GroundObserverCamera.js';
-import { UIManager } from '@/ui/UIManager.js';
-import { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
-import { FocusManager, type ConstellationStats, type FocusSelection } from '@/focus.js';
-import { AudioEngine } from '@/audio/AudioEngine.js';
-import { TrailRenderer } from '@/render/TrailRenderer.js';
-import { EarthAtmosphereRenderer } from '@/earth.js';
-import { genSphere, extractFrustum, mat4inv } from '@/utils/math.js';
-import { getBeamPatternTitle } from '@/patterns.js';
-import { CONSTANTS, BUFFER_SIZES, UI as UI_CONSTANTS } from '@/types/constants.js';
-import { TLELoader } from '@/data/TLELoader.js';
-import { getBackgroundModeIndex, resolveBackgroundMode, setBackgroundMode } from '@/background.js';
-import {
-  type QualityLevel,
-  QUALITY_PRESETS,
-  saveQualityLevel,
-  parseQualityParam,
-} from '@/core/QualityPresets.js';
+import { GrokZephyrApp } from '@/app/GrokZephyrApp.js';
 import { OnboardingManager } from '@/ui/OnboardingManager.js';
-import { WebGPUCompatibilityManager } from '@/ui/WebGPUCompatibilityManager.js';
-import type { TrailConfig } from '@/types/animation.js';
 
 import './styles.css';
 import './styles/onboarding.css';
@@ -2034,7 +2004,7 @@ function main(): void {
   onboarding.showIfNew();
 
   const app = new GrokZephyrApp();
-  app.initialize().catch(console.error);
+  app.appBootManager.initialize().catch(console.error);
   
   // Cleanup on page unload
   window.addEventListener('beforeunload', () => {
