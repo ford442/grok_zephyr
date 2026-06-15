@@ -121,6 +121,27 @@ Typical performance on modern GPUs:
 
 **Important**: WebGPU requires a secure context (HTTPS or localhost). Most features require dedicated GPU hardware.
 
+### Renderer backends (WebGPU + WebGL2 fallback)
+
+The app is WebGPU-first but ships a **toggleable WebGL2 fallback renderer** for
+debugging, CI, and agent/Playwright inspection (WebGPU output cannot be read back
+in headless browsers).
+
+| Goal | URL |
+|------|-----|
+| WebGL2 renderer | `?renderer=webgl` |
+| WebGPU (default) | `?renderer=webgpu` |
+| Reduce satellite count | `?renderer=webgl&sats=100000` |
+| Debug helpers | `?renderer=webgl&debug=wireframe,lod,points,nobloom` |
+
+The choice persists in `localStorage['zephyr.renderer']`. When the WebGL path is
+active, `window.zephyrGL` exposes `setDebug()`, `getDebug()`, and `capture()` for
+scripted inspection. The WebGL path **shares** the orbital data + Keplerian math
+(`src/core/OrbitalElements.ts`) and the camera with the WebGPU path, propagating
+all 1,048,576 satellites in the vertex shader. See
+**[docs/WEBGL_FALLBACK.md](./docs/WEBGL_FALLBACK.md)** for details, the WGSL→GLSL
+mapping, and WebGL→WebGPU porting notes for large-scale simulations.
+
 ### WebGPU feature and fallback notes
 
 - `timestamp-query` is requested when the adapter supports it, which enables GPU timing in `PerformanceProfiler`
@@ -158,6 +179,7 @@ The project includes sample Starlink TLE (Two-Line Element) data in `/public/tle
 ## 📚 Documentation
 
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Detailed system design and module descriptions
+- **[docs/WEBGL_FALLBACK.md](./docs/WEBGL_FALLBACK.md)** - WebGL2 fallback renderer, usage, and WebGL→WebGPU porting notes
 - **[AGENTS.md](./AGENTS.md)** - AI agent configurations and swarm logic
 - **[SWARM_PROMPT.md](./SWARM_PROMPT.md)** - Multi-agent collaboration specifications
 - **[initial_plan.md](./initial_plan.md)** - Project genesis and design decisions

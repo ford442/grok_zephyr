@@ -1,6 +1,40 @@
+/**
+ * Grok Zephyr - Main Entry Point
+ * 
+ * WebGPU-powered orbital simulation with 1M+ satellites.
+ */
 
-import { GrokZephyrApp } from '@/app/GrokZephyrApp.js';
+import { WebGPUContext, WebGPUError } from '@/core/WebGPUContext.js';
+import { SatelliteGPUBuffer } from '@/core/SatelliteGPUBuffer.js';
+import { RenderPipeline, type TonemapMode } from '@/render/RenderPipeline.js';
+import { PostProcessStack } from '@/render/PostProcessStack.js';
+import { VolumetricBeamRenderer } from '@/render/VolumetricBeamRenderer.js';
+import { CameraController, type CameraState } from '@/camera/CameraController.js';
+import { GroundObserverCamera, GroundObserverPreset } from '@/camera/GroundObserverCamera.js';
+import { UIManager } from '@/ui/UIManager.js';
+import { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
+import { FocusManager, type ConstellationStats, type FocusSelection } from '@/focus.js';
+import { AudioEngine } from '@/audio/AudioEngine.js';
+import { TrailRenderer } from '@/render/TrailRenderer.js';
+import { EarthAtmosphereRenderer } from '@/earth.js';
+import { genSphere, extractFrustum, mat4inv } from '@/utils/math.js';
+import { getBeamPatternTitle } from '@/patterns.js';
+import { CONSTANTS, BUFFER_SIZES, UI as UI_CONSTANTS } from '@/types/constants.js';
+import { TLELoader } from '@/data/TLELoader.js';
+import { getBackgroundModeIndex, resolveBackgroundMode, setBackgroundMode } from '@/background.js';
+import {
+  type QualityLevel,
+  QUALITY_PRESETS,
+  saveQualityLevel,
+  parseQualityParam,
+} from '@/core/QualityPresets.js';
 import { OnboardingManager } from '@/ui/OnboardingManager.js';
+import { WebGPUCompatibilityManager } from '@/ui/WebGPUCompatibilityManager.js';
+import type { TrailConfig } from '@/types/animation.js';
+import { OrbitalElements } from '@/core/OrbitalElements.js';
+import { WebGLRenderer, type EarthMesh } from '@/webgl/WebGLRenderer.js';
+import { WebGLDebugOverlay, parseDebugFlags } from '@/webgl/WebGLDebug.js';
+import { resolveRendererBackend, resolveSatelliteCount, type RendererBackend } from '@/webgl/rendererSelection.js';
 
 import './styles.css';
 import './styles/onboarding.css';
@@ -134,6 +168,12 @@ class GrokZephyrApp {
   private earthIndexBuffer: GPUBuffer | null = null;
   private earthIndexCount = 0;
   
+  // Renderer backend (WebGPU default, or WebGL2 fallback for debugging/CI)
+  private readonly backend: RendererBackend = resolveRendererBackend();
+  private webglRenderer: WebGLRenderer | null = null;
+  private webglDebugOverlay: WebGLDebugOverlay | null = null;
+  private webglOrbital: OrbitalElements | null = null;
+
   // Animation state
   private animationId = 0;
   private isRunning = false;
@@ -1271,7 +1311,15 @@ class GrokZephyrApp {
   async initialize(): Promise<void> {
     try {
       console.log('[GrokZephyr] Initializing...');
-      
+
+      // WebGL2 fallback path (debugging / CI / agent inspection). Selected via
+      // ?renderer=webgl, localStorage, or the debug toggle. Bypasses all WebGPU
+      // setup and renders the shared simulation through a readback-friendly path.
+      if (this.backend === 'webgl') {
+        await this.initializeWebGL();
+        return;
+      }
+
       // Initialize WebGPU
       this.context = new WebGPUContext(this.canvas);
       const { device } = await this.context.initialize();
@@ -1427,6 +1475,145 @@ class GrokZephyrApp {
   }
 
   /**
+   * Boot the WebGL2 fallback renderer. Shares the orbital element store and the
+   * CameraController with the WebGPU path, but uses its own GL context, passes,
+   * and render loop. All satellite propagation happens in the vertex shader.
+   */
+  private async initializeWebGL(): Promise<void> {
+    console.log('[GrokZephyr] Booting WebGL2 fallback renderer...');
+
+    // Shared, GPU-agnostic orbital element store (no WebGPU device required).
+    const orbital = new OrbitalElements();
+    this.webglOrbital = orbital;
+
+    // Load orbital data: TLE if requested via query param, else procedural Walker.
+    const tleSource = this.getTLESource();
+    let dataSourceLabel = 'Procedural Walker';
+    if (tleSource) {
+      try {
+        console.log(`[GrokZephyr] Loading TLE data from: ${tleSource}`);
+        const tles = await TLELoader.fromFile(tleSource);
+        if (tles.length > 0) {
+          const realCount = orbital.loadFromTLE(tles);
+          dataSourceLabel = `TLE (${realCount.toLocaleString()} real)`;
+        } else {
+          orbital.generate();
+        }
+      } catch (err) {
+        console.warn('[GrokZephyr] TLE load failed, using procedural generation:', err);
+        orbital.generate();
+      }
+    } else {
+      orbital.generate();
+    }
+
+    this.camera.attachToCanvas(this.canvas);
+    this.setupMobileOrientationSupport();
+
+    const satCount = resolveSatelliteCount();
+    const renderer = new WebGLRenderer(this.canvas, orbital, satCount);
+    const size = this.getDrawableSize() ?? {
+      width: this.canvas.clientWidth || 1280,
+      height: this.canvas.clientHeight || 720,
+    };
+    renderer.initialize(size.width, size.height, this.buildEarthMesh());
+    renderer.setDebug(parseDebugFlags(window.location.search));
+    this.webglRenderer = renderer;
+
+    // Debug panel + window.zephyrGL scripting surface for agents / Playwright.
+    this.webglDebugOverlay = new WebGLDebugOverlay(renderer, this.canvas);
+    this.webglDebugOverlay.install();
+
+    this.ui.setFleetCount(satCount);
+    this.ui.setDataSource(`${dataSourceLabel} · WebGL2`);
+    this.dataSourceLabel = dataSourceLabel;
+    this.ui.hideError();
+
+    // Apply initial view mode from URL (?mode=0-4).
+    const urlParams = this.parseInitialStateFromURL();
+    this.camera.setViewMode(urlParams.viewMode ?? 0);
+
+    window.addEventListener('resize', this.resizeListener);
+
+    this.isRunning = true;
+    this.lastTime = performance.now() * 0.001;
+    this.animationId = requestAnimationFrame(this.renderWebGL);
+    console.log('[GrokZephyr] WebGL2 renderer ready.');
+  }
+
+  /** Build interleaved Earth mesh (shares genSphere with the WebGPU path). */
+  private buildEarthMesh(): EarthMesh {
+    const sphere = genSphere(CONSTANTS.EARTH_RADIUS_KM, 64, 64);
+    const vertexCount = sphere.vertices.length / 3;
+    const interleaved = new Float32Array(vertexCount * 6);
+    for (let i = 0; i < vertexCount; i++) {
+      interleaved[i * 6 + 0] = sphere.vertices[i * 3 + 0];
+      interleaved[i * 6 + 1] = sphere.vertices[i * 3 + 1];
+      interleaved[i * 6 + 2] = sphere.vertices[i * 3 + 2];
+      interleaved[i * 6 + 3] = sphere.normals[i * 3 + 0];
+      interleaved[i * 6 + 4] = sphere.normals[i * 3 + 1];
+      interleaved[i * 6 + 5] = sphere.normals[i * 3 + 2];
+    }
+    return { interleaved, indices: sphere.indices };
+  }
+
+  /**
+   * WebGL2 render loop. Mirrors the per-frame setup of the WebGPU `render`
+   * loop (timing, demo cinematic, camera state) but hands a compact frame
+   * descriptor to the WebGL renderer instead of encoding GPU command passes.
+   */
+  private renderWebGL = (timestamp: number): void => {
+    if (!this.isRunning || !this.webglRenderer || !this.webglOrbital) return;
+
+    const size = this.getDrawableSize();
+    if (size && (size.width !== this.canvas.width || size.height !== this.canvas.height)) {
+      this.handleResize();
+    }
+
+    const time = timestamp * 0.001;
+    const deltaTime = Math.min(time - this.lastTime, 0.1);
+    this.lastTime = time;
+    this.simTime += deltaTime * this.timeScale;
+
+    if (
+      this.demoAutoEnabled &&
+      !this.camera.isCinematicActive() &&
+      time - this.lastUserActivityTime >= this.demoIdleTimeoutSeconds
+    ) {
+      this.camera.startCinematic(time);
+    }
+
+    setBackgroundMode(resolveBackgroundMode(this.camera.getViewMode()));
+    if (this.camera.getViewMode() === 'ground') {
+      this.groundObserver.update();
+    }
+
+    const orbital = this.webglOrbital;
+    const cameraState = this.camera.calculateCamera(
+      (idx, t) => orbital.calculatePosition(idx, t),
+      (idx, t) => orbital.calculateVelocity(idx, t),
+      time,
+    );
+
+    const aspect = this.canvas.width / Math.max(1, this.canvas.height);
+    const { viewProjection } = this.camera.buildViewProjection(cameraState, aspect);
+
+    const sun = this.calculateSunPosition(this.simTime);
+    const sunLen = Math.hypot(sun[0], sun[1], sun[2]) || 1;
+
+    this.webglRenderer.renderFrame({
+      viewProj: viewProjection,
+      cameraPos: cameraState.position as [number, number, number],
+      sunDir: [sun[0] / sunLen, sun[1] / sunLen, sun[2] / sunLen],
+      simTime: this.simTime,
+      time,
+      backgroundMode: getBackgroundModeIndex(),
+    });
+
+    this.animationId = requestAnimationFrame(this.renderWebGL);
+  };
+
+  /**
    * Create Earth sphere geometry
    */
   private createEarthGeometry(): void {
@@ -1473,6 +1660,15 @@ class GrokZephyrApp {
    */
   private handleResize(): void {
     this.updateMobileViewportPresentation();
+
+    if (this.backend === 'webgl') {
+      const size = this.getDrawableSize();
+      if (size && this.webglRenderer) {
+        this.webglRenderer.resize(size.width, size.height);
+      }
+      return;
+    }
+
     if (!this.context || !this.buffers || !this.pipeline) return;
 
     const size = this.getDrawableSize();
@@ -1983,6 +2179,8 @@ class GrokZephyrApp {
         }
       });
     }
+    this.webglDebugOverlay?.destroy();
+    this.webglRenderer?.destroy();
     this.pipeline?.destroy();
     this.postProcessStack?.destroy();
     this.volumetricBeamRenderer?.destroy();
@@ -2004,7 +2202,7 @@ function main(): void {
   onboarding.showIfNew();
 
   const app = new GrokZephyrApp();
-  app.appBootManager.initialize().catch(console.error);
+  app.initialize().catch(console.error);
   
   // Cleanup on page unload
   window.addEventListener('beforeunload', () => {

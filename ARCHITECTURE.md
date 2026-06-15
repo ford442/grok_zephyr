@@ -23,10 +23,15 @@ src/
 ├── data/                  # TLE parsing/loading
 ├── physics/               # CPU-side orbital propagation helpers
 ├── shaders/               # WGSL shader sources grouped by domain
+├── webgl/                 # WebGL2 fallback renderer (debug/CI; see docs/WEBGL_FALLBACK.md)
 ├── ui/                    # HUD and control wiring
 ├── utils/                 # Math and performance profiling
 └── types/                 # Shared TypeScript types and constants
 ```
+
+`core/OrbitalElements.ts` holds the GPU-agnostic orbital element data and
+Keplerian math shared by the WebGPU `SatelliteGPUBuffer` and the WebGL2 fallback,
+so both renderers agree on orbit geometry.
 
 ## Render pipeline
 
@@ -139,6 +144,16 @@ The app is tuned for the fixed 1,048,576-satellite mode and validates the adapte
 - Optional `timestamp-query` support for GPU profiling
 
 If those requirements are not met, initialization stops with a branded compatibility message instead of attempting partial startup.
+
+## WebGL2 fallback renderer
+
+`?renderer=webgl` boots a self-contained WebGL2 path (`src/webgl/`) instead of the
+WebGPU pipeline. It renders the same simulation (starfield → Earth+atmosphere →
+satellites → bloom → ACES composite) through a readback-friendly context so agents
+and CI can screenshot and inspect the scene. It shares `OrbitalElements` and the
+`CameraController`, propagates all 1,048,576 satellites in the vertex shader, and
+caps via `?sats=`. Full design, the WGSL→GLSL mapping, and porting notes live in
+**`docs/WEBGL_FALLBACK.md`**.
 
 ## Data sources
 

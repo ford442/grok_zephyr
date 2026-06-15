@@ -391,6 +391,30 @@ Path aliases configured:
 
 WebGPU requires a secure context (HTTPS or localhost).
 
+## Renderer Backends (WebGPU + WebGL2 fallback)
+
+The app is WebGPU-first but ships a **toggleable WebGL2 fallback renderer**. Use
+it whenever you need to *see* what the simulation renders — WebGPU output is not
+readable in headless Chromium, but the WebGL2 canvas is (`gl.readPixels` /
+`canvas.toDataURL` work; `preserveDrawingBuffer` is on).
+
+- Activate: `?renderer=webgl` (persists in `localStorage['zephyr.renderer']`).
+- Reduce load: `?renderer=webgl&sats=100000` (default = full 1,048,576).
+- Debug flags: `?renderer=webgl&debug=wireframe,lod,points,noearth,nostars,nobloom,nosats`.
+- Scripting: `window.zephyrGL.{getDebug,setDebug,capture}()` for Playwright/agents.
+
+The WebGL path **shares** simulation state with WebGPU — orbital data + Keplerian
+math live in `src/core/OrbitalElements.ts` (used by both `SatelliteGPUBuffer` and
+the WebGL renderer), and the `CameraController` drives both. Satellite propagation
+runs in the GLSL vertex shader (the "simplified compute fallback" for
+`orbital_compute.wgsl`). Not ported to WebGL: volumetric beams, trails, TAA,
+motion blur, DoF, and J2/RK4 physics. Full details, the WGSL→GLSL uniform mapping,
+and WebGL→WebGPU porting notes are in **`docs/WEBGL_FALLBACK.md`**.
+
+WebGL module layout: `src/webgl/{rendererSelection,glUtils,shaders,WebGLRenderer,WebGLDebug}.ts`.
+Integration points in `src/main.ts`: `initializeWebGL()`, `renderWebGL`, and the
+`backend` branches in `initialize()` / `handleResize()` / `destroy()`.
+
 ## Testing
 
 The project uses **Vitest** (Node environment) with colocated `*.test.ts` files.
@@ -398,10 +422,12 @@ The project uses **Vitest** (Node environment) with colocated `*.test.ts` files.
 Current covered modules:
 1. `src/utils/math.ts` — matrix/vector operations and frustum extraction
 2. `src/data/TLELoader.ts` — parsing, line2 orbital extraction, and fetch handling
+3. `src/core/OrbitalElements.ts` — Keplerian propagation invariants (shell radius, determinism)
+4. `src/webgl/rendererSelection.ts` — backend + `?sats` + `?debug` resolution
 
 Recommended next targets:
-1. `src/core/SatelliteGPUBuffer.ts` — CPU-side position/velocity calculations
-2. `src/camera/CameraController.ts` — camera state calculations for each view mode
+1. `src/camera/CameraController.ts` — camera state calculations for each view mode
+2. WebGL2 headless render smoke test (Playwright + SwiftShader, see `docs/WEBGL_FALLBACK.md`)
 
 ## Deployment
 

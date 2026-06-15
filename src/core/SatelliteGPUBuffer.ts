@@ -11,8 +11,9 @@
  */
 
 import type WebGPUContext from './WebGPUContext.js';
-import { CONSTANTS, BUFFER_SIZES, INCLINATION_SHELLS } from '@/types/constants.js';
+import { CONSTANTS, BUFFER_SIZES } from '@/types/constants.js';
 import type { TLEData } from '@/types/index.js';
+import { OrbitalElements } from './OrbitalElements.js';
 
 /** Buffer pair for double-buffering */
 export interface BufferPair {
@@ -122,8 +123,14 @@ export class SatelliteGPUBuffer {
   
   // Buffer storage
   private buffers: SatelliteBufferSet | null = null;
-  private orbitalElementData: Float32Array;
+  /** Shared, GPU-agnostic orbital element store (also used by the WebGL2 backend). */
+  private orbital: OrbitalElements;
   private staging: StagingBuffer | null = null;
+
+  /** Backing CPU array for orbital elements, owned by `this.orbital`. */
+  private get orbitalElementData(): Float32Array {
+    return this.orbital.data;
+  }
   
   // Cached sizes
   private readonly numSatellites: number;
@@ -148,8 +155,8 @@ export class SatelliteGPUBuffer {
     this.elementBufferSize = this.numSatellites * 16;  // vec4f
     this.extendedElementBufferSize = this.numSatellites * 32; // 8 floats for J2 propagation (compact)
     
-    // Pre-allocate orbital element data on CPU
-    this.orbitalElementData = new Float32Array(this.numSatellites * 4);
+    // Pre-allocate orbital element data on CPU (shared with the WebGL2 backend)
+    this.orbital = new OrbitalElements(this.numSatellites);
   }
 
   /**
@@ -444,49 +451,15 @@ export class SatelliteGPUBuffer {
    * Generate Walker constellation orbital elements with multi-shell orbits
    */
   generateOrbitalElements(): Float32Array {
-    const { NUM_PLANES, SATELLITES_PER_PLANE } = CONSTANTS;
-    const shells = INCLINATION_SHELLS;
-    
-    const SHELL_DISTRIBUTION = [0.3, 0.5, 0.2];
     console.log(`[SatelliteGPUBuffer] Generating multi-shell orbital elements...`);
-    console.log(`[SatelliteGPUBuffer] Shells: 340km (${(SHELL_DISTRIBUTION[0]*100).toFixed(0)}%), 550km (${(SHELL_DISTRIBUTION[1]*100).toFixed(0)}%), 1150km (${(SHELL_DISTRIBUTION[2]*100).toFixed(0)}%)`);
     const startTime = performance.now();
 
-    for (let plane = 0; plane < NUM_PLANES; plane++) {
-      const raan = (plane / NUM_PLANES) * Math.PI * 2;
-      const inclinationShellIdx = Math.floor(plane / (NUM_PLANES / shells.length));
-      const inclination = shells[inclinationShellIdx] + (Math.random() - 0.5) * 0.008;
-
-      for (let sat = 0; sat < SATELLITES_PER_PLANE; sat++) {
-        const idx = (plane * SATELLITES_PER_PLANE + sat) * 4;
-        const meanAnomaly = (sat / SATELLITES_PER_PLANE) * Math.PI * 2;
-        
-        const rand = Math.random();
-        let shellIndex = 0;
-        let cumulative = 0;
-        for (let s = 0; s < SHELL_DISTRIBUTION.length; s++) {
-          cumulative += SHELL_DISTRIBUTION[s];
-          if (rand < cumulative) {
-            shellIndex = s;
-            break;
-          }
-        }
-        
-        const shellColors = [2.0, 6.0, 3.0];
-        const colorIndex = shellColors[shellIndex];
-        const shellData = (shellIndex << 8) | (colorIndex & 0xFF);
-        
-        this.orbitalElementData[idx + 0] = raan;
-        this.orbitalElementData[idx + 1] = inclination;
-        this.orbitalElementData[idx + 2] = meanAnomaly;
-        this.orbitalElementData[idx + 3] = shellData;
-      }
-    }
+    const data = this.orbital.generate();
 
     const elapsed = performance.now() - startTime;
     console.log(`[SatelliteGPUBuffer] Generated elements in ${elapsed.toFixed(2)}ms`);
 
-    return this.orbitalElementData;
+    return data;
   }
 
   /**
@@ -494,73 +467,9 @@ export class SatelliteGPUBuffer {
    */
   loadFromTLEData(tles: TLEData[]): number {
     const startTime = performance.now();
-    const tleCount = Math.min(tles.length, this.numSatellites);
 
-    console.log(`[SatelliteGPUBuffer] Loading ${tleCount} TLE satellites...`);
-
-    for (let t = 0; t < tleCount; t++) {
-      const { line2 } = tles[t];
-      const incDeg = parseFloat(line2.substring(8, 16).trim());
-      const raanDeg = parseFloat(line2.substring(17, 25).trim());
-      const meanAnomalyDeg = parseFloat(line2.substring(43, 51).trim());
-      const meanMotionRevPerDay = parseFloat(line2.substring(52, 63).trim());
-
-      const DEG_TO_RAD = Math.PI / 180;
-      const raan = raanDeg * DEG_TO_RAD;
-      const inc = incDeg * DEG_TO_RAD;
-      const M = meanAnomalyDeg * DEG_TO_RAD;
-
-      const nRadPerSec = meanMotionRevPerDay * 2 * Math.PI / 86400;
-      const MU = 398600.4418;
-      const a = Math.pow(MU / (nRadPerSec * nRadPerSec), 1 / 3);
-      const altKm = a - 6371.0;
-
-      let shellIndex: number;
-      if (altKm < 450) shellIndex = 0;
-      else if (altKm < 800) shellIndex = 1;
-      else shellIndex = 2;
-
-      const shellColors = [2.0, 6.0, 3.0];
-      const colorIndex = shellColors[shellIndex];
-      const shellData = (shellIndex << 8) | (colorIndex & 0xFF);
-
-      const idx = t * 4;
-      this.orbitalElementData[idx + 0] = raan;
-      this.orbitalElementData[idx + 1] = inc;
-      this.orbitalElementData[idx + 2] = M;
-      this.orbitalElementData[idx + 3] = shellData;
-    }
-
-    // Fill remaining slots with deterministic procedural data
-    if (tleCount < this.numSatellites) {
-      const remaining = this.numSatellites - tleCount;
-      console.log(`[SatelliteGPUBuffer] Padding ${remaining.toLocaleString()} remaining slots with procedural data`);
-
-      const { NUM_PLANES, SATELLITES_PER_PLANE } = CONSTANTS;
-      const shells = INCLINATION_SHELLS;
-
-      for (let j = 0; j < remaining; j++) {
-        const globalIdx = tleCount + j;
-        const plane = globalIdx % NUM_PLANES;
-        const sat = Math.floor(globalIdx / NUM_PLANES) % SATELLITES_PER_PLANE;
-
-        const raan = (plane / NUM_PLANES) * Math.PI * 2;
-        const shellIdx = Math.floor(plane / (NUM_PLANES / shells.length));
-        const inclination = shells[shellIdx];
-        const meanAnomaly = (sat / SATELLITES_PER_PLANE) * Math.PI * 2;
-
-        const shellIndex = globalIdx % 3 === 0 ? 0 : globalIdx % 3 === 1 ? 1 : 2;
-        const shellColors = [2.0, 6.0, 3.0];
-        const colorIndex = shellColors[shellIndex];
-        const shellData = (shellIndex << 8) | (colorIndex & 0xFF);
-
-        const idx = globalIdx * 4;
-        this.orbitalElementData[idx + 0] = raan;
-        this.orbitalElementData[idx + 1] = inclination;
-        this.orbitalElementData[idx + 2] = meanAnomaly;
-        this.orbitalElementData[idx + 3] = shellData;
-      }
-    }
+    console.log(`[SatelliteGPUBuffer] Loading ${Math.min(tles.length, this.numSatellites)} TLE satellites...`);
+    const tleCount = this.orbital.loadFromTLE(tles);
 
     const elapsed = performance.now() - startTime;
     console.log(`[SatelliteGPUBuffer] TLE load complete in ${elapsed.toFixed(2)}ms`);
@@ -653,64 +562,14 @@ export class SatelliteGPUBuffer {
    * Calculate satellite position on CPU (multi-shell)
    */
   calculateSatellitePosition(index: number, time: number): [number, number, number] {
-    const i = index * 4;
-    const raan = this.orbitalElementData[i];
-    const inclination = this.orbitalElementData[i + 1];
-    const meanAnomaly0 = this.orbitalElementData[i + 2];
-    const shellData = this.orbitalElementData[i + 3];
-    
-    const shellIndex = (shellData >> 8) & 0xFF;
-    const SHELL_RADII_KM = [6711.0, 6921.0, 7521.0];
-    const orbitR = SHELL_RADII_KM[shellIndex] || 6921.0;
-    
-    const meanMotions = [0.001153, 0.001097, 0.000946];
-    const meanMotion = meanMotions[shellIndex] || 0.001097;
-    
-    const meanAnomaly = meanAnomaly0 + meanMotion * time;
-    
-    const cM = Math.cos(meanAnomaly);
-    const sM = Math.sin(meanAnomaly);
-    const cR = Math.cos(raan);
-    const sR = Math.sin(raan);
-    const cI = Math.cos(inclination);
-    const sI = Math.sin(inclination);
-
-    return [
-      orbitR * (cR * cM - sR * sM * cI),
-      orbitR * (sR * cM + cR * sM * cI),
-      orbitR * sM * sI,
-    ];
+    return this.orbital.calculatePosition(index, time);
   }
 
   /**
    * Calculate satellite velocity on CPU (multi-shell)
    */
   calculateSatelliteVelocity(index: number, time: number): [number, number, number] {
-    const i = index * 4;
-    const raan = this.orbitalElementData[i];
-    const inclination = this.orbitalElementData[i + 1];
-    const meanAnomaly0 = this.orbitalElementData[i + 2];
-    const shellData = this.orbitalElementData[i + 3];
-    
-    const shellIndex = (shellData >> 8) & 0xFF;
-    const meanMotions = [0.001153, 0.001097, 0.000946];
-    const meanMotion = meanMotions[shellIndex] || 0.001097;
-    
-    const meanAnomaly = meanAnomaly0 + meanMotion * time;
-    
-    const cM = Math.cos(meanAnomaly);
-    const sM = Math.sin(meanAnomaly);
-    const cR = Math.cos(raan);
-    const sR = Math.sin(raan);
-    const cI = Math.cos(inclination);
-    const sI = Math.sin(inclination);
-
-    const vx = -(cR * sM + sR * cM * cI);
-    const vy = -(sR * sM - cR * cM * cI);
-    const vz = cM * sI;
-    
-    const len = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
-    return [vx / len, vy / len, vz / len];
+    return this.orbital.calculateVelocity(index, time);
   }
 
   /**
