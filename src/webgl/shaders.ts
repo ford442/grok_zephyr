@@ -89,13 +89,14 @@ in vec3 vColor;
 in float vFade;
 out vec4 fragColor;
 void main() {
-  // Round, soft-edged point sprite.
-  vec2 d = gl_PointCoord * 2.0 - 1.0;
-  float r2 = dot(d, d);
-  if (r2 > 1.0) discard;
-  float alpha = smoothstep(1.0, 0.1, r2);
-  // Emissive: scaled above 1.0 so bloom picks up the brightest cores.
-  vec3 col = vColor * (1.4 + 1.6 * (1.0 - r2)) * vFade;
+  vec2 uv = gl_PointCoord;
+  float dist = distance(uv, vec2(0.5));
+  float core = smoothstep(0.40, 0.10, dist);
+  float halo = smoothstep(0.50, 0.35, dist) * 0.2;
+  float alpha = (core + halo) * vFade;
+  if (alpha < 0.02) discard;
+  float intensityBoost = 1.0 + core * 2.5;
+  vec3 col = vColor * intensityBoost * vFade;
   fragColor = vec4(col, alpha);
 }
 `;
@@ -248,11 +249,12 @@ out vec4 fragColor;
 void main() {
   vec3 c = texture(uScene, vUv).rgb;
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  // Soft-knee threshold.
-  float soft = clamp(l - uThreshold + uKnee, 0.0, 2.0 * uKnee);
-  soft = soft * soft / (4.0 * uKnee + 1e-4);
-  float contrib = max(soft, l - uThreshold) / max(l, 1e-4);
-  fragColor = vec4(c * contrib, 1.0);
+  float t = max(uThreshold, 1.5);
+  float k = max(uKnee, 0.05);
+  float soft = clamp(l - t + k, 0.0, 2.0 * k);
+  soft = soft * soft / (4.0 * k + 1e-4);
+  float bloomLum = max(soft, l - t);
+  fragColor = vec4(c * (bloomLum / max(l, 1e-5)), 1.0);
 }
 `;
 

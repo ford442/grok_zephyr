@@ -43,24 +43,21 @@ fn vs(@builtin(vertex_index) vid: u32) -> VSOut {
 
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let hdr = textureSample(hdrTex, hdrSamp, uv).rgb;
-  let brightness = dot(hdr, vec3f(0.2126, 0.7152, 0.0722));
+  let color = textureSample(hdrTex, hdrSamp, uv).rgb;
+  let luminance = dot(color, vec3f(0.2126, 0.7152, 0.0722));
 
-  // Quadratic soft-knee: ramp up from (threshold-knee) to (threshold+knee)
-  let lo   = tuni.threshold - tuni.knee;
-  let hi   = tuni.threshold + tuni.knee;
-  let knee2 = tuni.knee * 2.0;
-  var weight: f32;
-  if (brightness < lo) {
-    weight = 0.0;
-  } else if (brightness > hi) {
-    weight = 1.0;
-  } else {
-    let t = (brightness - lo) / max(knee2, 0.0001);
-    weight = t * t * (3.0 - 2.0 * t); // smoothstep
-  }
+  // Enforce a minimum threshold so ambient light cannot wash out the scene
+  let t = max(tuni.threshold, 1.5);
+  // Tighter knee prevents mid-tones from partially blooming
+  let k = max(tuni.knee, 0.05);
 
-  return vec4f(hdr * weight, 1.0);
+  var rq = clamp(luminance - t + k, 0.0, k * 2.0);
+  rq = (rq * rq) / (4.0 * k + 0.0001);
+
+  let bloom_luminance = max(rq, luminance - t);
+  let output_color = color * (bloom_luminance / max(luminance, 0.00001));
+
+  return vec4f(output_color, 1.0);
 }
 `;
 

@@ -428,45 +428,25 @@ fn vs(
 
 @fragment
 fn fs(in: VOut) -> @location(0) vec4f {
-  let centered = in.uv - 0.5;
-  let d = length(centered) * 2.0;
-  if (d > 1.0) { discard; }
+  // Distance from billboard center (uv 0.5, 0.5)
+  let dist = distance(in.uv, vec2f(0.5));
 
-  let angle = atan2(centered.y, centered.x);
+  // Sharp opaque core with steep falloff (replaces fuzzy linear/Gaussian fade)
+  let core = smoothstep(0.40, 0.10, dist);
 
-  // Core glow (Gaussian)
-  let core = exp(-d * d * 8.0);
+  // Tight, subtle halo for a realistic optical point-spread
+  let halo = smoothstep(0.50, 0.35, dist) * 0.2;
 
-  // Multi-octave halos (lens flare rings)
-  var halos = 0.0;
-  halos += exp(-pow((d - 0.25) / 0.08, 2.0)) * 0.4;
-  halos += exp(-pow((d - 0.50) / 0.06, 2.0)) * 0.2;
-  // Shell-tinted mid ring
-  halos += exp(-pow((d - 0.60) / 0.04, 2.0)) * 0.15;
-  halos += exp(-pow((d - 0.75) / 0.05, 2.0)) * 0.1;
+  let alpha = (core + halo) * in.bright;
 
-  // 4-point diffraction spikes
-  let spike = pow(abs(cos(angle * 2.0)), 16.0) * exp(-d * 3.0) * 0.4;
+  if (alpha < 0.02) {
+    discard;
+  }
 
-  // Outer glow === softer, wider falloff (exponent 1.8 vs old 2.5)
-  let outerGlow = exp(-d * 1.8) * 0.3;
-  let edgeGlow = exp(-pow(d - 0.35, 2.0) * 8.0) * 0.15 * (1.0 + in.highlight * 0.8);
+  // Boost core brightness so only the hot center pierces the bloom threshold
+  let intensity_boost = 1.0 + (core * 2.5);
+  let final_color = in.color * intensity_boost * in.bright;
 
-  // Animated pulsing focus ring for selected satellites
-  let focusPulse = 0.65 + 0.35 * sin(uni.time * 6.0);
-  let focusRing = exp(-pow((d - 0.85) / 0.05, 2.0)) * focusPulse * 1.8 * in.highlight;
-
-  // Shell-dependent glow width (shells clamped to [0,2] range)
-  let shellGlowMod = mix(1.2, 0.7, clamp(in.shell, 0.0, 2.0) / 2.0);
-  let total = (core * 2.0 + halos * shellGlowMod + spike + outerGlow + edgeGlow + focusRing) * in.bright;
-
-  // Color: core white-hot, edges colored
-  let coreWhite = vec3f(1.0, 1.0, 1.0);
-  let finalColor = mix(in.color, coreWhite, core * 0.6);
-
-  let hdr = finalColor * total * 2.8;
-  let alpha = clamp(total, 0.0, 1.0);
-
-  return vec4f(hdr, alpha);
+  return vec4f(final_color, alpha);
 }
 `;
