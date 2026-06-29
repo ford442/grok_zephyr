@@ -590,7 +590,7 @@ export class CameraController {
       Math.sin(pitch),
     ];
 
-    const worldUp: Vec3 = this.currentMode === 'ground'
+    const worldUp: Vec3 = this.currentMode === 'ground' || this.currentMode === 'skyline'
       ? [Math.cos(yaw), Math.sin(yaw), 0]
       : [0, 0, 1];
 
@@ -607,8 +607,10 @@ export class CameraController {
       return camera;
     }
 
-    if (this.currentMode === 'ground') {
-      const surfaceRadius = CONSTANTS.EARTH_RADIUS_KM + 0.1;
+    if (this.currentMode === 'ground' || this.currentMode === 'skyline') {
+      const surfaceRadius = this.currentMode === 'skyline'
+        ? CONSTANTS.EARTH_RADIUS_KM + 0.18
+        : CONSTANTS.EARTH_RADIUS_KM + 0.1;
       const pannedPosition = v3add(camera.position, this.panOffset);
       const newPosition = v3scale(v3norm(pannedPosition), surfaceRadius);
 
@@ -671,6 +673,11 @@ export class CameraController {
       case 4:
         this.currentMode = 'moon';
         break;
+      case 5:
+        this.currentMode = 'skyline';
+        this.cameraAngles.pitch = 0;
+        this.cameraAngles.yaw = 0;
+        break;
       default:
         this.currentMode = 'horizon-720';
     }
@@ -709,6 +716,8 @@ export class CameraController {
     if ((from === 'sat-pov' && to === 'ground') || (from === 'ground' && to === 'sat-pov')) return 0.7;
     // God ↔ horizon: medium arc
     if ((from === 'god' && to === 'horizon-720') || (from === 'horizon-720' && to === 'god')) return 0.8;
+    // Ground ↔ skyline: both surface-anchored, near-instant transition
+    if ((from === 'ground' && to === 'skyline') || (from === 'skyline' && to === 'ground')) return 0.5;
     // Any remaining pair
     return 1.0;
   }
@@ -855,6 +864,8 @@ export class CameraController {
         return this.calculateGroundView();
       case 'moon':
         return this.calculateMoonView();
+      case 'skyline':
+        return this.calculateSkylineView();
       default:
         return this.calculateHorizonView();
     }
@@ -1448,7 +1459,53 @@ export class CameraController {
     
     // Up is radial from Earth center
     const up: Vec3 = v3norm(position);
-    
+
+    return {
+      position,
+      target,
+      up,
+      fov: CAMERA.DEFAULT_FOV,
+      near: 0.1,
+      far: CAMERA.FAR_PLANE,
+    };
+  }
+
+  /**
+   * Skyline View
+   *
+   * Observer high in a building, looking out over a procedural night city.
+   * Mirrors calculateGroundView() but lifted further off the surface and
+   * biased to look slightly downward at the skyline by default.
+   */
+  private calculateSkylineView(): CameraState {
+    const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
+    const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
+
+    // Lifted higher than ground view to sit above the rooftops.
+    const liftKm = 0.18;
+    const surfaceRadius = CONSTANTS.EARTH_RADIUS_KM + liftKm;
+
+    const position: Vec3 = [
+      surfaceRadius * Math.cos(yaw),
+      surfaceRadius * Math.sin(yaw),
+      0
+    ];
+
+    // Bias the default look direction ~8° downward toward the skyline.
+    const downwardBiasRad = 8 * MATH.DEG_TO_RAD;
+    const lookPitch = -(pitch + downwardBiasRad);
+
+    const cosP = Math.cos(lookPitch);
+    const sinP = Math.sin(lookPitch);
+
+    const target: Vec3 = [
+      position[0] + Math.cos(yaw) * cosP * 10000,
+      position[1] + Math.sin(yaw) * cosP * 10000,
+      position[2] + sinP * 10000
+    ];
+
+    const up: Vec3 = v3norm(position);
+
     return {
       position,
       target,

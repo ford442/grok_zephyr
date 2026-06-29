@@ -17,7 +17,8 @@ import { FocusManager, type ConstellationStats, type FocusSelection } from '@/fo
 import { AudioEngine } from '@/audio/AudioEngine.js';
 import { TrailRenderer } from '@/render/TrailRenderer.js';
 import { EarthAtmosphereRenderer } from '@/earth.js';
-import { genSphere, extractFrustum, mat4inv } from '@/utils/math.js';
+import { SkylineCity } from '@/render/SkylineCity.js';
+import { genSphere, extractFrustum, mat4inv, v3norm, v3dot, smoothstep } from '@/utils/math.js';
 import { getBeamPatternTitle } from '@/patterns.js';
 import { CONSTANTS, BUFFER_SIZES, UI as UI_CONSTANTS } from '@/types/constants.js';
 import { TLELoader } from '@/data/TLELoader.js';
@@ -147,6 +148,7 @@ class GrokZephyrApp {
   private focusManager: FocusManager | null = null;
   private trailRenderer: TrailRenderer | null = null;
   private earthAtmosphereRenderer: EarthAtmosphereRenderer | null = null;
+  private skyline: SkylineCity = new SkylineCity();
   private groundViewEnabled = true;
   private selectedSatelliteIndex = -1;
   private patternSeed = 0;
@@ -490,13 +492,17 @@ class GrokZephyrApp {
   private updateGroundObserverOverlay(): void {
     const overlay = document.getElementById('ground-observer-overlay');
     const presetSelector = document.getElementById('ground-preset-selector');
-    const isGround = this.camera.getViewMode() === 'ground';
+    const viewMode = this.camera.getViewMode();
+    const isGround = viewMode === 'ground';
+    const isSkyline = viewMode === 'skyline';
 
-    if (overlay) overlay.style.display = isGround ? 'block' : 'none';
+    if (overlay) overlay.style.display = (isGround || isSkyline) ? 'block' : 'none';
     if (presetSelector) presetSelector.style.display = isGround ? 'flex' : 'none';
 
     if (isGround) {
       this.applyGroundOverlayClass(this.groundObserver.getOverlayClass());
+    } else if (isSkyline) {
+      this.applyGroundOverlayClass('frame-skyline');
     }
   }
 
@@ -552,6 +558,7 @@ class GrokZephyrApp {
       case 'sat-pov': return 'Fleet POV';
       case 'ground': return 'Ground View';
       case 'moon': return 'Moon View';
+      case 'skyline': return 'Skyline View';
       default: return 'Unknown';
     }
   }
@@ -1298,7 +1305,7 @@ class GrokZephyrApp {
     };
 
     return {
-      viewMode:     parseIntParam('mode',    0, 4),
+      viewMode:     parseIntParam('mode',    0, 5),
       qualityLevel: parseQualityParam(params.get('preset')),
       physicsMode:  parseIntParam('physics', 0, 2),
       patternMode:  parseIntParam('pattern', 0, 2),
@@ -1388,6 +1395,10 @@ class GrokZephyrApp {
       this.pipeline.initialize(width, height);
       this.buffers.updateBloomUniforms(width, height);
       window.addEventListener('resize', this.resizeListener);
+
+      // Skyline city: separate near-tuned pass, its own GPU buffers.
+      this.skyline.createBuffers(this.context.getDevice());
+      this.pipeline.setSkylineResources(this.skyline.getCityUniformBuffer(), this.skyline.getInstanceBuffer());
 
       // Initialize PostProcessStack — operates in "skip-final-tonemap" mode so it
       // acts as a post-composite TAA + color-grading layer without double-tonemapping.
@@ -1990,7 +2001,27 @@ class GrokZephyrApp {
       this.volumetricBeamRenderer.encodeRaymarchPass(encoder);
       this.volumetricBeamRenderer.encodeCompositePass(encoder, this.pipeline.getHDRView());
     }
-    
+
+    // Pass 2.7: Skyline city — separate near-tuned pass, own depth clear.
+    // Does not touch the global frustum or the scene pass draw order above.
+    if (this.camera.getViewMode() === 'skyline' && this.context) {
+      this.skyline.setObserver(cameraState.position);
+      const { width: canvasW, height: canvasH } = this.context.getCanvasSize();
+      const cityViewProj = this.skyline.computeCityViewProj(
+        cameraState.position,
+        cameraState.target,
+        cameraState.up,
+        canvasW / canvasH,
+        cameraState.fov
+      );
+      const sunPos = this.calculateSunPosition(this.simTime);
+      const sunDir = v3norm(sunPos);
+      const up = v3norm(cameraState.position);
+      const nightFactor = smoothstep(0.10, -0.10, v3dot(up, sunDir));
+      this.skyline.updateUniform(this.context.getDevice(), cityViewProj, sunDir, nightFactor, this.simTime);
+      this.pipeline.encodeSkylinePass(encoder, this.skyline.buildingCount);
+    }
+
     const sceneSourceView = this.pipeline.encodeDepthOfFieldPasses(encoder);
     const motionBlurSourceView = this.pipeline.encodeMotionBlurPass(encoder, sceneSourceView);
     this.pipeline.encodeAutoExposurePasses(encoder, motionBlurSourceView, deltaTime);
@@ -2184,6 +2215,7 @@ class GrokZephyrApp {
     this.pipeline?.destroy();
     this.postProcessStack?.destroy();
     this.volumetricBeamRenderer?.destroy();
+    this.skyline.destroy();
     this.buffers?.destroy();
     this.context?.destroy();
     this.profiler.destroy();
