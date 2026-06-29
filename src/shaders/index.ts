@@ -1,14 +1,15 @@
 /**
  * Grok Zephyr - Shader Collection
- * 
- * Central export for all WGSL shaders.
- * 
+ *
+ * Single source of truth for runtime WGSL. Shader code is authored as template
+ * strings in TypeScript modules (not standalone `.wgsl` files at this path).
+ *
  * STRUCTURE:
  * - uniforms.ts: Shared uniform struct across all shaders
  * - compute/: Compute shaders (orbital mechanics, beams)
  * - render/: Render shaders (stars, earth, atmosphere, satellites, etc.)
  * - animations/: Animation shaders (smile, sky strips)
- * 
+ *
  * USAGE:
  *   import { SHADERS } from '@/shaders/index.js';
  *   const orbitalShader = SHADERS.compute.orbital;

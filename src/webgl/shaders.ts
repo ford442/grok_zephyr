@@ -1,11 +1,12 @@
 /**
  * Grok Zephyr - WebGL2 (GLSL ES 3.00) shader sources for the fallback renderer.
  *
- * These mirror the WGSL pipeline semantically (see src/shaders/*.wgsl) but in a
+ * These mirror the canonical WGSL in src/shaders/render/ and compute/ (TypeScript
+ * template exports) but in a
  * simplified, single-author form suited to visual debugging and CI capture.
  *
  * Propagation note: the satellite vertex shader performs the *simple-mode*
- * Keplerian propagation that orbital_compute.wgsl does on the GPU compute pass —
+ * Keplerian propagation that SHADERS.compute.orbital does on the GPU compute pass —
  * i.e. the "simplified compute fallback". Orbital elements arrive as a per-
  * instance attribute (raan, inclination, meanAnomaly0, shellData) and positions
  * are derived entirely on the GPU, so the full 1,048,576-satellite set renders
@@ -46,6 +47,54 @@ vec3 keplerPosition(vec4 elem, float simTime) {
 }
 `;
 
+/** Distance LOD helpers — shared by satellite vertex (debug) and fragment kernels. */
+const SAT_LOD_GLSL = /* glsl */ `
+const float LOD_NEAR_KM = 5000.0;
+const float LOD_MID_KM = 25000.0;
+const float LOD_NEAR_BLEND_KM = 1000.0;
+const float LOD_MID_BLEND_KM = 3000.0;
+const float MOON_BILLBOARD_SCALE = 750.0;
+
+vec3 lodTierWeights(float lodDist) {
+  float nearToMid = smoothstep(LOD_NEAR_KM - LOD_NEAR_BLEND_KM, LOD_NEAR_KM + LOD_NEAR_BLEND_KM, lodDist);
+  float midToFar = smoothstep(LOD_MID_KM - LOD_MID_BLEND_KM, LOD_MID_KM + LOD_MID_BLEND_KM, lodDist);
+  float nearW = 1.0 - nearToMid;
+  float farW = midToFar;
+  float midW = max(0.0, nearToMid - farW);
+  return vec3(nearW, midW, farW);
+}
+
+void resolveLodKernel(
+  float lodDist,
+  float baseOuter, float baseInner,
+  float haloOuter, float haloInner,
+  float haloStrength, float coreBoost,
+  out float coreOuter, out float coreInner,
+  out float outHaloOuter, out float outHaloInner,
+  out float outHaloStrength, out float outCoreBoost
+) {
+  vec3 w = lodTierWeights(lodDist);
+  float mOuter = baseOuter * 0.78;
+  float mInner = baseInner * 0.65;
+  float mHaloO = haloOuter * 0.88;
+  float mHaloI = haloInner * 0.88;
+  float mHaloS = haloStrength * 0.5;
+  float mBoost = coreBoost * 0.9;
+  float fOuter = 0.32;
+  float fInner = 0.08;
+  float fHaloO = 0.38;
+  float fHaloI = 0.20;
+  float fHaloS = 0.0;
+  float fBoost = coreBoost * 0.55;
+  coreOuter = w.x * baseOuter + w.y * mOuter + w.z * fOuter;
+  coreInner = w.x * baseInner + w.y * mInner + w.z * fInner;
+  outHaloOuter = w.x * haloOuter + w.y * mHaloO + w.z * fHaloO;
+  outHaloInner = w.x * haloInner + w.y * mHaloI + w.z * fHaloI;
+  outHaloStrength = w.x * haloStrength + w.y * mHaloS + w.z * fHaloS;
+  outCoreBoost = w.x * coreBoost + w.y * mBoost + w.z * fBoost;
+}
+`;
+
 /* ─────────────────────────── Satellites (instanced points) ─────────────────────────── */
 
 export const SAT_VERT = /* glsl */ `#version 300 es
@@ -58,14 +107,24 @@ uniform float uSimTime;
 uniform vec2 uScreen;
 uniform float uPointScale; // debug: global point-size multiplier
 uniform int uLodDebug;     // debug: 1 = color by shell/LOD bucket
+uniform int uViewMode;     // low 16 bits = view mode index (4 = moon)
+uniform float uDistanceCullKm;
 out vec3 vColor;
 out float vFade;
+out float vWorldDist;
 void main() {
   vec3 pos = keplerPosition(aElem, uSimTime);
   vec4 clip = uViewProj * vec4(pos, 1.0);
   gl_Position = clip;
 
   float dist = max(length(pos - uCameraPos), 1.0);
+  vWorldDist = dist;
+  if (dist > uDistanceCullKm) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    gl_PointSize = 0.0;
+    vFade = 0.0;
+    return;
+  }
   // Screen-size attenuation: closer satellites render larger (clamped for GL_POINTS).
   float size = clamp((uScreen.y * 4.0) / dist, 1.0, 32.0) * uPointScale;
   gl_PointSize = size;
@@ -85,17 +144,42 @@ void main() {
 
 export const SAT_FRAG = /* glsl */ `#version 300 es
 precision highp float;
+${SAT_LOD_GLSL}
 in vec3 vColor;
 in float vFade;
+in float vWorldDist;
+uniform float uCoreOuter;
+uniform float uCoreInner;
+uniform float uHaloOuter;
+uniform float uHaloInner;
+uniform float uHaloStrength;
+uniform float uCoreBoost;
+uniform int uViewMode;
 out vec4 fragColor;
 void main() {
   vec2 uv = gl_PointCoord;
-  float dist = distance(uv, vec2(0.5));
-  float core = smoothstep(0.40, 0.10, dist);
-  float halo = smoothstep(0.50, 0.35, dist) * 0.2;
+  float uvDist = distance(uv, vec2(0.5));
+
+  bool isMoonView = (uViewMode & 0xFFFF) == 4;
+  float lodDist = vWorldDist / (isMoonView ? MOON_BILLBOARD_SCALE : 1.0);
+
+  float coreOuter;
+  float coreInner;
+  float haloOuter;
+  float haloInner;
+  float haloStrength;
+  float coreBoost;
+  resolveLodKernel(
+    lodDist, uCoreOuter, uCoreInner, uHaloOuter, uHaloInner, uHaloStrength, uCoreBoost,
+    coreOuter, coreInner, haloOuter, haloInner, haloStrength, coreBoost
+  );
+
+  float core = smoothstep(coreOuter, coreInner, uvDist);
+  float halo = smoothstep(haloOuter, haloInner, uvDist) * haloStrength;
   float alpha = (core + halo) * vFade;
-  if (alpha < 0.02) discard;
-  float intensityBoost = 1.0 + core * 2.5;
+  float alphaCutoff = lodDist > LOD_MID_KM ? 0.03 : 0.02;
+  if (alpha < alphaCutoff) discard;
+  float intensityBoost = 1.0 + core * coreBoost;
   vec3 col = vColor * intensityBoost * vFade;
   fragColor = vec4(col, alpha);
 }
@@ -221,6 +305,9 @@ void main() {
     float tw = 0.7 + 0.3 * sin(uTime * 2.0 + star * 40.0);
     bright = smoothstep(0.25, 0.0, length(f)) * (star - 0.985) / 0.015 * tw;
   }
+  // Cap star HDR so ground view is not washed out; brightest stars still bloom.
+  float starCap = uBackgroundMode == 2 ? 0.55 : 0.92;
+  bright = min(bright, starCap);
   // Subtle deep-space gradient.
   vec3 bg = mix(vec3(0.004, 0.006, 0.015), vec3(0.0, 0.0, 0.004), uv.y * 0.5 + 0.5);
   fragColor = vec4(bg + vec3(bright), 1.0);
@@ -245,15 +332,18 @@ in vec2 vUv;
 uniform sampler2D uScene;
 uniform float uThreshold;
 uniform float uKnee;
+uniform float uEnforceFloors;
 out vec4 fragColor;
 void main() {
   vec3 c = texture(uScene, vUv).rgb;
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  float t = max(uThreshold, 1.5);
-  float k = max(uKnee, 0.05);
+  float t = uEnforceFloors > 0.5 ? max(uThreshold, 1.5) : uThreshold;
+  float k = uEnforceFloors > 0.5 ? max(uKnee, 0.05) : uKnee;
   float soft = clamp(l - t + k, 0.0, 2.0 * k);
   soft = soft * soft / (4.0 * k + 1e-4);
   float bloomLum = max(soft, l - t);
+  float sourceWeight = mix(0.36, 1.0, smoothstep(2.0, 4.0, l));
+  bloomLum *= sourceWeight;
   fragColor = vec4(c * (bloomLum / max(l, 1e-5)), 1.0);
 }
 `;
@@ -294,10 +384,22 @@ vec3 aces(vec3 x) {
   return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
 }
 
+vec3 compositeBloom(vec3 bloom, vec3 scene, float intensity) {
+  float sceneLum = dot(scene, vec3(0.2126, 0.7152, 0.0722));
+  float satMix = smoothstep(2.4, 4.2, sceneLum);
+  float starMix = (1.0 - smoothstep(2.8, 4.5, sceneLum)) * smoothstep(0.12, 1.0, sceneLum);
+  vec3 layered = bloom * mix(0.72, 1.18, satMix);
+  layered += bloom * starMix * 0.48;
+  float lum = dot(layered, vec3(0.2126, 0.7152, 0.0722));
+  float haloLift = mix(1.42, 1.0, smoothstep(0.03, 0.38, lum));
+  vec3 soft = layered / max(vec3(1.0), layered * 0.14 + vec3(0.10));
+  return soft * intensity * haloLift;
+}
+
 void main() {
   vec3 scene = texture(uScene, vUv).rgb;
   vec3 bloom = texture(uBloom, vUv).rgb;
-  vec3 hdr = (scene + bloom * uBloomIntensity) * uExposure;
+  vec3 hdr = (scene + compositeBloom(bloom, scene, uBloomIntensity)) * uExposure;
 
   vec3 mapped;
   if (uTonemap == 0) mapped = aces(hdr);

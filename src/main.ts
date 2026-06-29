@@ -36,6 +36,13 @@ import { OrbitalElements } from '@/core/OrbitalElements.js';
 import { WebGLRenderer, type EarthMesh } from '@/webgl/WebGLRenderer.js';
 import { WebGLDebugOverlay, parseDebugFlags } from '@/webgl/WebGLDebug.js';
 import { resolveRendererBackend, resolveSatelliteCount, type RendererBackend } from '@/webgl/rendererSelection.js';
+import {
+  resolveImageTuning,
+  saveImageTuning,
+  type ImageTuningSettings,
+} from '@/core/ImageTuning.js';
+import { resolveViewTuning } from '@/core/ViewTuningProfile.js';
+import { parseVisualHarnessParams, type VisualHarnessParams } from '@/visualHarness.js';
 
 import './styles.css';
 import './styles/onboarding.css';
@@ -195,6 +202,9 @@ class GrokZephyrApp {
   private trailToggleOverride: boolean | null = null;
   private trailLengthMode: 'short' | 'medium' | 'long' = 'medium';
   private exposureSettings: ExposureRuntimeSettings = parseSavedExposureSettings();
+  private imageTuning: ImageTuningSettings = resolveImageTuning();
+  /** When true, dev IMAGE TUNING sliders override per-view profiles. */
+  private imageTuningManualOverride = false;
 
   constructor() {
     const canvas = document.getElementById('gpu-canvas') as HTMLCanvasElement;
@@ -312,6 +322,11 @@ class GrokZephyrApp {
     this.ui.onTonemapModeChange((mode) => {
       this.exposureSettings.tonemapMode = mode;
       this.applyExposureSettings();
+    });
+    this.ui.onImageTuningChange((settings) => {
+      this.imageTuning = settings;
+      this.imageTuningManualOverride = true;
+      this.applyImageTuning();
     });
 
     this.ui.setDemoActive(false);
@@ -1164,6 +1179,49 @@ class GrokZephyrApp {
     saveExposureSettings(this.exposureSettings);
   }
 
+  private setupImageTuning(): void {
+    const search = window.location.search;
+    const params = new URLSearchParams(search);
+    this.imageTuningManualOverride =
+      params.has('bloomThreshold') ||
+      params.has('bloomKnee') ||
+      params.has('bloomIntensity') ||
+      params.has('satCore') ||
+      params.has('satFalloff') ||
+      params.has('satCoreInner');
+    this.imageTuning = resolveImageTuning(search);
+    this.ui.setImageTuningControls(this.imageTuning, {
+      enforceFloors: this.imageTuning.enforceFloors,
+    });
+    if (this.imageTuningManualOverride) {
+      this.applyImageTuning();
+    } else {
+      this.applyViewTuning(performance.now() * 0.001);
+    }
+  }
+
+  /** Blend per-view bloom/satellite profiles during camera mode transitions. */
+  private applyViewTuning(time: number): void {
+    if (this.imageTuningManualOverride) return;
+    const blend = this.camera.getViewTuningBlend(time);
+    const resolved = resolveViewTuning(
+      blend.fromIndex,
+      blend.toIndex,
+      blend.t,
+      this.imageTuning.enforceFloors,
+    );
+    this.imageTuning = resolved.settings;
+    this.pipeline?.setImageTuning(resolved.settings);
+    this.webglRenderer?.setImageTuning(resolved.settings);
+    this.ui.setTuningProfile(resolved.profileLabel);
+  }
+
+  private applyImageTuning(): void {
+    this.pipeline?.setImageTuning(this.imageTuning);
+    this.webglRenderer?.setImageTuning(this.imageTuning);
+    saveImageTuning(this.imageTuning);
+  }
+
   /**
    * Apply a quality preset to all affected renderers.
    *
@@ -1277,6 +1335,25 @@ class GrokZephyrApp {
     }
 
     this.volumetricBeamRenderer.setConfig(config);
+  }
+
+  /**
+   * Apply visual-harness URL params (?demo, ?simTime, ?timescale, ?ground, ?seed).
+   * Used by Playwright to freeze camera/sim state for golden-frame comparisons.
+   */
+  private applyVisualHarnessParams(): VisualHarnessParams {
+    const harness = parseVisualHarnessParams();
+    if (harness.demoAuto !== null) {
+      this.demoAutoEnabled = harness.demoAuto;
+      this.ui.setDemoAutoEnabled(harness.demoAuto);
+    }
+    if (harness.simTime !== null) this.simTime = harness.simTime;
+    if (harness.timeScale !== null) this.timeScale = harness.timeScale;
+    if (harness.groundPreset !== null) {
+      this.groundObserver.setPreset(harness.groundPreset);
+      this.applyGroundOverlayClass(this.groundObserver.getOverlayClass());
+    }
+    return harness;
   }
 
   /**
@@ -1458,6 +1535,7 @@ class GrokZephyrApp {
       // Apply initial quality preset (this also updates the UI buttons)
       this.applyQualityPreset(initialQuality);
       this.applyExposureSettings();
+      this.setupImageTuning();
 
       // Apply URL param overrides for view mode, physics, and beam pattern
       const initialViewMode = urlParams.viewMode ?? 0;
@@ -1498,6 +1576,7 @@ class GrokZephyrApp {
     this.webglOrbital = orbital;
 
     // Load orbital data: TLE if requested via query param, else procedural Walker.
+    const harness = parseVisualHarnessParams();
     const tleSource = this.getTLESource();
     let dataSourceLabel = 'Procedural Walker';
     if (tleSource) {
@@ -1508,14 +1587,14 @@ class GrokZephyrApp {
           const realCount = orbital.loadFromTLE(tles);
           dataSourceLabel = `TLE (${realCount.toLocaleString()} real)`;
         } else {
-          orbital.generate();
+          orbital.generate(harness.seed ?? undefined);
         }
       } catch (err) {
         console.warn('[GrokZephyr] TLE load failed, using procedural generation:', err);
-        orbital.generate();
+        orbital.generate(harness.seed ?? undefined);
       }
     } else {
-      orbital.generate();
+      orbital.generate(harness.seed ?? undefined);
     }
 
     this.camera.attachToCanvas(this.canvas);
@@ -1543,6 +1622,8 @@ class GrokZephyrApp {
     // Apply initial view mode from URL (?mode=0-4).
     const urlParams = this.parseInitialStateFromURL();
     this.camera.setViewMode(urlParams.viewMode ?? 0);
+    this.applyVisualHarnessParams();
+    this.setupImageTuning();
 
     window.addEventListener('resize', this.resizeListener);
 
@@ -1586,6 +1667,8 @@ class GrokZephyrApp {
     this.lastTime = time;
     this.simTime += deltaTime * this.timeScale;
 
+    this.applyViewTuning(time);
+
     if (
       this.demoAutoEnabled &&
       !this.camera.isCinematicActive() &&
@@ -1619,6 +1702,7 @@ class GrokZephyrApp {
       simTime: this.simTime,
       time,
       backgroundMode: getBackgroundModeIndex(),
+      viewMode: this.camera.getViewModeIndex(),
     });
 
     this.animationId = requestAnimationFrame(this.renderWebGL);
@@ -1902,6 +1986,8 @@ class GrokZephyrApp {
     
     // Update scaled simulation time based on timeScale
     this.simTime += deltaTime * this.timeScale;
+
+    this.applyViewTuning(time);
 
     if (
       this.demoAutoEnabled &&

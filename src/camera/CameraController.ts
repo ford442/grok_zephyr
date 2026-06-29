@@ -164,7 +164,13 @@ export class CameraController {
 
   // Smooth mode-switch transitions: blend from the last visual pose to the new one
   private lastVisualState: CameraState | null = null;
-  private modeTransition: { from: CameraState; startTime: number; duration: number } | null = null;
+  private modeTransition: {
+    from: CameraState;
+    startTime: number;
+    duration: number;
+    fromModeIndex: number;
+    toModeIndex: number;
+  } | null = null;
 
   constructor() {
     // Event listeners are attached lazily via attachToCanvas()
@@ -646,6 +652,7 @@ export class CameraController {
       this.stopCinematic();
     }
 
+    const fromIndex = this.modeIndex;
     const fromMode = this.currentMode;
     this.modeIndex = index;
     
@@ -689,6 +696,8 @@ export class CameraController {
         from: this.lastVisualState,
         startTime: time,
         duration: this.getTransitionDuration(fromMode, this.currentMode),
+        fromModeIndex: fromIndex,
+        toModeIndex: index,
       };
     }
     
@@ -720,6 +729,24 @@ export class CameraController {
     if ((from === 'ground' && to === 'skyline') || (from === 'skyline' && to === 'ground')) return 0.5;
     // Any remaining pair
     return 1.0;
+  }
+
+  /**
+   * Blend state for per-view image tuning during mode transitions.
+   * Returns source/target mode indices and smoothstep blend factor t ∈ [0, 1].
+   */
+  getViewTuningBlend(time: number): { fromIndex: number; toIndex: number; t: number } {
+    if (this.modeTransition) {
+      const elapsed = Math.max(0, time - this.modeTransition.startTime);
+      const tLinear = Math.min(1, elapsed / this.modeTransition.duration);
+      return {
+        fromIndex: this.modeTransition.fromModeIndex,
+        toIndex: this.modeTransition.toModeIndex,
+        t: this.smoothstep(tLinear),
+      };
+    }
+    const idx = this.modeIndex;
+    return { fromIndex: idx, toIndex: idx, t: 1 };
   }
 
   /**

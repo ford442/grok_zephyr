@@ -28,6 +28,18 @@ struct MotionBlurUni {
 }
 @group(0) @binding(4) var<uniform> motion : MotionBlurUni;
 
+struct SatelliteVisualUni {
+  core_outer       : f32,
+  core_inner       : f32,
+  halo_outer       : f32,
+  halo_inner       : f32,
+  halo_strength    : f32,
+  core_boost       : f32,
+  distance_cull_km : f32,
+  pad1             : f32,
+}
+@group(0) @binding(5) var<uniform> satVisual : SatelliteVisualUni;
+
 struct VOut {
   @builtin(position) cp : vec4f,
   @location(0) uv       : vec2f,
@@ -35,6 +47,8 @@ struct VOut {
   @location(2) bright   : f32,
   @location(3) shell    : f32,
   @location(4) highlight: f32,
+  @location(5) world_dist: f32,
+  @location(6) pattern_feature: f32,
 };
 
 const PI: f32 = 3.14159265;
@@ -52,7 +66,25 @@ const SMILE_PHASE_TWINKLE: i32 = 2;
 const SMILE_PHASE_FADE: i32 = 3;
 const SMILE_PHASE_DURATION: f32 = 8.0;
 
-fn sat_color(idx: u32) -> vec3f {
+// Vertex bright tiers — tuned for bloom floor 1.5 + fs core_boost (~3.5× at center).
+// Effective HDR ≈ tier * strength * (1 + core_boost) at billboard core.
+const PATTERN_TIER_BG: f32 = 0.30;      // sub-bloom background sats (~1.0 HDR)
+const PATTERN_TIER_GLOW: f32 = 0.40;    // logo glow band, soft accents (~1.4 HDR)
+const PATTERN_TIER_TRAIL: f32 = 0.50;   // digital rain trails (~1.75 HDR)
+const PATTERN_TIER_FEATURE: f32 = 0.64; // smile curve, rain head (~2.2 HDR)
+const PATTERN_TIER_HERO: f32 = 0.76;    // eyes, 𝕏 stroke (~2.7 HDR)
+
+struct PatternSample {
+  rgb: vec3f,
+  strength: f32,
+  tier: f32,
+  feature: f32, // 0=bg, 1=accent, 2=hero — drives fragment kernel/boost
+}
+
+fn patternVertexBright(sample: PatternSample, atten: f32, selectionBoost: f32) -> f32 {
+  let distFade = mix(1.0, atten, 0.32);
+  return sample.strength * sample.tier * distFade * selectionBoost;
+}
   let c = idx % 7u;
   switch c {
     case 0u: { return vec3f(1.0, 0.18, 0.18); }
@@ -139,97 +171,113 @@ fn classify_smile_feature(sat_pos: vec3f, earth_dir: vec3f) -> u32 {
 }
 
 // Smile animation color calculation
-fn smile_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, earth_dir: vec3f) -> vec4f {
+fn smile_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, earth_dir: vec3f) -> PatternSample {
   let cycle_time = f32(4) * SMILE_PHASE_DURATION;
   let phase = i32(time % cycle_time / SMILE_PHASE_DURATION);
   let t = fract(time % cycle_time / SMILE_PHASE_DURATION);
 
   let feature = classify_smile_feature(sat_pos, earth_dir);
 
-  let eye_color = vec3f(1.0, 0.7, 0.28);
-  let smile_color = vec3f(1.0, 0.84, 0.0);
-  let bg_color = sat_color(sat_idx) * 0.2;
+  let eye_color = vec3f(1.0, 0.82, 0.35);
+  let smile_color = vec3f(1.0, 0.88, 0.15);
+  let bg_color = sat_color(sat_idx) * 0.18;
 
   if (feature == 0u) {
-    var bg_alpha = 0.2;
+    var bg_strength = 0.35;
     switch phase {
-      case SMILE_PHASE_EMERGE: { bg_alpha = mix(1.0, 0.2, t); }
-      case SMILE_PHASE_GLOW: { bg_alpha = 0.2; }
-      case SMILE_PHASE_TWINKLE: { bg_alpha = 0.2 + 0.1 * sin(t * 10.0); }
-      case SMILE_PHASE_FADE: { bg_alpha = mix(0.2, 1.0, t); }
+      case SMILE_PHASE_EMERGE: { bg_strength = mix(0.55, 0.35, t); }
+      case SMILE_PHASE_GLOW: { bg_strength = 0.32; }
+      case SMILE_PHASE_TWINKLE: { bg_strength = 0.32 + 0.08 * sin(t * 10.0); }
+      case SMILE_PHASE_FADE: { bg_strength = mix(0.35, 0.55, t); }
       default: {}
     }
-    return vec4f(bg_color * bg_alpha, bg_alpha);
+    return PatternSample(bg_color, bg_strength, PATTERN_TIER_BG, 0.0);
   }
 
   var col: vec3f;
-  var alpha: f32 = 1.0;
+  var strength: f32 = 1.0;
+  var tier = PATTERN_TIER_FEATURE;
+  var feat = 2.0;
 
   if (feature == 1u || feature == 2u) {
     col = eye_color;
+    tier = PATTERN_TIER_HERO;
     let blink_period = select(3.0, 3.2, feature == 2u);
     let blink = smoothstep(0.0, 0.1, abs(sin(time * 3.14159 / blink_period)));
-    col *= blink;
+    strength = 0.85 + 0.15 * blink;
   } else {
     col = smile_color;
+    tier = PATTERN_TIER_FEATURE;
+    feat = 1.0;
     let wave = sin(to_earth_facing_coords(sat_pos).x * 0.01 + time * 2.0);
-    col *= 0.8 + 0.2 * wave;
+    col *= 0.88 + 0.12 * wave;
+    strength = 0.92;
   }
 
   switch phase {
     case SMILE_PHASE_EMERGE: {
-      let fade = smoothstep(0.0, 0.3, t);
+      let fade = smoothstep(0.0, 0.35, t);
       col *= fade;
-      alpha = fade;
+      strength *= fade;
     }
     case SMILE_PHASE_GLOW: {
-      let pulse = 0.9 + 0.1 * sin(t * 3.14159);
+      let pulse = 0.92 + 0.08 * sin(t * 3.14159);
       col *= pulse;
+      strength *= pulse;
     }
     case SMILE_PHASE_TWINKLE: {
-    let sparkle = hashAnimated(sat_idx, time * 10.0);
-      col *= 0.7 + 0.6 * sparkle;
+      let sparkle = hashAnimated(sat_idx, time * 10.0);
+      let tw = 0.78 + 0.44 * sparkle;
+      col *= tw;
+      strength *= tw;
     }
     case SMILE_PHASE_FADE: {
-      let dissolve = 1.0 - smoothstep(0.7, 1.0, t);
+      let dissolve = 1.0 - smoothstep(0.65, 1.0, t);
       col *= dissolve;
-      alpha = dissolve;
+      strength *= dissolve;
     }
     default: {}
   }
 
-  return vec4f(col, alpha);
+  return PatternSample(col, strength, tier, feat);
 }
 
 // Digital Rain pattern (Matrix-style)
-fn digital_rain_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> vec4f {
+fn digital_rain_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> PatternSample {
   let local = to_earth_facing_coords(sat_pos);
 
-  // Fix: Hide rain on the back face of the constellation
-  if (local.z < 0.0) { return vec4f(0.0); }
+  // Hide rain on the back face of the constellation
+  if (local.z < 0.0) {
+    return PatternSample(vec3f(0.0), 0.0, PATTERN_TIER_BG, 0.0);
+  }
 
-  let column = floor(local.x / 100.0); // 100km columns
+  let column = floor(local.x / 100.0);
   let drop_speed = 1.0 + fract(f32(column) * 0.37) * 2.0;
   let drop_pos = fract(time * drop_speed + f32(column) * 0.1);
 
-  // Fix: Map coordinates to top-to-bottom drop
   let normalized_height = 1.0 - ((local.y + 6921.0) / 13842.0);
   var dist_to_drop = normalized_height - drop_pos;
-
-  // Wrap around trail loop
   if (dist_to_drop < 0.0) { dist_to_drop += 1.0; }
 
-  let intensity = 1.0 - smoothstep(0.0, 0.05, dist_to_drop);
-  let trail = (1.0 - smoothstep(0.0, 0.4, dist_to_drop)) * 0.4;
+  let head = 1.0 - smoothstep(0.0, 0.035, dist_to_drop);
+  let trail = (1.0 - smoothstep(0.0, 0.42, dist_to_drop)) * 0.55;
 
-  let final_intensity = max(intensity, trail);
+  let is_head = head > 0.35;
+  let strength = max(head, trail);
+  if (strength < 0.04) {
+    let bg = sat_color(sat_idx) * 0.14;
+    return PatternSample(bg, 0.28, PATTERN_TIER_BG, 0.0);
+  }
 
-  let green = 0.5 + 0.5 * hashU32(sat_idx);
-  return vec4f(0.0, green * final_intensity, 0.0, final_intensity);
+  let green = 0.55 + 0.45 * hashU32(sat_idx);
+  let col = vec3f(0.05, green, 0.12);
+  let tier = select(PATTERN_TIER_TRAIL, PATTERN_TIER_FEATURE, is_head);
+  let feat = select(1.0, 2.0, is_head);
+  return PatternSample(col, strength, tier, feat);
 }
 
 // Heartbeat pattern
-fn heartbeat_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> vec4f {
+fn heartbeat_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> PatternSample {
   let local = to_earth_facing_coords(sat_pos);
 
   let beat = time % 0.8;
@@ -237,16 +285,22 @@ fn heartbeat_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> vec4f {
   let second_beat = smoothstep(0.3, 0.35, beat) * (1.0 - smoothstep(0.35, 0.45, beat));
   let pulse = max(first_beat, second_beat * 0.6);
 
-  // Radial wave expanding outward from the camera's center axis
   let dist_from_center = length(local.xy);
   let wave_delay = dist_from_center * 0.0001;
-  let wave_pulse = smoothstep(0.0, 0.1, fract((time - wave_delay) * 1.25));
+  let wave_pulse = smoothstep(0.0, 0.1, fract((time - wave_delay) * 1.25)) * 0.45;
 
-  let total_pulse = max(pulse, wave_pulse * 0.3);
-  let pinkness = 0.3 + 0.4 * total_pulse;
+  let total_pulse = max(pulse, wave_pulse);
+  let pinkness = 0.35 + 0.45 * total_pulse;
   let col = vec3f(1.0, pinkness, pinkness);
 
-  return vec4f(col * total_pulse, total_pulse);
+  if (total_pulse < 0.08) {
+    let bg = sat_color(sat_idx) * 0.16;
+    return PatternSample(bg, 0.30, PATTERN_TIER_BG, 0.0);
+  }
+
+  let tier = mix(PATTERN_TIER_GLOW, PATTERN_TIER_FEATURE, smoothstep(0.15, 0.75, total_pulse));
+  let feat = select(1.0, 2.0, total_pulse > 0.55);
+  return PatternSample(col, total_pulse, tier, feat);
 }
 
 // ====== = LOGO PATTERN ====================================================================================================================================================================================
@@ -254,14 +308,16 @@ fn heartbeat_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> vec4f {
 const ORBIT_RADIUS_KM: f32 = 6921.0;  // LEO orbit radius (Earth radius + 550 km altitude)
 const INV_SQRT2: f32 = 0.70710678;    // 1 / sqrt(2), used for 45deg diagonal distances
 
-fn x_logo_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, start_time: f32) -> vec4f {
+fn x_logo_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, start_time: f32) -> PatternSample {
   let local = to_earth_facing_coords(sat_pos);
 
-  let bg_mod = 0.038 + 0.015 * hashU32(sat_idx ^ (u32(time * 4.0) & 255u));
+  let bg_strength = 0.32;
+  let bg_mod = 0.032 + 0.012 * hashU32(sat_idx ^ (u32(time * 4.0) & 255u));
   let bg_col = sat_color(sat_idx) * bg_mod;
 
-  // Fix: Hide logo overlap from the back side of the Earth
-  if (local.z < 1000.0) { return vec4f(bg_col, bg_mod); }
+  if (local.z < 1000.0) {
+    return PatternSample(bg_col, bg_strength, PATTERN_TIER_BG, 0.0);
+  }
 
   let px = local.x / ORBIT_RADIUS_KM;
   let py = local.y / ORBIT_RADIUS_KM;
@@ -282,22 +338,20 @@ fn x_logo_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, start_time: f32) -> v
   let reveal  = smoothstep(0.0, 2.8, elapsed);
 
   if (on_logo) {
-    let wave     = 0.5 + 0.5 * sin(time * 2.6 + f32(sat_idx % 128u) * 0.049);
-    let pulse    = mix(0.82, 1.0, wave);
+    let wave = 0.5 + 0.5 * sin(time * 2.6 + f32(sat_idx % 128u) * 0.049);
+    let pulse = mix(0.88, 1.0, wave);
     let edge_frac = nearest / STROKE_HALF;
-    let base_col  = mix(vec3f(0.0, 0.95, 1.0), vec3f(0.05, 0.45, 1.0), edge_frac);
-
-    let bright = 2.6 * pulse * reveal;
-    return vec4f(base_col, bright);
+    let base_col = mix(vec3f(0.0, 0.95, 1.0), vec3f(0.05, 0.55, 1.0), edge_frac);
+    return PatternSample(base_col, pulse * reveal, PATTERN_TIER_HERO, 2.0);
 
   } else if (on_glow) {
     let glow_frac = (nearest - STROKE_HALF) / (GLOW_HALF - STROKE_HALF);
-    let glow_amt  = (1.0 - glow_frac) * 0.55 * reveal;
-    let glow_col  = vec3f(0.0, 0.65, 1.0);
-    return vec4f(glow_col, glow_amt);
+    let glow_amt = (1.0 - glow_frac) * 0.42 * reveal;
+    let glow_col = vec3f(0.0, 0.62, 1.0);
+    return PatternSample(glow_col, glow_amt, PATTERN_TIER_GLOW, 1.0);
 
   } else {
-    return vec4f(bg_col, bg_mod);
+    return PatternSample(bg_col, bg_strength, PATTERN_TIER_BG, 0.0);
   }
 }
 
@@ -330,7 +384,7 @@ fn vs(
   // so the constellation appears as a visible glowing ring around Earth.
   let isMoonView = (uni.view_mode & 0xFFFFu) == 4u;
   let moonBillboardScale = select(1.0, 750.0, isMoonView);
-  let maxVisibleDist     = select(150000.0, 500000.0, isMoonView);
+  let maxVisibleDist = max(satVisual.distance_cull_km, 1000.0);
   let bsize = clamp(1200.0 / max(dist, 50.0), 0.4, 60.0) * moonBillboardScale *
               select(0.0, 1.0, dist < maxVisibleDist) * shellSize * groundScale;
   let offset = (qv.x * right + qv.y * up) * bsize;
@@ -387,35 +441,31 @@ fn vs(
 
   if (params.pattern_mode > 0u) {
     let earth_dir = normalize(-wp);
-    var pattern_col: vec4f;
+    var sample: PatternSample;
     switch params.pattern_mode {
       case PATTERN_X_LOGO: {
-        pattern_col = x_logo_pattern(ii, wp, uni.time, params.animation_time);
+        sample = x_logo_pattern(ii, wp, uni.time, params.animation_time);
       }
       case PATTERN_SMILE: {
-        pattern_col = smile_pattern(ii, wp, uni.time, earth_dir);
+        sample = smile_pattern(ii, wp, uni.time, earth_dir);
       }
       case PATTERN_DIGITAL_RAIN: {
-        pattern_col = digital_rain_pattern(ii, wp, uni.time);
+        sample = digital_rain_pattern(ii, wp, uni.time);
       }
       case PATTERN_HEARTBEAT: {
-        pattern_col = heartbeat_pattern(ii, wp, uni.time);
+        sample = heartbeat_pattern(ii, wp, uni.time);
       }
       default: {
-        pattern_col = vec4f(col, 1.0);
+        sample = PatternSample(col, 1.0, PATTERN_TIER_BG, 0.0);
       }
     }
-    out.color = pattern_col.rgb;
-
-    // Fix: Less aggressive distance attenuation for patterns so they are visible from afar
-    out.bright = pattern_col.a * mix(1.0, atten, 0.3) * selectionBoost;
-    if (pattern_col.a > 0.5) {
-      out.bright *= 2.5; // Heavy boost for core shapes (the smile, the matrix drops)
-    }
+    out.color = sample.rgb;
+    out.bright = patternVertexBright(sample, atten, selectionBoost);
+    out.pattern_feature = sample.feature;
   } else {
     out.color = col;
-    // selectionBoost already provides the per-satellite brightness lift; no extra multiplier needed
     out.bright = (pattern * atten + glint * atten) * selectionBoost;
+    out.pattern_feature = 0.0;
   }
 
   let trailFade = 1.0 - clamp(trailingMask * motionLen * 90.0, 0.0, 0.5);
@@ -423,28 +473,105 @@ fn vs(
 
   out.shell = f32(shellIdx);
   out.highlight = isHighlighted;
+  out.world_dist = dist;
   return out;
+}
+
+// ── Distance LOD kernels (near / mid / far) ───────────────────────────────────
+const LOD_NEAR_KM: f32 = 5000.0;
+const LOD_MID_KM: f32 = 25000.0;
+const LOD_NEAR_BLEND_KM: f32 = 1000.0;
+const LOD_MID_BLEND_KM: f32 = 3000.0;
+const MOON_BILLBOARD_SCALE: f32 = 750.0;
+
+fn lodTierWeights(lodDist: f32) -> vec3f {
+  let nearToMid = smoothstep(LOD_NEAR_KM - LOD_NEAR_BLEND_KM, LOD_NEAR_KM + LOD_NEAR_BLEND_KM, lodDist);
+  let midToFar = smoothstep(LOD_MID_KM - LOD_MID_BLEND_KM, LOD_MID_KM + LOD_MID_BLEND_KM, lodDist);
+  let nearW = 1.0 - nearToMid;
+  let farW = midToFar;
+  let midW = max(0.0, nearToMid - farW);
+  return vec3f(nearW, midW, farW);
+}
+
+struct LodKernel {
+  core_outer: f32,
+  core_inner: f32,
+  halo_outer: f32,
+  halo_inner: f32,
+  halo_strength: f32,
+  core_boost: f32,
+}
+
+fn resolveLodKernel(lodDist: f32) -> LodKernel {
+  let w = lodTierWeights(lodDist);
+
+  let n_outer = satVisual.core_outer;
+  let n_inner = satVisual.core_inner;
+  let n_halo_o = satVisual.halo_outer;
+  let n_halo_i = satVisual.halo_inner;
+  let n_halo_s = satVisual.halo_strength;
+  let n_boost = satVisual.core_boost;
+
+  let m_outer = satVisual.core_outer * 0.78;
+  let m_inner = satVisual.core_inner * 0.65;
+  let m_halo_o = satVisual.halo_outer * 0.88;
+  let m_halo_i = satVisual.halo_inner * 0.88;
+  let m_halo_s = satVisual.halo_strength * 0.5;
+  let m_boost = satVisual.core_boost * 0.9;
+
+  let f_outer = 0.32;
+  let f_inner = 0.08;
+  let f_halo_o = 0.38;
+  let f_halo_i = 0.20;
+  let f_halo_s = 0.0;
+  let f_boost = satVisual.core_boost * 0.55;
+
+  var k: LodKernel;
+  k.core_outer = w.x * n_outer + w.y * m_outer + w.z * f_outer;
+  k.core_inner = w.x * n_inner + w.y * m_inner + w.z * f_inner;
+  k.halo_outer = w.x * n_halo_o + w.y * m_halo_o + w.z * f_halo_o;
+  k.halo_inner = w.x * n_halo_i + w.y * m_halo_i + w.z * f_halo_i;
+  k.halo_strength = w.x * n_halo_s + w.y * m_halo_s + w.z * f_halo_s;
+  k.core_boost = w.x * n_boost + w.y * m_boost + w.z * f_boost;
+  return k;
 }
 
 @fragment
 fn fs(in: VOut) -> @location(0) vec4f {
-  // Distance from billboard center (uv 0.5, 0.5)
-  let dist = distance(in.uv, vec2f(0.5));
+  let uvDist = distance(in.uv, vec2f(0.5));
 
-  // Sharp opaque core with steep falloff (replaces fuzzy linear/Gaussian fade)
-  let core = smoothstep(0.40, 0.10, dist);
+  let isMoonView = (uni.view_mode & 0xFFFFu) == 4u;
+  var lodDist = in.world_dist / select(1.0, MOON_BILLBOARD_SCALE, isMoonView);
+  lodDist = min(lodDist, select(lodDist, LOD_NEAR_KM * 0.35, in.highlight > 0.5));
 
-  // Tight, subtle halo for a realistic optical point-spread
-  let halo = smoothstep(0.50, 0.35, dist) * 0.2;
+  let k = resolveLodKernel(lodDist);
+
+  // Pattern-specific kernel tweaks (only when an animation pattern is active).
+  var core_outer = k.core_outer;
+  var core_inner = k.core_inner;
+  var pat_boost = k.core_boost;
+  if (params.pattern_mode > 0u) {
+    if (in.pattern_feature > 1.5) {
+      core_outer = min(k.core_outer * 1.06, 0.50);
+      core_inner = min(k.core_inner * 1.04, 0.32);
+    } else if (in.pattern_feature < 0.5) {
+      pat_boost = k.core_boost * 0.48;
+    } else {
+      pat_boost = k.core_boost * 0.72;
+    }
+  }
+
+  let core = smoothstep(core_outer, core_inner, uvDist);
+  let halo = smoothstep(k.halo_outer, k.halo_inner, uvDist) * k.halo_strength;
 
   let alpha = (core + halo) * in.bright;
 
-  if (alpha < 0.02) {
+  let alphaCutoff = select(0.02, 0.03, lodDist > LOD_MID_KM);
+  if (alpha < alphaCutoff) {
     discard;
   }
 
-  // Boost core brightness so only the hot center pierces the bloom threshold
-  let intensity_boost = 1.0 + (core * 2.5);
+  let intensity_boost = 1.0 + (core * pat_boost);
   let final_color = in.color * intensity_boost * in.bright;
 
   return vec4f(final_color, alpha);

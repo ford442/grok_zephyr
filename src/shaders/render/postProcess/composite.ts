@@ -153,6 +153,23 @@ fn anamorphicStreak(uv: vec2f) -> vec3f {
   return streak;
 }
 
+// Post-threshold compensation with scene-guided star vs satellite bloom layering.
+fn compositeBloom(bloom: vec3f, scene: vec3f, intensity: f32) -> vec3f {
+  let sceneLum = dot(scene, vec3f(0.2126, 0.7152, 0.0722));
+
+  // Tight bloom on hot satellite peaks; softer wide star bloom elsewhere.
+  let satMix = smoothstep(2.4, 4.2, sceneLum);
+  let starMix = (1.0 - smoothstep(2.8, 4.5, sceneLum)) * smoothstep(0.12, 1.0, sceneLum);
+
+  var layered = bloom * mix(0.72, 1.18, satMix);
+  layered += bloom * starMix * 0.48;
+
+  let lum = dot(layered, vec3f(0.2126, 0.7152, 0.0722));
+  let haloLift = mix(1.42, 1.0, smoothstep(0.03, 0.38, lum));
+  let soft = layered / max(vec3f(1.0), layered * 0.14 + vec3f(0.10));
+  return soft * intensity * haloLift;
+}
+
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   // Chromatic aberration on scene texture
@@ -165,7 +182,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     streak = anamorphicStreak(uv);
   }
 
-  let hdr = scene + bloom * bloomUni.bloomIntensity + streak * bloomUni.anamorphicRatio;
+  let hdr = scene + compositeBloom(bloom, scene, bloomUni.bloomIntensity) + streak * bloomUni.anamorphicRatio;
   let autoExposure = max(0.01, exposureState[0]);
   let exposure = select(max(0.01, tonemapUni.manualExposure), autoExposure, tonemapUni.autoExposure != 0u);
   let exposed = hdr * exposure;

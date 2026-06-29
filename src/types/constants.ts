@@ -42,6 +42,8 @@ export const VIEW_MODES: ViewModeConfig[] = [
   { id: 5, name: 'Skyline', altitude: '0', default: false },
 ] as const;
 
+/** Per-view bloom/satellite tuning profiles — see `src/core/ViewTuningProfile.ts`. */
+
 /** Camera settings */
 export const CAMERA = {
   DEFAULT_FOV: 60 * MATH.DEG_TO_RAD,
@@ -57,8 +59,9 @@ export const RENDER = {
   HDR_FORMAT: 'rgba16float' as GPUTextureFormat,
   DEPTH_FORMAT: 'depth32float' as GPUTextureFormat,
   SWAPCHAIN_FORMAT: 'bgra8unorm' as GPUTextureFormat,
-  BLOOM_THRESHOLD: 0.75,
-  BLOOM_INTENSITY: 1.8,
+  BLOOM_THRESHOLD: 1.5,
+  /** Composite bloom multiplier (retuned for threshold-1.5 extraction pass) */
+  BLOOM_INTENSITY: 2.25,
   WORKGROUP_SIZE: 64,
 } as const;
 
@@ -84,6 +87,12 @@ export const SATELLITE_VISUAL = {
   MAX_SIZE: 60.0,
   /** Attenuation factor */
   ATTENUATION: 0.00075,
+  /** Distance LOD band edges (km) — match satellites.ts shader */
+  LOD_NEAR_KM: 5000.0,
+  LOD_MID_KM: 25000.0,
+  LOD_NEAR_BLEND_KM: 1000.0,
+  LOD_MID_BLEND_KM: 3000.0,
+  MOON_BILLBOARD_SCALE: 750.0,
 } as const;
 
 /** Earth visual settings */

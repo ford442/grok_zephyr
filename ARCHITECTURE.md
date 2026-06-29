@@ -70,14 +70,27 @@ The following systems were implemented as part of the 2026 visual fidelity audit
 - Realistic colour temperature variation (O/B/A/F/G/K/M spectral classes)
 - Milky Way band via galactic-coordinate noise modulation
 - Twinkling / scintillation driven by `uni.time` (TAA-friendly)
-- HDR bright stars feed the bloom pipeline
+- Magnitude-capped HDR output: only the brightest stars pierce bloom threshold 1.5; ground view attenuates star energy further
 
 ### Bloom pipeline (`src/render/RenderPipeline.ts`, `src/shaders/render/postProcess/`)
 - Configurable soft-knee threshold pass
+- **Source-aware bloom separation** (single pass, no extra buffers): star HDR is magnitude-capped in `stars.ts`, the threshold pass attenuates mid-band star/limb energy via `sourceBloomWeight()`, and the composite pass layers tight satellite bloom on hot scene peaks vs softer star bloom elsewhere (`compositeBloom(bloom, scene, …)`)
 - Kawase dual-filter downsample pyramid (2–5 levels, driven by quality preset)
 - 9-tap tent-filter upsample with additive blend
 - Optional anamorphic horizontal stretch for Cinematic preset
 - `BloomConfig` type exposed through `PostProcessStack`
+
+#### Bloom source separation (stars vs satellites)
+
+Dual bloom buffers were rejected to stay within the ~118 MB Pascal budget. Instead, three single-pass stages cooperate:
+
+| Stage | File | Role |
+|-------|------|------|
+| Star HDR cap | `stars.ts` | `starHdrLuminance()` keeps mag > 2 stars sub-threshold; Milky Way luminance-capped; ground view ×0.62 |
+| Threshold weighting | `bloomThreshold.ts` | `sourceBloomWeight()` — 36 % extraction for 1.5–4.0 HDR (stars/limb), full above 4.0 (sat cores) |
+| Composite layering | `composite.ts` | `compositeBloom(bloom, scene)` — tight gain on scene peaks ≥ 4.2, soft star bloom on moderate scene energy |
+
+WebGL mirrors the threshold and composite curves in `src/webgl/shaders.ts`. No extra render targets or presets required.
 
 ### Camera feel (`src/camera/CameraController.ts`)
 - God View: velocity + exponential damping (`GOD_INERTIA_DAMPING = 0.88`) for buttery drag momentum

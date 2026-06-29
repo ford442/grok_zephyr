@@ -13,6 +13,8 @@
  */
 
 import type { OrbitalElements } from '@/core/OrbitalElements.js';
+import type { ImageTuningSettings } from '@/core/ImageTuning.js';
+import { packSatelliteVisualUniform, SHIPPING_IMAGE_TUNING } from '@/core/ImageTuning.js';
 import { mat4inv } from '@/utils/math.js';
 import {
   acquireGL,
@@ -38,6 +40,7 @@ export interface WebGLFrame {
   simTime: number;
   time: number;
   backgroundMode: number;
+  viewMode: number;
 }
 
 /** Earth mesh data (shares genSphere geometry with the WebGPU path). */
@@ -98,6 +101,9 @@ export class WebGLRenderer {
   private hdr!: RenderTarget;
   private bloomA!: RenderTarget;
   private bloomB!: RenderTarget;
+
+  private imageTuning: ImageTuningSettings = { ...SHIPPING_IMAGE_TUNING };
+  private satVisualPacked = packSatelliteVisualUniform(SHIPPING_IMAGE_TUNING);
 
   private debug: WebGLDebugOptions = { ...DEFAULT_DEBUG };
 
@@ -185,6 +191,15 @@ export class WebGLRenderer {
 
   getDebug(): WebGLDebugOptions {
     return { ...this.debug };
+  }
+
+  setImageTuning(settings: ImageTuningSettings): void {
+    this.imageTuning = { ...settings };
+    this.satVisualPacked = packSatelliteVisualUniform(settings);
+  }
+
+  getImageTuning(): ImageTuningSettings {
+    return { ...this.imageTuning };
   }
 
   resize(width: number, height: number): void {
@@ -276,6 +291,14 @@ export class WebGLRenderer {
     gl.uniform2f(this.satU.loc('uScreen'), this.width, this.height);
     gl.uniform1f(this.satU.loc('uPointScale'), this.debug.pointScale);
     gl.uniform1i(this.satU.loc('uLodDebug'), this.debug.lodDebug ? 1 : 0);
+    gl.uniform1i(this.satU.loc('uViewMode'), frame.viewMode | 0);
+    gl.uniform1f(this.satU.loc('uDistanceCullKm'), this.satVisualPacked[6]!);
+    gl.uniform1f(this.satU.loc('uCoreOuter'), this.satVisualPacked[0]);
+    gl.uniform1f(this.satU.loc('uCoreInner'), this.satVisualPacked[1]);
+    gl.uniform1f(this.satU.loc('uHaloOuter'), this.satVisualPacked[2]);
+    gl.uniform1f(this.satU.loc('uHaloInner'), this.satVisualPacked[3]);
+    gl.uniform1f(this.satU.loc('uHaloStrength'), this.satVisualPacked[4]);
+    gl.uniform1f(this.satU.loc('uCoreBoost'), this.satVisualPacked[5]);
     gl.bindVertexArray(this.satVao);
     gl.drawArrays(gl.POINTS, 0, this.satCount);
     gl.bindVertexArray(null);
@@ -298,8 +321,9 @@ export class WebGLRenderer {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.hdr.color);
     gl.uniform1i(this.thresholdU.loc('uScene'), 0);
-    gl.uniform1f(this.thresholdU.loc('uThreshold'), 0.85);
-    gl.uniform1f(this.thresholdU.loc('uKnee'), 0.5);
+    gl.uniform1f(this.thresholdU.loc('uThreshold'), this.imageTuning.bloomThreshold);
+    gl.uniform1f(this.thresholdU.loc('uKnee'), this.imageTuning.bloomKnee);
+    gl.uniform1f(this.thresholdU.loc('uEnforceFloors'), this.imageTuning.enforceFloors ? 1.0 : 0.0);
     gl.bindVertexArray(this.fsTriangle);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
@@ -337,7 +361,7 @@ export class WebGLRenderer {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.bloomA.color);
     gl.uniform1i(this.compositeU.loc('uBloom'), 1);
-    gl.uniform1f(this.compositeU.loc('uBloomIntensity'), this.debug.showBloom ? 0.9 : 0.0);
+    gl.uniform1f(this.compositeU.loc('uBloomIntensity'), this.debug.showBloom ? this.imageTuning.bloomIntensity : 0.0);
     gl.uniform1f(this.compositeU.loc('uExposure'), 1.0);
     gl.uniform1f(this.compositeU.loc('uTime'), frame.time);
     gl.uniform1i(this.compositeU.loc('uTonemap'), 0);

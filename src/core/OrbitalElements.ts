@@ -18,6 +18,7 @@
 
 import { CONSTANTS, INCLINATION_SHELLS } from '@/types/constants.js';
 import type { TLEData } from '@/types/index.js';
+import { createSeededRandom } from '@/core/seededRandom.js';
 
 /** Orbit radius (km) per inclination shell — matches orbital_compute.wgsl simple mode. */
 export const SHELL_RADII_KM = [6711.0, 6921.0, 7521.0];
@@ -49,21 +50,22 @@ export class OrbitalElements {
    * Generate procedural multi-shell Walker-style orbital elements.
    * Extracted verbatim from SatelliteGPUBuffer.generateOrbitalElements().
    */
-  generate(): Float32Array {
+  generate(seed?: number): Float32Array {
     const { NUM_PLANES, SATELLITES_PER_PLANE } = CONSTANTS;
     const shells = INCLINATION_SHELLS;
     const data = this.data;
+    const random = seed !== undefined ? createSeededRandom(seed) : Math.random;
 
     for (let plane = 0; plane < NUM_PLANES; plane++) {
       const raan = (plane / NUM_PLANES) * Math.PI * 2;
       const inclinationShellIdx = Math.floor(plane / (NUM_PLANES / shells.length));
-      const inclination = shells[inclinationShellIdx] + (Math.random() - 0.5) * 0.008;
+      const inclination = shells[inclinationShellIdx] + (random() - 0.5) * 0.008;
 
       for (let sat = 0; sat < SATELLITES_PER_PLANE; sat++) {
         const idx = (plane * SATELLITES_PER_PLANE + sat) * 4;
         const meanAnomaly = (sat / SATELLITES_PER_PLANE) * Math.PI * 2;
 
-        const rand = Math.random();
+        const rand = random();
         let shellIndex = 0;
         let cumulative = 0;
         for (let s = 0; s < SHELL_DISTRIBUTION.length; s++) {

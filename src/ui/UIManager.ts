@@ -9,6 +9,8 @@ import type { AnimationPattern } from '@/types/animation.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
 import { QUALITY_PRESETS } from '@/core/QualityPresets.js';
 import type { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
+import type { ImageTuningSettings } from '@/core/ImageTuning.js';
+import { SHIPPING_IMAGE_TUNING } from '@/core/ImageTuning.js';
 
 type ExposureMode = 'auto' | 'manual';
 type TonemapMode = 0 | 1 | 2 | 3;
@@ -19,6 +21,7 @@ export interface UIElements {
   fleet: HTMLElement;
   fps: HTMLElement;
   viewMode: HTMLElement;
+  tuningProfile: HTMLElement;
   visible: HTMLElement;
   quality: HTMLElement;
   error: HTMLElement;
@@ -39,6 +42,16 @@ export interface UIElements {
   exposureSpeedSlider?: HTMLInputElement;
   exposureSpeedValue?: HTMLElement;
   tonemapModeSelect?: HTMLSelectElement;
+  tuneBloomThresholdSlider?: HTMLInputElement;
+  tuneBloomThresholdValue?: HTMLElement;
+  tuneBloomKneeSlider?: HTMLInputElement;
+  tuneBloomKneeValue?: HTMLElement;
+  tuneBloomIntensitySlider?: HTMLInputElement;
+  tuneBloomIntensityValue?: HTMLElement;
+  tuneSatCoreSlider?: HTMLInputElement;
+  tuneSatCoreValue?: HTMLElement;
+  tuneSatFalloffSlider?: HTMLInputElement;
+  tuneSatFalloffValue?: HTMLElement;
   horizonIndicator: HTMLElement;
   angleInfo: HTMLElement;
   resetAngleBtn: HTMLElement;
@@ -93,6 +106,9 @@ export class UIManager {
   private onManualExposureChangeCallback: ((value: number) => void) | null = null;
   private onExposureAdaptationSpeedChangeCallback: ((value: number) => void) | null = null;
   private onTonemapModeChangeCallback: ((mode: TonemapMode) => void) | null = null;
+  private onImageTuningChangeCallback: ((settings: ImageTuningSettings) => void) | null = null;
+  private imageTuningEnforceFloors = true;
+  private lastImageTuning: ImageTuningSettings = { ...SHIPPING_IMAGE_TUNING };
   
   private animationState: AnimationUIState = {
     currentPattern: 'grok',
@@ -123,6 +139,7 @@ export class UIManager {
       fleet: getEl('s-fleet'),
       fps: getEl('s-fps'),
       viewMode: getEl('s-view'),
+      tuningProfile: getEl('s-tuning'),
       visible: getEl('s-visible'),
       quality: getEl('s-quality'),
       error: getEl('error'),
@@ -167,6 +184,16 @@ export class UIManager {
       exposureSpeedSlider: (document.getElementById('exposureSpeed') as HTMLInputElement | null) ?? undefined,
       exposureSpeedValue: (document.getElementById('exposureSpeedValue') as HTMLElement | null) ?? undefined,
       tonemapModeSelect: (document.getElementById('tonemapMode') as HTMLSelectElement | null) ?? undefined,
+      tuneBloomThresholdSlider: (document.getElementById('tuneBloomThreshold') as HTMLInputElement | null) ?? undefined,
+      tuneBloomThresholdValue: document.getElementById('tuneBloomThresholdValue') ?? undefined,
+      tuneBloomKneeSlider: (document.getElementById('tuneBloomKnee') as HTMLInputElement | null) ?? undefined,
+      tuneBloomKneeValue: document.getElementById('tuneBloomKneeValue') ?? undefined,
+      tuneBloomIntensitySlider: (document.getElementById('tuneBloomIntensity') as HTMLInputElement | null) ?? undefined,
+      tuneBloomIntensityValue: document.getElementById('tuneBloomIntensityValue') ?? undefined,
+      tuneSatCoreSlider: (document.getElementById('tuneSatCore') as HTMLInputElement | null) ?? undefined,
+      tuneSatCoreValue: document.getElementById('tuneSatCoreValue') ?? undefined,
+      tuneSatFalloffSlider: (document.getElementById('tuneSatFalloff') as HTMLInputElement | null) ?? undefined,
+      tuneSatFalloffValue: document.getElementById('tuneSatFalloffValue') ?? undefined,
       horizonIndicator: getEl('horizon-indicator'),
       angleInfo: getEl('angleInfo'),
       resetAngleBtn: getEl('resetAngle'),
@@ -326,6 +353,48 @@ export class UIManager {
         this.onTonemapModeChangeCallback(mode);
       }
     });
+
+    const tuningSliders: Array<{
+      slider?: HTMLInputElement;
+      valueEl?: HTMLElement;
+      decimals: number;
+    }> = [
+      { slider: this.elements.tuneBloomThresholdSlider, valueEl: this.elements.tuneBloomThresholdValue, decimals: 2 },
+      { slider: this.elements.tuneBloomKneeSlider, valueEl: this.elements.tuneBloomKneeValue, decimals: 2 },
+      { slider: this.elements.tuneBloomIntensitySlider, valueEl: this.elements.tuneBloomIntensityValue, decimals: 2 },
+      { slider: this.elements.tuneSatCoreSlider, valueEl: this.elements.tuneSatCoreValue, decimals: 2 },
+      { slider: this.elements.tuneSatFalloffSlider, valueEl: this.elements.tuneSatFalloffValue, decimals: 2 },
+    ];
+
+    for (const { slider, valueEl, decimals } of tuningSliders) {
+      slider?.addEventListener('input', () => {
+        const val = Number(slider.value);
+        if (valueEl) {
+          valueEl.textContent = val.toFixed(decimals);
+        }
+        this.emitImageTuningChange();
+      });
+    }
+  }
+
+  private readImageTuningFromUI(): ImageTuningSettings {
+    return {
+      bloomThreshold: Number(this.elements.tuneBloomThresholdSlider?.value ?? 1.5),
+      bloomKnee: Number(this.elements.tuneBloomKneeSlider?.value ?? 0.05),
+      bloomIntensity: Number(this.elements.tuneBloomIntensitySlider?.value ?? 2.25),
+      satCoreOuter: Number(this.elements.tuneSatCoreSlider?.value ?? 0.4),
+      satCoreInner: Number(this.elements.tuneSatFalloffSlider?.value ?? 0.1),
+      haloStrength: this.lastImageTuning.haloStrength,
+      coreBoost: this.lastImageTuning.coreBoost,
+      distanceCullKm: this.lastImageTuning.distanceCullKm,
+      enforceFloors: this.imageTuningEnforceFloors,
+    };
+  }
+
+  private emitImageTuningChange(): void {
+    if (this.onImageTuningChangeCallback) {
+      this.onImageTuningChangeCallback(this.readImageTuningFromUI());
+    }
   }
 
   /**
@@ -483,7 +552,6 @@ export class UIManager {
   setViewMode(modeName: string, altitude: string): void {
     this.elements.viewMode.textContent = `View     : ${modeName}`;
     this.elements.altitude.textContent = `Altitude : ${altitude} km`;
-    
     // Show/hide horizon indicator and update content
     if (modeName === '720km Horizon') {
       this.elements.horizonIndicator.style.display = 'block';
@@ -512,6 +580,11 @@ export class UIManager {
     } else {
       this.elements.horizonIndicator.style.display = 'none';
     }
+  }
+
+  /** Update active per-view tuning profile label (debug HUD). */
+  setTuningProfile(label: string): void {
+    this.elements.tuningProfile.textContent = `Tuning   : ${label}`;
   }
 
   /**
@@ -705,6 +778,28 @@ export class UIManager {
 
   onTonemapModeChange(callback: (mode: TonemapMode) => void): void {
     this.onTonemapModeChangeCallback = callback;
+  }
+
+  onImageTuningChange(callback: (settings: ImageTuningSettings) => void): void {
+    this.onImageTuningChangeCallback = callback;
+  }
+
+  setImageTuningControls(settings: ImageTuningSettings, options?: { enforceFloors?: boolean }): void {
+    this.lastImageTuning = { ...settings };
+    if (options?.enforceFloors !== undefined) {
+      this.imageTuningEnforceFloors = options.enforceFloors;
+    }
+    const sliders = [
+      { el: this.elements.tuneBloomThresholdSlider, val: settings.bloomThreshold, label: this.elements.tuneBloomThresholdValue, decimals: 2 },
+      { el: this.elements.tuneBloomKneeSlider, val: settings.bloomKnee, label: this.elements.tuneBloomKneeValue, decimals: 2 },
+      { el: this.elements.tuneBloomIntensitySlider, val: settings.bloomIntensity, label: this.elements.tuneBloomIntensityValue, decimals: 2 },
+      { el: this.elements.tuneSatCoreSlider, val: settings.satCoreOuter, label: this.elements.tuneSatCoreValue, decimals: 2 },
+      { el: this.elements.tuneSatFalloffSlider, val: settings.satCoreInner, label: this.elements.tuneSatFalloffValue, decimals: 2 },
+    ] as const;
+    for (const { el, val, label, decimals } of sliders) {
+      if (el) el.value = String(val);
+      if (label) label.textContent = val.toFixed(decimals);
+    }
   }
 
   setAudioMuted(muted: boolean): void {

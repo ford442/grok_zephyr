@@ -1174,6 +1174,52 @@ html, body {
   letter-spacing: 0.6px;
 }
 
+.image-tuning-details {
+  width: 100%;
+}
+
+.image-tuning-details > summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.image-tuning-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.image-tuning-details > summary::after {
+  content: '▸';
+  float: right;
+  color: var(--hud-muted);
+  transition: transform 160ms ease;
+}
+
+.image-tuning-details[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.tuning-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.tuning-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #b8f5ff;
+  font-size: 10px;
+  letter-spacing: 0.6px;
+}
+
+:is(#tuneBloomThreshold, #tuneBloomKnee, #tuneBloomIntensity, #tuneSatCore, #tuneSatFalloff) {
+  width: 100%;
+  accent-color: #5fe0ff;
+}
+
 :is(#manualExposure, #exposureSpeed) {
   width: 100%;
   accent-color: #c28dff;

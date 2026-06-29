@@ -224,7 +224,7 @@ export interface BloomConfig {
   threshold: number;
   /** Soft-knee width around the threshold for smooth roll-off */
   knee: number;
-  /** Overall bloom intensity multiplier applied in composite */
+  /** Overall bloom intensity multiplier applied in composite (retuned for threshold 1.5) */
   intensity: number;
   /** Number of downsample/upsample pyramid levels (2–5) */
   levels: number;
@@ -363,11 +363,11 @@ export const DEFAULT_POSTPROCESS_CONFIG: PostProcessConfig = {
   lensEffects: DEFAULT_LENS_EFFECTS_CONFIG,
 };
 
-/** Default bloom configuration (balanced quality) */
+/** Default bloom configuration (balanced quality, post threshold-1.5 sharpening) */
 export const DEFAULT_BLOOM_CONFIG: BloomConfig = {
-  threshold: 0.75,
-  knee: 0.1,
-  intensity: 1.8,
+  threshold: 1.5,
+  knee: 0.05,
+  intensity: 2.25,
   levels: 4,
   anamorphicEnabled: false,
   anamorphicRatio: 0.35,
@@ -380,7 +380,7 @@ export const QUALITY_PRESETS: Record<QualityPreset, Partial<QualitySettings>> = 
     taa: { ...DEFAULT_TAA_CONFIG, enabled: false },
     beams: { enabled: false, maxSteps: 4, stepSize: 50.0, density: 0.1, mieAsymmetry: 0.7 },
     trails: { enabled: true, maxLength: 2, fadeOut: 1.0, colorByShell: true, ribbonWidth: 20.0 },
-    bloom: { threshold: 0.85, knee: 0.05, intensity: 1.4, levels: 2, anamorphicEnabled: false, anamorphicRatio: 0.0 },
+    bloom: { threshold: 1.5, knee: 0.05, intensity: 1.85, levels: 2, anamorphicEnabled: false, anamorphicRatio: 0.0 },
     lens: {
       chromaticAberration: { enabled: false, strength: 0.0 },
       lensFlare: { enabled: false, intensity: 0.0, anamorphic: false },
@@ -393,7 +393,7 @@ export const QUALITY_PRESETS: Record<QualityPreset, Partial<QualitySettings>> = 
     taa: DEFAULT_TAA_CONFIG,
     beams: { enabled: true, maxSteps: 6, stepSize: 40.0, density: 0.15, mieAsymmetry: 0.75 },
     trails: { enabled: true, maxLength: 5, fadeOut: 2.0, colorByShell: true, ribbonWidth: 30.0 },
-    bloom: { threshold: 0.80, knee: 0.08, intensity: 1.6, levels: 3, anamorphicEnabled: false, anamorphicRatio: 0.0 },
+    bloom: { threshold: 1.5, knee: 0.05, intensity: 2.05, levels: 3, anamorphicEnabled: false, anamorphicRatio: 0.0 },
     lens: {
       chromaticAberration: { enabled: false, strength: 0.0 },
       lensFlare: { enabled: false, intensity: 0.0, anamorphic: false },
@@ -406,7 +406,7 @@ export const QUALITY_PRESETS: Record<QualityPreset, Partial<QualitySettings>> = 
     taa: DEFAULT_TAA_CONFIG,
     beams: { enabled: true, maxSteps: 8, stepSize: 30.0, density: 0.2, mieAsymmetry: 0.8 },
     trails: { enabled: true, maxLength: 10, fadeOut: 3.0, colorByShell: true, ribbonWidth: 40.0 },
-    bloom: { threshold: 0.75, knee: 0.10, intensity: 1.8, levels: 4, anamorphicEnabled: false, anamorphicRatio: 0.0 },
+    bloom: { threshold: 1.5, knee: 0.05, intensity: 2.25, levels: 4, anamorphicEnabled: false, anamorphicRatio: 0.0 },
     lens: {
       chromaticAberration: { enabled: true, strength: 0.003 },
       lensFlare: { enabled: false, intensity: 0.5, anamorphic: false },
@@ -419,7 +419,7 @@ export const QUALITY_PRESETS: Record<QualityPreset, Partial<QualitySettings>> = 
     taa: { ...DEFAULT_TAA_CONFIG, historyWeight: 0.92 },
     beams: { enabled: true, maxSteps: 16, stepSize: 20.0, density: 0.3, mieAsymmetry: 0.85 },
     trails: { enabled: true, maxLength: 20, fadeOut: 5.0, colorByShell: true, ribbonWidth: 50.0 },
-    bloom: { threshold: 0.70, knee: 0.12, intensity: 2.0, levels: 5, anamorphicEnabled: false, anamorphicRatio: 0.0 },
+    bloom: { threshold: 1.5, knee: 0.05, intensity: 2.5, levels: 5, anamorphicEnabled: false, anamorphicRatio: 0.0 },
     lens: {
       chromaticAberration: { enabled: true, strength: 0.004 },
       lensFlare: { enabled: true, intensity: 0.6, anamorphic: false },
@@ -432,7 +432,7 @@ export const QUALITY_PRESETS: Record<QualityPreset, Partial<QualitySettings>> = 
     taa: { ...DEFAULT_TAA_CONFIG, historyWeight: 0.93 },
     beams: { enabled: true, maxSteps: 16, stepSize: 20.0, density: 0.3, mieAsymmetry: 0.85 },
     trails: { enabled: true, maxLength: 20, fadeOut: 5.0, colorByShell: true, ribbonWidth: 50.0 },
-    bloom: { threshold: 0.65, knee: 0.15, intensity: 2.2, levels: 5, anamorphicEnabled: true, anamorphicRatio: 0.35 },
+    bloom: { threshold: 1.5, knee: 0.05, intensity: 2.75, levels: 5, anamorphicEnabled: true, anamorphicRatio: 0.35 },
     lens: {
       chromaticAberration: { enabled: true, strength: 0.005 },
       lensFlare: { enabled: true, intensity: 0.8, anamorphic: true },

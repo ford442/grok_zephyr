@@ -19,6 +19,8 @@ import { SmileV2Pipeline } from './SmileV2Pipeline.js';
 import { SHADERS } from '@/shaders/index.js';
 import { CONSTANTS, RENDER } from '@/types/constants.js';
 import { DEFAULT_BLOOM_CONFIG } from '@/types/animation.js';
+import type { ImageTuningSettings } from '@/core/ImageTuning.js';
+import { packSatelliteVisualUniform, SHIPPING_IMAGE_TUNING } from '@/core/ImageTuning.js';
 import type { DepthOfFieldFocusMode, DepthOfFieldQualitySettings } from '@/core/QualityPresets.js';
 
 /** Render targets for HDR pipeline */
@@ -181,9 +183,13 @@ export class RenderPipeline {
 
   /** Current bloom configuration (drives threshold, levels, anamorphic) */
   private bloomConfig: BloomConfig = { ...DEFAULT_BLOOM_CONFIG };
+  /** Live image tuning (bloom + satellite kernel) */
+  private imageTuning: ImageTuningSettings = { ...SHIPPING_IMAGE_TUNING };
 
   /** Uniform buffer for the bloom threshold pass (ThresholdUni) */
   private bloomThresholdUniformBuffer: GPUBuffer | null = null;
+  /** Per-satellite fragment kernel parameters */
+  private satelliteVisualUniformBuffer: GPUBuffer | null = null;
   /** Uniform buffer for the composite bloom parameters (BloomCompositeUni) */
   private bloomCompositeUniformBuffer: GPUBuffer | null = null;
   /** Uniform buffer for tonemap mode/manual exposure controls. */
@@ -301,6 +307,7 @@ export class RenderPipeline {
         { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 3, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
         { binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+        { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
       ],
     });
 
@@ -910,6 +917,7 @@ export class RenderPipeline {
         { binding: 2, resource: { buffer: this.buffers.colors } },
         { binding: 3, resource: { buffer: this.buffers.patternParams } },
         { binding: 4, resource: { buffer: this.motionBlurUniformBuffer } },
+        { binding: 5, resource: { buffer: this.satelliteVisualUniformBuffer! } },
       ],
     }),
 
@@ -1711,6 +1719,8 @@ export class RenderPipeline {
 
     this.bloomThresholdUniformBuffer?.destroy();
     this.bloomThresholdUniformBuffer = null;
+    this.satelliteVisualUniformBuffer?.destroy();
+    this.satelliteVisualUniformBuffer = null;
     this.bloomCompositeUniformBuffer?.destroy();
     this.bloomCompositeUniformBuffer = null;
     this.tonemapUniformBuffer?.destroy();
@@ -1754,6 +1764,26 @@ export class RenderPipeline {
     this.writeBloomCompositeUni();
   }
 
+  /**
+   * Update bloom + satellite visual tuning. Writes GPU uniforms immediately.
+   */
+  setImageTuning(settings: ImageTuningSettings): void {
+    this.imageTuning = { ...settings };
+    this.bloomConfig = {
+      ...this.bloomConfig,
+      threshold: settings.bloomThreshold,
+      knee: settings.bloomKnee,
+      intensity: settings.bloomIntensity,
+    };
+    this.writeBloomThresholdUni();
+    this.writeBloomCompositeUni();
+    this.writeSatelliteVisualUni();
+  }
+
+  getImageTuning(): ImageTuningSettings {
+    return { ...this.imageTuning };
+  }
+
   /** Return a copy of the current bloom configuration. */
   getBloomConfig(): BloomConfig {
     return { ...this.bloomConfig };
@@ -1795,6 +1825,15 @@ export class RenderPipeline {
       });
     }
     this.writeBloomThresholdUni();
+
+    if (!this.satelliteVisualUniformBuffer) {
+      this.satelliteVisualUniformBuffer = device.createBuffer({
+        size: 32,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        label: 'Satellite Visual Uniform',
+      });
+    }
+    this.writeSatelliteVisualUni();
 
     // BloomCompositeUni: 4 × f32/u32 = 16 bytes
     if (!this.bloomCompositeUniformBuffer) {
@@ -1906,9 +1945,16 @@ export class RenderPipeline {
     const data = new Float32Array(4);
     data[0] = this.bloomConfig.threshold;
     data[1] = this.bloomConfig.knee;
-    data[2] = 0.0;
+    data[2] = this.imageTuning.enforceFloors ? 1.0 : 0.0;
     data[3] = 0.0;
     this.context.getDevice().queue.writeBuffer(this.bloomThresholdUniformBuffer, 0, data);
+  }
+
+  private writeSatelliteVisualUni(): void {
+    if (!this.satelliteVisualUniformBuffer) return;
+    const p = packSatelliteVisualUniform(this.imageTuning);
+    const data = new Float32Array([p[0]!, p[1]!, p[2]!, p[3]!, p[4]!, p[5]!, p[6]!, 0]);
+    this.context.getDevice().queue.writeBuffer(this.satelliteVisualUniformBuffer, 0, data);
   }
 
   /** Write the BloomCompositeUni buffer from the current bloomConfig. */

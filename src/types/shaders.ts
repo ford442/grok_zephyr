@@ -140,16 +140,19 @@ export const SIMULATION_CONSTANTS = {
   BLOOM_UNIFORM_SIZE: 32,
 } as const;
 
-/** Shader names registry */
+/**
+ * Canonical shader module paths (match `SHADERS` in src/shaders/index.ts).
+ * WGSL lives in TypeScript template exports under compute/, render/, animations/.
+ */
 export const SHADER_NAMES = {
-  ORBITAL_COMPUTE: 'orbital_compute',
-  SATELLITE_RENDER: 'satellite_render',
-  EARTH_ATMOSPHERE: 'earth_atmosphere',
-  STARS_RENDER: 'stars_render',
-  POST_PROCESS: 'post_process',
-  BLOOM_THRESHOLD: 'bloom_threshold',
-  BLOOM_BLUR: 'bloom_blur',
-  COMPOSITE: 'composite',
+  ORBITAL_COMPUTE: 'compute/orbital',
+  SATELLITES: 'render/satellites',
+  EARTH: 'render/earth',
+  ATMOSPHERE: 'render/atmosphere',
+  STARS: 'render/stars',
+  BLOOM_THRESHOLD: 'render/postProcess/bloomThreshold',
+  BLOOM_BLUR: 'render/postProcess/bloomBlur',
+  COMPOSITE: 'render/postProcess/composite',
 } as const;
 
 export type ShaderName = typeof SHADER_NAMES[keyof typeof SHADER_NAMES];

@@ -13,10 +13,10 @@ export const BLOOM_THRESHOLD = /* wgsl */ `
 //   threshold : luminance cutoff (typically 0.65–0.85)
 //   knee      : soft-knee half-width around the threshold
 struct ThresholdUni {
-  threshold : f32,
-  knee      : f32,
-  pad0      : f32,
-  pad1      : f32,
+  threshold      : f32,
+  knee           : f32,
+  enforce_floors : f32, // 1 = shipping floors (max 1.5 / 0.05), 0 = raw slider values
+  pad0           : f32,
 };
 
 struct VSOut {
@@ -41,20 +41,25 @@ fn vs(@builtin(vertex_index) vid: u32) -> VSOut {
 @group(0) @binding(1) var hdrSamp: sampler;
 @group(0) @binding(2) var<uniform> tuni: ThresholdUni;
 
+// Attenuate star/limb mid-band; full extraction for hot satellite cores.
+fn sourceBloomWeight(luminance: f32) -> f32 {
+  return mix(0.36, 1.0, smoothstep(2.0, 4.0, luminance));
+}
+
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let color = textureSample(hdrTex, hdrSamp, uv).rgb;
   let luminance = dot(color, vec3f(0.2126, 0.7152, 0.0722));
 
-  // Enforce a minimum threshold so ambient light cannot wash out the scene
-  let t = max(tuni.threshold, 1.5);
-  // Tighter knee prevents mid-tones from partially blooming
-  let k = max(tuni.knee, 0.05);
+  let use_floors = tuni.enforce_floors > 0.5;
+  // Shipping floors keep ambient HDR from washing out sharpened satellite cores
+  let t = select(tuni.threshold, max(tuni.threshold, 1.5), use_floors);
+  let k = select(tuni.knee, max(tuni.knee, 0.05), use_floors);
 
   var rq = clamp(luminance - t + k, 0.0, k * 2.0);
   rq = (rq * rq) / (4.0 * k + 0.0001);
 
-  let bloom_luminance = max(rq, luminance - t);
+  let bloom_luminance = max(rq, luminance - t) * sourceBloomWeight(luminance);
   let output_color = color * (bloom_luminance / max(luminance, 0.00001));
 
   return vec4f(output_color, 1.0);

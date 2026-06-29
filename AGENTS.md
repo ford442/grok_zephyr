@@ -100,24 +100,9 @@ grok_zephyr/
     │   ├── SmileV2IntegrationExample.ts # Integration example
     │   └── index.ts
     └── shaders/
-        ├── index.ts              # Central shader exports
+        ├── index.ts              # Central shader exports (canonical runtime WGSL)
         ├── uniforms.ts           # Shared uniform struct (TypeScript)
-        ├── uniforms.wgsl         # Shared uniform struct (WGSL)
-        ├── constellation_optics.wgsl
-        ├── orbital_compute.wgsl
-        ├── sky_strips_compute.wgsl
-        ├── bloom_threshold.wgsl
-        ├── satellite_render.wgsl
-        ├── satellites_lod.wgsl
-        ├── taa.wgsl
-        ├── constellation_patterns.wgsl
-        ├── stars.wgsl
-        ├── lens_effects.wgsl
-        ├── bloom_blur.wgsl
-        ├── projection_billboard.wgsl
-        ├── volumetric_beams.wgsl
-        ├── earth.wgsl
-        ├── satellites.wgsl
+        ├── uniforms.wgsl         # Legacy include stub (not used at runtime)
         ├── compute/
         │   ├── index.ts          # Compute shader exports
         │   ├── orbital.ts        # Orbital mechanics compute shader
@@ -127,25 +112,20 @@ grok_zephyr/
         │   ├── stars.ts          # Starfield background
         │   ├── earth.ts          # Earth sphere rendering
         │   ├── atmosphere.ts     # Atmospheric limb glow
-        │   ├── satellites.ts     # Satellite billboards
+        │   ├── satellites.ts     # Satellite billboards (canonical sharp kernel)
         │   ├── beam.ts           # Laser beam rendering
         │   ├── ground.ts         # Ground terrain rendering
+        │   ├── volumetricBeams.ts
         │   └── postProcess/
         │       ├── index.ts      # Post-process shader exports
-        │       ├── bloomThreshold.ts
+        │       ├── bloomThreshold.ts  # Bloom extraction (canonical)
         │       ├── bloomBlur.ts
         │       └── composite.ts  # Final tonemapping
         └── animations/
             ├── index.ts          # Animation shader exports
-            ├── smile_v2.wgsl     # Smile V2 compute shader
-            ├── smileV2.ts        # Smile V2 shader export
-            ├── sky_strips_compute.wgsl
+            ├── smileV2.ts        # Smile V2 compute shader (canonical)
             ├── skyStrips.ts
-            ├── digital_rain.wgsl
-            ├── fireworks.wgsl
-            ├── heartbeat.wgsl
-            ├── spiral_galaxy.wgsl
-            └── smile.wgsl
+            └── *.wgsl            # Archival animation shaders (not imported at runtime)
 ```
 
 ## Build and Development Commands
@@ -424,10 +404,11 @@ Current covered modules:
 2. `src/data/TLELoader.ts` — parsing, line2 orbital extraction, and fetch handling
 3. `src/core/OrbitalElements.ts` — Keplerian propagation invariants (shell radius, determinism)
 4. `src/webgl/rendererSelection.ts` — backend + `?sats` + `?debug` resolution
+5. `src/visualHarness.ts` — Playwright harness URL param parsing
+6. **Visual regression** — `npm run test:visual` (Playwright + SwiftShader, golden PNGs under `tests/visual/baselines/`; see `docs/WEBGL_FALLBACK.md`)
 
 Recommended next targets:
 1. `src/camera/CameraController.ts` — camera state calculations for each view mode
-2. WebGL2 headless render smoke test (Playwright + SwiftShader, see `docs/WEBGL_FALLBACK.md`)
 
 ## Deployment
 

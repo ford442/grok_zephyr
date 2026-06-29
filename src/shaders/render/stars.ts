@@ -176,8 +176,9 @@ fn starLayer(dir:vec3f, cellsPerRad:f32, density:f32, twinklePower:f32) -> vec3f
   let prob = pow(2.512, -mag) * density;
   let starMask = f32(b < prob);
 
-  // HDR luminance: bright stars (mag 0–1) reach ~3–5 in HDR space for bloom
-  let hdrLum = pow(2.512, -mag) * 4.5;
+  // HDR luminance: cap so only the brightest stars pierce bloom threshold 1.5;
+  // satellite cores (boosted ~3.5+) remain the dominant bloom drivers.
+  let hdrLum = starHdrLuminance(mag);
 
   // Spectral type temperature: O (30 000 K) through M (3 000 K)
   // Weight distribution realistically toward cooler K/M types
@@ -190,6 +191,13 @@ fn starLayer(dir:vec3f, cellsPerRad:f32, density:f32, twinklePower:f32) -> vec3f
     + twinklePower * 0.04 * sin(uni.time * (1.1 + c * 1.8) + b * 23.0);
 
   return color * hdrLum * starMask * twinkle;
+}
+
+// Magnitude-weighted HDR cap — keeps the bulk of the field sub-bloom.
+fn starHdrLuminance(mag: f32) -> f32 {
+  let raw = pow(2.512, -mag) * 2.35;
+  let cap = mix(1.25, 2.55, smoothstep(2.2, 0.2, mag));
+  return min(raw, cap);
 }
 
 // ── Fragment entry point ──────────────────────────────────────────────────────
@@ -213,16 +221,24 @@ fn starLayer(dir:vec3f, cellsPerRad:f32, density:f32, twinklePower:f32) -> vec3f
   stars += starLayer(dir,  960.0, 0.40, 0.6);   // dense, dimmer
   stars += starLayer(dir, 1920.0, 0.55, 0.3);   // very dense faint background
 
-  // ── Milky Way band ───────────────────────────────────────────────────────
-  stars += renderMilkyWay(dir) * 2.2;
+  // Milky Way — visible but capped so it does not flood the bloom buffer
+  let milkyWay = renderMilkyWay(dir) * 1.45;
+  let mwLum = dot(milkyWay, vec3f(0.2126, 0.7152, 0.0722));
+  stars += milkyWay * min(1.0, 1.25 / max(mwLum, 0.01));
 
   // ── Atmospheric horizon glow ─────────────────────────────────────────────
   let atmosphere = horizonFog(in.uv, uni.background_mode);
 
-  // ── Compose – HDR output, no clamp so bright stars drive bloom ───────────
-  let modeBoost = select(0.88, select(1.02, 1.18, uni.background_mode == 1u),
+  // Ground view: attenuate star HDR so Earth overlay is not washed out
+  let isGroundView = ((uni.view_mode >> 16u) & 1u) == 1u;
+  let isGroundBg = uni.background_mode == 2u;
+  let groundStarScale = select(1.0, 0.62, isGroundView || isGroundBg);
+  stars *= groundStarScale;
+
+  // ── Compose – HDR output; bright stars bloom, bulk stays sub-threshold ─────
+  let modeBoost = select(0.88, select(1.02, 1.05, uni.background_mode == 1u),
                          uni.background_mode == 2u);
-  var color = sky + stars * 1.05 + atmosphere;
+  var color = sky + stars * 1.02 + atmosphere;
   color *= modeBoost;
 
   if (atmosphereSettings.scatteringEnabled != 0u) {
@@ -243,7 +259,7 @@ fn starLayer(dir:vec3f, cellsPerRad:f32, density:f32, twinklePower:f32) -> vec3f
   // Soft gamma lift (keeps very dark regions slightly luminous)
   color = pow(max(color, vec3f(0.0)), vec3f(0.96, 0.97, 0.99));
 
-  // Return HDR (values > 1 are intentional for bloom pipeline)
+  // Return HDR (values > 1 are intentional; brightest stars only)
   return vec4f(color, 1.0);
 }
 `;
