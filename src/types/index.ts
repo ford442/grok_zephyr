@@ -50,7 +50,7 @@ export interface SatelliteState {
 }
 
 /** Camera view modes */
-export type ViewMode = 'horizon-720' | 'god' | 'sat-pov' | 'ground' | 'moon';
+export type ViewMode = 'horizon-720' | 'god' | 'sat-pov' | 'ground' | 'moon' | 'skyline';
 
 /** Camera pose configuration */
 export interface CameraPose {

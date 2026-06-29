@@ -39,6 +39,7 @@ export const VIEW_MODES: ViewModeConfig[] = [
   { id: 2, name: 'Fleet POV', altitude: '550', default: false },
   { id: 3, name: 'Ground View', altitude: '0', default: false },
   { id: 4, name: 'Moon View', altitude: '384400', default: false },
+  { id: 5, name: 'Skyline', altitude: '0', default: false },
 ] as const;
 
 /** Camera settings */

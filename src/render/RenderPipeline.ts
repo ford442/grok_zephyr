@@ -78,6 +78,7 @@ export interface Pipelines {
   satellites: GPURenderPipeline;
   beam: GPURenderPipeline;
   groundTerrain: GPURenderPipeline;
+  skyline: GPURenderPipeline;
   bloomThreshold: GPURenderPipeline;
   bloomBlur: GPURenderPipeline;
   bloomDownsample: GPURenderPipeline;
@@ -216,6 +217,9 @@ export class RenderPipeline {
   private motionBlurHistoryReady = false;
   private atmosphereLUT: GPUTexture | null = null;
   private atmosphereLUTView: GPUTextureView | null = null;
+
+  /** Bind group for the skyline city pass (Uni + CityUni + buildings storage). */
+  private skylineBindGroup: GPUBindGroup | null = null;
 
   /** Maximum supported pyramid levels */
   private static readonly MAX_BLOOM_LEVELS = 5;
@@ -369,6 +373,15 @@ export class RenderPipeline {
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+      ],
+    });
+
+    // Skyline city layout: shared Uni + CityUni + read-only buildings storage
+    const skylineLayout = device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        { binding: 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
       ],
     });
 
@@ -581,6 +594,25 @@ export class RenderPipeline {
           format: RENDER.DEPTH_FORMAT,
           depthWriteEnabled: false,
           depthCompare: 'always',
+        },
+      }),
+
+      skyline: device.createRenderPipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [skylineLayout] }),
+        vertex: {
+          module: this.context.createShaderModule(SHADERS.render.skyline, 'skyline-city'),
+          entryPoint: 'vs',
+        },
+        fragment: {
+          module: this.context.createShaderModule(SHADERS.render.skyline, 'skyline-city'),
+          entryPoint: 'fs',
+          targets: [{ format: RENDER.HDR_FORMAT }],
+        },
+        primitive: { topology: 'triangle-list', cullMode: 'none' },
+        depthStencil: {
+          format: RENDER.DEPTH_FORMAT,
+          depthWriteEnabled: true,
+          depthCompare: 'less',
         },
       }),
 
@@ -1128,6 +1160,58 @@ export class RenderPipeline {
     pass.setBindGroup(0, this.bindGroups.beam);
     pass.draw(4, MAX_BEAMS);
 
+    pass.end();
+  }
+
+  /**
+   * Lazily build the bind group for the skyline city pass.
+   * Called once the SkylineCity's GPU buffers exist.
+   */
+  setSkylineResources(cityUniformBuffer: GPUBuffer, instanceBuffer: GPUBuffer): void {
+    if (!this.pipelines) return;
+    if (this.skylineBindGroup) return;
+
+    const device = this.context.getDevice();
+    this.skylineBindGroup = device.createBindGroup({
+      layout: this.pipelines.skyline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.buffers.uniforms } },
+        { binding: 1, resource: { buffer: cityUniformBuffer } },
+        { binding: 2, resource: { buffer: instanceBuffer } },
+      ],
+    });
+  }
+
+  /**
+   * Execute the skyline city pass: instanced extruded-box buildings drawn
+   * into the shared HDR target with their own near-tuned projection.
+   *
+   * Loads (rather than clears) the HDR color so the buildings layer on top
+   * of whatever the scene pass already rendered, but uses a FRESH depth
+   * clear and its own near/far range — the city is sub-kilometer in scale
+   * and must not share the global planetary frustum's depth precision.
+   */
+  encodeSkylinePass(encoder: GPUCommandEncoder, buildingCount: number): void {
+    if (!this.pipelines || !this.renderTargets || !this.skylineBindGroup) return;
+
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: this.renderTargets.hdrView,
+        loadOp: 'load',
+        storeOp: 'store',
+      }],
+      depthStencilAttachment: {
+        view: this.renderTargets.depthView,
+        depthClearValue: 1,
+        depthLoadOp: 'clear',
+        depthStoreOp: 'store',
+      },
+    });
+
+    pass.setViewport(0, 0, this.width, this.height, 0, 1);
+    pass.setPipeline(this.pipelines.skyline);
+    pass.setBindGroup(0, this.skylineBindGroup);
+    pass.draw(36, buildingCount);
     pass.end();
   }
 

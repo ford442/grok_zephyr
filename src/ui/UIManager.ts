@@ -133,6 +133,7 @@ export class UIManager {
         document.getElementById('btn2') as HTMLButtonElement,
         document.getElementById('btn3') as HTMLButtonElement,
         document.getElementById('btn4') as HTMLButtonElement,
+        document.getElementById('btn5') as HTMLButtonElement,
       ],
       demoButton: document.getElementById('btnDemo') as HTMLButtonElement,
       demoAutoButton: document.getElementById('btnDemoAuto') as HTMLButtonElement,
@@ -964,6 +965,7 @@ export class UIManager {
             <button class="vbtn" id="btn2">FLEET POV</button>
             <button class="vbtn" id="btn3">GROUND VIEW</button>
             <button class="vbtn" id="btn4">MOON VIEW</button>
+            <button class="vbtn" id="btn5">SKYLINE</button>
           </div>
           <div class="view-extra-row">
             <button class="vbtn" id="btnDemo" data-no-interrupt-demo="true">CINEMATIC DEMO</button>

@@ -14,6 +14,7 @@ const AMBIENT_PROFILES: Record<ViewMode, AmbientProfile> = {
   'sat-pov':     { droneHz: 76, textureHz: 0.22, noiseCutoffHz: 620, textureGain: 0.24 },
   ground:        { droneHz: 66, textureHz: 0.16, noiseCutoffHz: 1100, textureGain: 0.28 },
   moon:          { droneHz: 49, textureHz: 0.06, noiseCutoffHz: 260, textureGain: 0.14 },
+  skyline:       { droneHz: 62, textureHz: 0.14, noiseCutoffHz: 900, textureGain: 0.24 },
 };
 
 /**
