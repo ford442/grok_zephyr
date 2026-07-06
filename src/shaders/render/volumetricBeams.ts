@@ -133,6 +133,62 @@ fn raymarchBeam(
   return vec4f(scattered, 1.0 - transmittance);
 }
 
+// ─── Pattern personality ───────────────────────────────────────────────────────
+
+fn viewBeamScale(viewFlags: u32) -> f32 {
+  let vm = viewFlags & 0xFFFFu;
+  switch vm {
+    case 2u: { return 0.4; }
+    case 3u: { return 0.6; }
+    case 4u: { return 1.3; }
+    case 5u: { return 0.75; }
+    case 1u: { return 1.0; }
+    default: { return 0.95; }
+  }
+}
+
+fn patternBeamColor(mode: u32, bStart: vec3f, bEnd: vec3f) -> vec3f {
+  let t = clamp(length(bEnd - bStart) * 0.00012, 0.0, 1.0);
+  switch mode {
+    case 0u: { return vec3f(0.68, 0.86, 0.94); }
+    case 1u: {
+      return mix(vec3f(0.06, 0.94, 0.58), vec3f(0.10, 0.74, 0.90), t);
+    }
+    case 2u: {
+      let edge = pow(max(0.0, 1.0 - abs(t - 0.5) * 2.0), 0.55);
+      return mix(vec3f(1.0, 0.22, 0.68), vec3f(1.0, 0.96, 1.0), edge);
+    }
+    default: { return vec3f(0.6, 0.9, 1.0); }
+  }
+}
+
+fn patternVolPulse(mode: u32, beamIdx: u32, time: f32) -> f32 {
+  switch mode {
+    case 0u: {
+      let flick = fract(sin(f32(beamIdx) * 12.9898 + time * 31.0) * 43758.5453);
+      return 0.55 + 0.45 * flick;
+    }
+    case 1u: {
+      return 0.62 + 0.38 * (0.5 + 0.5 * sin(time * 2.6 - f32(beamIdx) * 0.018));
+    }
+    case 2u: {
+      let gate = sin(time * 7.4 + f32(beamIdx) * 0.035);
+      return 0.45 + 0.55 * smoothstep(0.1, 0.9, 0.5 + 0.5 * gate);
+    }
+    default: { return 1.0; }
+  }
+}
+
+fn patternVolScales(mode: u32) -> vec3f {
+  // x = density, y = intensity, z = radius
+  switch mode {
+    case 0u: { return vec3f(0.62, 0.95, 1.28); }
+    case 1u: { return vec3f(1.0, 1.12, 1.0); }
+    case 2u: { return vec3f(0.42, 0.88, 0.72); }
+    default: { return vec3f(1.0, 1.0, 1.0); }
+  }
+}
+
 // ─── Vertex shader ────────────────────────────────────────────────────────────
 
 struct VSOut {
@@ -185,19 +241,12 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
   let lightDir = normalize(uni.sun_position.xyz - uni.camera_pos.xyz);
   let cosTheta = dot(rayDir, lightDir);
   let phase    = miePhaseCS(cosTheta, volConfig.mieG) + volConfig.ambientFactor;
-
-  // Beam palette (matches ribbon beam.ts)
-  const BEAM_COLORS = array<vec3f, 3>(
-    vec3f(0.45, 0.9, 1.0),   // mode 0 – CHAOS (blue-white)
-    vec3f(0.15, 1.0, 0.75),  // mode 1 – GROK  (cyan-green)
-    vec3f(1.0,  0.45, 0.78), // mode 2 – X     (pink)
-  );
+  let viewScale = viewBeamScale(uni.view_mode);
 
   var totalColor = vec3f(0.0);
   var totalAlpha = 0.0;
 
   let numStorageBeams = arrayLength(&beams);
-  // Each logical beam occupies two vec4f slots: [i*2]=(start,intensity), [i*2+1]=(end,mode)
   let numBeams = min(MAX_VOL_BEAMS, numStorageBeams / 2u);
 
   for (var i = 0u; i < numBeams; i++) {
@@ -205,11 +254,14 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
     let endVec   = beams[i * 2u + 1u];
 
     let intensity = startVec.w;
-    if (intensity < 0.01) { continue; }   // inactive beam
+    if (intensity < 0.01) { continue; }
 
     let mode      = u32(endVec.w) % 3u;
-    let beamColor = BEAM_COLORS[mode];
-    let bRadius   = volConfig.beamRadius;
+    let scales    = patternVolScales(mode);
+    let beamColor = patternBeamColor(mode, startVec.xyz, endVec.xyz);
+    let bRadius   = volConfig.beamRadius * scales.z;
+    let volPulse  = patternVolPulse(mode, i, uni.time);
+    let volIntensity = intensity * scales.y * viewScale * volPulse;
 
     let result = raymarchBeam(
       ray,
@@ -217,12 +269,11 @@ fn fs_main(in: VSOut) -> @location(0) vec4f {
       endVec.xyz,
       bRadius,
       beamColor,
-      intensity,
+      volIntensity,
       lightDir,
-      phase,
+      phase * scales.x,
     );
 
-    // Additive accumulation of scattered light
     totalColor += result.rgb;
     totalAlpha  = max(totalAlpha, result.a);
   }

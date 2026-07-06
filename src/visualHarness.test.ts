@@ -18,4 +18,13 @@ describe('parseVisualHarnessParams', () => {
     const p = parseVisualHarnessParams('?ground=not-a-preset');
     expect(p.groundPreset).toBeNull();
   });
+
+  it('parses beach and car ground presets', () => {
+    expect(parseVisualHarnessParams('?ground=beachNight').groundPreset).toBe(
+      GroundObserverPreset.BEACH_NIGHT,
+    );
+    expect(parseVisualHarnessParams('?ground=carWindshield').groundPreset).toBe(
+      GroundObserverPreset.CAR_WINDSHIELD,
+    );
+  });
 });

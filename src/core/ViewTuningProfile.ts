@@ -54,12 +54,12 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     viewModeIndex: 0,
     shortName: 'Horizon',
     rationale:
-      '720 km vantage: moderate satellite density with a bright Earth limb. ' +
-      'Slightly restrained bloom intensity protects the horizon glow while keeping ' +
-      'constellation points sharp.',
-    bloomThreshold: 1.45,
+      '720 km flagship establishing shot: Earth limb on the lower third, constellation ' +
+      'in the upper two-thirds. Slightly elevated bloom threshold + warm post grade keep ' +
+      'stars distinct above limb glow.',
+    bloomThreshold: 1.48,
     bloomKnee: 0.05,
-    bloomIntensity: 2.0,
+    bloomIntensity: 2.05,
     satCoreOuter: 0.38,
     satCoreInner: 0.11,
     haloStrength: 0.18,
@@ -70,12 +70,11 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     viewModeIndex: 1,
     shortName: 'God',
     rationale:
-      'Maximum orbital clutter at ~25k km. Sharpening pass is most critical here: ' +
-      'tight point kernel, higher bloom threshold, and minimal halo prevent fuzzy ' +
-      'Gaussian soup across the full constellation.',
-    bloomThreshold: 1.55,
+      'Maximum orbital clutter at ~25k km. Hero pose showcases the 53° shell edge-on; ' +
+      'God-only LOD bands (15k / 40k) + zoom-dependent bloom keep shells readable without soup.',
+    bloomThreshold: 1.58,
     bloomKnee: 0.04,
-    bloomIntensity: 2.35,
+    bloomIntensity: 2.3,
     satCoreOuter: 0.36,
     satCoreInner: 0.08,
     haloStrength: 0.15,
@@ -87,8 +86,8 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     shortName: 'Fleet POV',
     rationale:
       'First-person micro-scale billboards with motion-blur stretch trails. ' +
-      'Very tight core, low halo, and elevated bloom threshold resist streak soup ' +
-      'while trails remain visible.',
+      'Very tight core, low halo, elevated bloom threshold, Fleet near-field LOD (<50 km), ' +
+      'and velocity-aligned stretch keep neighbors distinguishable at 1× time scale.',
     bloomThreshold: 1.65,
     bloomKnee: 0.04,
     bloomIntensity: 1.85,
@@ -118,9 +117,9 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     viewModeIndex: 4,
     shortName: 'Moon',
     rationale:
-      '384,400 km range: constellation appears as a faint ring. Lower threshold ' +
-      'and moderate bloom extract the ring; softer kernel + extended cull match ' +
-      'existing moonBillboardScale / moonAttenBoost shader special-casing.',
+      '384,400 km lunar vista: Earth blue marble at ~1.9° with earthshine, star ' +
+      'dimming near the disk, regolith foreground, and ring emphasis. Lower threshold ' +
+      'and moderate bloom extract the constellation halo against Earth limb glow.',
     bloomThreshold: 1.35,
     bloomKnee: 0.07,
     bloomIntensity: 2.1,
@@ -134,9 +133,9 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     viewModeIndex: 5,
     shortName: 'Skyline',
     rationale:
-      'Surface night-city vantage: HDR window emissives in the near field with the ' +
-      'constellation as background. Bloom threshold sits below Ground View so lit ' +
-      'windows bloom cohesively; coreBoost also scales building emissive output.',
+      'Surface night-city vantage: HDR window cores (>2.0) in the near field bloom ' +
+      'into cohesive city glow halos with the constellation as background. Bloom ' +
+      'threshold sits below Ground View; coreBoost scales per-floor emissive output.',
     bloomThreshold: 1.62,
     bloomKnee: 0.055,
     bloomIntensity: 1.88,

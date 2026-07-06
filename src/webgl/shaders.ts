@@ -53,6 +53,7 @@ const float LOD_NEAR_KM = 5000.0;
 const float LOD_MID_KM = 25000.0;
 const float LOD_NEAR_BLEND_KM = 1000.0;
 const float LOD_MID_BLEND_KM = 3000.0;
+const float FLEET_LOD_NEAR_KM = 50.0;
 const float MOON_BILLBOARD_SCALE = 750.0;
 
 vec3 lodTierWeights(float lodDist) {
@@ -99,8 +100,10 @@ void resolveLodKernel(
 
 export const SAT_VERT = /* glsl */ `#version 300 es
 precision highp float;
+precision highp int;
 layout(location = 0) in vec4 aElem; // raan, inclination, meanAnomaly0, shellData
 ${SHELL_GLSL}
+const float FLEET_LOD_NEAR_KM = 50.0;
 uniform mat4 uViewProj;
 uniform vec3 uCameraPos;
 uniform float uSimTime;
@@ -109,6 +112,8 @@ uniform float uPointScale; // debug: global point-size multiplier
 uniform int uLodDebug;     // debug: 1 = color by shell/LOD bucket
 uniform int uViewMode;     // low 16 bits = view mode index (4 = moon)
 uniform float uDistanceCullKm;
+uniform float uTimeScale;
+uniform vec3 uHostVelocity;
 out vec3 vColor;
 out float vFade;
 out float vWorldDist;
@@ -139,11 +144,20 @@ void main() {
   vColor = base;
   // Fade distant satellites slightly so dense shells don't blow out.
   vFade = clamp(20000.0 / dist, 0.15, 1.0);
+  bool isFleetView = (uViewMode & 0xFFFF) == 2;
+  if (isFleetView) {
+    float nearFleet = 1.0 - smoothstep(FLEET_LOD_NEAR_KM * 0.35, FLEET_LOD_NEAR_KM, dist);
+    vFade *= (1.0 + 0.35 * nearFleet);
+    if (length(uHostVelocity) > 1e-5) {
+      vFade *= clamp(1.0 + 0.08 * sqrt(max(uTimeScale, 1.0)), 1.0, 1.6);
+    }
+  }
 }
 `;
 
 export const SAT_FRAG = /* glsl */ `#version 300 es
 precision highp float;
+precision highp int;
 ${SAT_LOD_GLSL}
 in vec3 vColor;
 in float vFade;
@@ -173,6 +187,14 @@ void main() {
     lodDist, uCoreOuter, uCoreInner, uHaloOuter, uHaloInner, uHaloStrength, uCoreBoost,
     coreOuter, coreInner, haloOuter, haloInner, haloStrength, coreBoost
   );
+
+  bool isFleetView = (uViewMode & 0xFFFF) == 2;
+  if (isFleetView) {
+    float nearFleet = 1.0 - smoothstep(FLEET_LOD_NEAR_KM * 0.35, FLEET_LOD_NEAR_KM, lodDist);
+    coreOuter = mix(coreOuter, coreOuter * 0.82, nearFleet);
+    coreInner = mix(coreInner, coreInner * 0.82, nearFleet);
+    coreBoost *= (1.0 + 0.4 * nearFleet);
+  }
 
   float core = smoothstep(coreOuter, coreInner, uvDist);
   float halo = smoothstep(haloOuter, haloInner, uvDist) * haloStrength;
@@ -205,11 +227,13 @@ void main() {
 // lights on the night side, and an atmospheric rim. Emissive output feeds bloom.
 export const EARTH_FRAG = /* glsl */ `#version 300 es
 precision highp float;
+precision highp int;
 in vec3 vWorld;
 in vec3 vNormal;
 uniform vec3 uCameraPos;
 uniform vec3 uSunDir;   // normalized direction to the sun (ECI)
 uniform int uWireframe; // debug flag (handled by draw mode; kept for parity)
+uniform int uViewMode;  // low 16 bits = view mode index (4 = moon)
 out vec4 fragColor;
 
 // Cheap hash-based value noise for continent/city variation.
@@ -256,6 +280,17 @@ void main() {
   float rim = pow(1.0 - max(dot(N, V), 0.0), 3.0);
   color += vec3(0.25, 0.5, 1.0) * rim * (0.4 + 0.6 * day);
 
+  bool isMoonView = (uViewMode & 0xFFFF) == 4;
+  if (isMoonView) {
+    float nightSide = 1.0 - day;
+    color += vec3(0.06, 0.10, 0.22) * nightSide * smoothstep(0.05, -0.30, ndotl) * 0.85;
+    // Blue-marble disk floor + limb halo (WebGL has no separate atmosphere pass).
+    color = max(color, vec3(0.05, 0.11, 0.24) * (0.32 + 0.68 * day));
+    color *= 2.1;
+    color += vec3(0.20, 0.42, 0.78) * rim * 0.72;
+    color += vec3(0.10, 0.20, 0.38) * (1.0 - rim) * 0.32;
+  }
+
   fragColor = vec4(color, 1.0);
 }
 `;
@@ -276,12 +311,14 @@ void main() {
 
 export const STAR_FRAG = /* glsl */ `#version 300 es
 precision highp float;
+precision highp int;
 in vec2 vNdc;
 uniform mat4 uInvViewProj;
 uniform float uTime;
 uniform int uBackgroundMode;
 uniform vec3 uCameraPos;
 uniform vec3 uSunDir;
+uniform int uViewMode;
 out vec4 fragColor;
 
 float hash21(vec2 p) {
@@ -362,6 +399,15 @@ void main() {
   vec3 color = bg + vec3(bright);
   if (uBackgroundMode == 2) {
     color = groundViewHorizon(color, dir);
+  }
+  bool isMoonView = (uViewMode & 0xFFFF) == 4;
+  if (isMoonView) {
+    vec3 toEarth = normalize(-uCameraPos);
+    float cosEarth = dot(dir, toEarth);
+    float earthDiskGlow = smoothstep(cos(0.026), cos(0.012), cosEarth);
+    color += vec3(0.08, 0.16, 0.32) * earthDiskGlow * 1.35;
+    float earthMask = smoothstep(cos(0.0185), 0.99998, cosEarth);
+    color *= mix(1.0, 0.22, earthMask);
   }
   fragColor = vec4(color, 1.0);
 }
@@ -467,5 +513,72 @@ void main() {
   mapped += (grain - 0.5) * 0.015;
 
   fragColor = vec4(mapped, 1.0);
+}
+`;
+
+/* ───────────────────────────── Moon View foreground ───────────────────────────── */
+
+export const MOON_FOREGROUND_FRAG = /* glsl */ `#version 300 es
+precision highp float;
+precision highp int;
+in vec2 vUv;
+uniform float uTime;
+uniform int uViewMode;
+uniform vec3 uCameraPos;
+uniform mat4 uInvViewProj;
+out vec4 fragColor;
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+float noise21(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
+    mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x),
+    u.y
+  );
+}
+
+vec3 skyDir(vec2 uv) {
+  vec4 far = uInvViewProj * vec4(uv * 2.0 - 1.0, 1.0, 1.0);
+  vec4 near = uInvViewProj * vec4(uv * 2.0 - 1.0, -1.0, 1.0);
+  return normalize(far.xyz / far.w - near.xyz / near.w);
+}
+
+void main() {
+  if ((uViewMode & 0xFFFF) != 4) {
+    fragColor = vec4(0.0);
+    return;
+  }
+
+  float arc = 0.04 * (1.0 - vUv.x * vUv.x) * 4.0;
+  float horizonY = 0.15 + arc;
+  float regolithMask = 1.0 - smoothstep(horizonY - 0.02, horizonY + 0.01, vUv.y);
+  if (regolithMask < 0.001) {
+    fragColor = vec4(0.0);
+    return;
+  }
+
+  float crater = noise21(vUv * vec2(48.0, 18.0));
+  float grain = noise21(vUv * 180.0 + vec2(3.7, 11.2));
+  vec3 regolith = vec3(0.10, 0.09, 0.08);
+  regolith += vec3(0.16, 0.14, 0.12) * crater * 0.35;
+  regolith += vec3(0.04, 0.035, 0.03) * (1.0 - crater) * 0.25;
+  regolith += vec3(grain * 0.04);
+
+  vec3 toEarth = normalize(-uCameraPos);
+  float cosEarth = dot(skyDir(vUv), toEarth);
+  float earthGlow = smoothstep(cos(0.023), cos(0.009), cosEarth);
+  regolith += vec3(0.04, 0.06, 0.12) * earthGlow * 0.18 * regolithMask;
+
+  float edgeFade = smoothstep(horizonY - 0.02, horizonY + 0.008, vUv.y);
+  float alpha = regolithMask * mix(0.92, 0.0, edgeFade);
+  fragColor = vec4(regolith * 0.48, alpha * 0.88);
 }
 `;

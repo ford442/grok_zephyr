@@ -6,9 +6,24 @@
   <title>Grok Zephyr - WebGPU Orbital Simulation</title>
   <meta name="description" content="WebGPU-powered orbital simulation featuring 1,048,576 simulated satellites">
   <link rel="stylesheet" href="/src/styles/ground-observer.css">
+  <link rel="stylesheet" href="/src/styles/fleet-cockpit.css">
 </head>
 <body>
   <canvas id="gpu-canvas"></canvas>
+
+  <!-- Fleet POV cockpit HUD (shown only in Fleet POV mode) -->
+  <div id="fleet-cockpit-hud" aria-hidden="true">
+    <div id="fleet-reticle" aria-hidden="true"></div>
+    <div class="fleet-hud-panel tl" id="fleet-hud-left">
+      <div class="fleet-hud-label">FLEET POV</div>
+      <div class="fleet-hud-row"><span>SPD</span><span class="fleet-hud-value" id="fleet-hud-speed">— km/s</span></div>
+      <div class="fleet-hud-row"><span>ALT</span><span class="fleet-hud-value" id="fleet-hud-altitude">— km</span></div>
+    </div>
+    <div class="fleet-hud-panel br" id="fleet-hud-right">
+      <div class="fleet-hud-row"><span>HDG</span><span class="fleet-hud-value" id="fleet-hud-heading">—°</span></div>
+      <div class="fleet-hud-row"><span>NEAR</span><span class="fleet-hud-value" id="fleet-hud-nearby">—</span></div>
+    </div>
+  </div>
 
   <!-- Ground observer frame overlay (shown only in Ground View mode) -->
   <div id="ground-observer-overlay" class="ground-observer-frame" style="display:none;">
@@ -174,6 +189,26 @@
             <span id="tuneSatFalloffValue">0.10</span>
           </label>
           <input id="tuneSatFalloff" type="range" min="0.02" max="0.3" step="0.01" value="0.1" aria-label="Satellite core falloff inner edge">
+
+          <label class="tuning-row tuning-check" for="godIdleOrbitToggle">
+            <span>God idle orbit</span>
+            <input id="godIdleOrbitToggle" type="checkbox" checked aria-label="God View idle orbit animation">
+          </label>
+
+          <label class="tuning-row tuning-check" for="constellationGuidesToggle">
+            <span>Shell wireframe guides</span>
+            <input id="constellationGuidesToggle" type="checkbox" aria-label="Constellation shell wireframe guides">
+          </label>
+
+          <label class="tuning-row tuning-check" for="moonRingGuideToggle">
+            <span>Moon ring guide</span>
+            <input id="moonRingGuideToggle" type="checkbox" aria-label="Moon View constellation ring guide">
+          </label>
+
+          <label class="tuning-row tuning-check" for="moonScaleHudToggle">
+            <span>Moon scale HUD</span>
+            <input id="moonScaleHudToggle" type="checkbox" aria-label="Moon View angular scale annotation">
+          </label>
         </div>
       </details>
     </section>
@@ -205,12 +240,16 @@
 
   <div id="capture-gallery" aria-live="polite"></div>
   
+  <div id="horizon-limb-line" aria-hidden="true"></div>
+
   <div id="horizon-indicator">
     <div>Earth Radius: 6,371 km</div>
     <div>Orbit Altitude: 550 km</div>
     <div>Camera Altitude: 720 km</div>
     <div>Horizon Distance: ~2,970 km</div>
   </div>
+
+  <div id="moon-scale-annotation" aria-hidden="true"></div>
   
   <div id="error"></div>
 

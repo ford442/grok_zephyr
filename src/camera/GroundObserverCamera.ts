@@ -8,6 +8,12 @@
 
 import type { Vec3, Mat4 } from '../types/index.js';
 import { mat4lookAt, mat4persp, mat4mul } from '../utils/math.js';
+import {
+  extractGroundPresetEffects,
+  blendGroundPresetEffects,
+  GROUND_PRESET_BLEND_SEC,
+  type GroundPresetRuntimeEffects,
+} from './groundPresetEffects.js';
 
 /** Ground observer camera preset types */
 export enum GroundObserverPreset {
@@ -63,7 +69,13 @@ export interface GroundHorizonSettings {
   hazeBoost: number;
 }
 
-/** Preset configurations */
+/**
+ * Preset configurations.
+ *
+ * `effects.bloomIntensity` is a composite multiplier layered on top of the Ground
+ * View tuning profile (ViewTuningProfile index 3, base ~1.70). E.g. beach 1.4×
+ * yields ~2.38 effective bloom; car 0.9× yields ~1.53.
+ */
 export const GROUND_OBSERVER_PRESETS: Record<GroundObserverPreset, GroundObserverConfig> = {
   [GroundObserverPreset.HOUSE_WINDOW]: {
     name: 'House Window',
@@ -74,7 +86,7 @@ export const GROUND_OBSERVER_PRESETS: Record<GroundObserverPreset, GroundObserve
     overlayClass: 'frame-house',
     effects: {
       vignette: 0.4,
-      bloomIntensity: 1.2,
+      bloomIntensity: 1.2, // × Ground profile → warmer limb glow
       colorTemperature: 3200,
     },
     parallax: {
@@ -95,7 +107,7 @@ export const GROUND_OBSERVER_PRESETS: Record<GroundObserverPreset, GroundObserve
     effects: {
       motionBlur: 0.3,
       vignette: 0.2,
-      bloomIntensity: 0.9,
+      bloomIntensity: 0.9, // subdued dash reflections
       colorTemperature: 4500,
     },
     parallax: {
@@ -115,7 +127,7 @@ export const GROUND_OBSERVER_PRESETS: Record<GroundObserverPreset, GroundObserve
     overlayClass: 'frame-beach',
     effects: {
       vignette: 0.3,
-      bloomIntensity: 1.4,
+      bloomIntensity: 1.4, // strong ocean / star bloom
       colorTemperature: 2700,
     },
     parallax: {
@@ -135,7 +147,7 @@ export const GROUND_OBSERVER_PRESETS: Record<GroundObserverPreset, GroundObserve
     overlayClass: 'frame-rooftop',
     effects: {
       vignette: 0.25,
-      bloomIntensity: 1.1,
+      bloomIntensity: 1.1, // urban light-pollution halo
       colorTemperature: 4000,
     },
     parallax: {
@@ -155,8 +167,8 @@ export const GROUND_OBSERVER_PRESETS: Record<GroundObserverPreset, GroundObserve
     overlayClass: 'frame-airplane',
     effects: {
       vignette: 0.35,
-      bloomIntensity: 1.0,
-      colorTemperature: 6500,
+      bloomIntensity: 1.0, // neutral cruise altitude
+      colorTemperature: 6500, // cool high-altitude grade + low scatter
     },
     parallax: {
       enabled: false,
@@ -187,7 +199,15 @@ export class GroundObserverCamera {
   // Cached view-projection matrix
   private viewProjMatrix: Mat4 = new Float32Array(16);
 
+  // Preset cross-fade (200 ms)
+  private blendFrom: GroundPresetRuntimeEffects;
+  private blendTo: GroundPresetRuntimeEffects;
+  private blendT = 1;
+
   constructor() {
+    const initial = extractGroundPresetEffects(GROUND_OBSERVER_PRESETS[GroundObserverPreset.HOUSE_WINDOW]);
+    this.blendFrom = initial;
+    this.blendTo = initial;
     this.setPreset(GroundObserverPreset.HOUSE_WINDOW);
     this.setupMouseTracking();
   }
@@ -202,8 +222,16 @@ export class GroundObserverCamera {
 
   /** Set the current ground observer preset */
   setPreset(preset: GroundObserverPreset): void {
+    const isChange = preset !== this.currentPreset;
+
+    if (isChange) {
+      this.blendFrom = this.getBlendedEffects();
+      this.blendT = 0;
+    }
+
     this.currentPreset = preset;
     this.config = GROUND_OBSERVER_PRESETS[preset];
+    this.blendTo = extractGroundPresetEffects(this.config);
 
     this.basePosition = [...this.config.position] as Vec3;
     this.currentPosition = [...this.config.position] as Vec3;
@@ -290,14 +318,33 @@ export class GroundObserverCamera {
 
   /** Get atmospheric scattering multiplier */
   getAtmosphericScatter(): number {
-    return this.config.atmosphericScatter;
+    return this.getBlendedEffects().atmosphericScatter;
+  }
+
+  /** Advance preset cross-fade (call once per frame in Ground View). */
+  updatePresetBlend(deltaTime: number): void {
+    if (this.blendT >= 1) return;
+    this.blendT = Math.min(1, this.blendT + deltaTime / GROUND_PRESET_BLEND_SEC);
+  }
+
+  /** Blended runtime effects (color, bloom, scatter, motion blur). */
+  getBlendedEffects(): GroundPresetRuntimeEffects {
+    if (this.blendT >= 1) return this.blendTo;
+    const t = this.blendT * this.blendT * (3 - 2 * this.blendT);
+    return blendGroundPresetEffects(this.blendFrom, this.blendTo, t);
+  }
+
+  /** True while a preset cross-fade is in progress. */
+  isPresetBlending(): boolean {
+    return this.blendT < 1;
   }
 
   /** Get the horizon params for the ground terrain pass (preset-aware) */
   getHorizonSettings(): GroundHorizonSettings {
+    const scatter = this.getBlendedEffects().atmosphericScatter;
     return {
       ...this.config.horizon,
-      hazeBoost: this.config.atmosphericScatter,
+      hazeBoost: scatter,
     };
   }
 

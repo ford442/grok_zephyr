@@ -1,5 +1,5 @@
 /**
- * Laser Beam Shader
+ * Laser Beam Shader — pattern-distinct ribbon beams with per-view intensity.
  */
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
@@ -12,15 +12,104 @@ struct VOut {
   @location(0) uv: vec2f,
   @location(1) intensity: f32,
   @location(2) mode: f32,
+  @location(3) atmScatter: f32,
 };
 
-fn beam_color(mode: u32) -> vec3f {
+fn viewBeamScale(viewFlags: u32) -> f32 {
+  let vm = viewFlags & 0xFFFFu;
+  switch vm {
+    case 2u: { return 0.4; }   // Fleet POV
+    case 3u: { return 0.6; }   // Ground
+    case 4u: { return 1.3; }   // Moon
+    case 5u: { return 0.75; }  // Skyline
+    case 1u: { return 1.0; }   // God
+    default: { return 0.95; } // Horizon
+  }
+}
+
+fn beamPalette(mode: u32, uvX: f32) -> vec3f {
   switch mode {
-    case 0u: { return vec3f(0.45, 0.9, 1.0); }
-    case 1u: { return vec3f(0.15, 1.0, 0.75); }
-    case 2u: { return vec3f(1.0, 0.45, 0.78); }
+    case 0u: {
+      // CHAOS — desaturated cyan-white lightning.
+      let flick = 0.92 + 0.08 * sin(uvX * 38.0);
+      return vec3f(0.68, 0.86, 0.94) * flick;
+    }
+    case 1u: {
+      // GROK — green-teal brand gradient along the beam.
+      return mix(vec3f(0.06, 0.94, 0.58), vec3f(0.10, 0.74, 0.90), uvX);
+    }
+    case 2u: {
+      // 𝕏 LOGO — magenta core, white hot edges.
+      let edge = pow(max(0.0, 1.0 - abs(uvX - 0.5) * 2.0), 0.55);
+      return mix(vec3f(1.0, 0.22, 0.68), vec3f(1.0, 0.96, 1.0), edge);
+    }
     default: { return vec3f(0.6, 0.9, 1.0); }
   }
+}
+
+fn ribbonEdge(mode: u32, uvY: f32) -> f32 {
+  let dist = abs(uvY - 0.5) * 2.0;
+  let power = select(select(3.0, 4.8, mode == 2u), 2.2, mode == 0u);
+  return pow(max(0.0, 1.0 - dist), power);
+}
+
+fn patternTravel(mode: u32, uvX: f32, t: f32) -> f32 {
+  switch mode {
+    case 0u: {
+      let a = fract(t * 5.8 + uvX * 4.2 + sin(t * 17.3) * 0.3);
+      let b = fract(t * 9.1 - uvX * 2.7);
+      let crackle = step(0.82, fract(sin(uvX * 127.0 + t * 41.0) * 43758.5453));
+      return max(
+        max(smoothstep(0.42, 0.0, abs(a - 0.5)), smoothstep(0.38, 0.0, abs(b - 0.5))),
+        crackle * 0.55,
+      );
+    }
+    case 1u: {
+      let sweep = fract(t * 1.4 - uvX * 0.85);
+      let ring = 0.5 + 0.5 * sin(uvX * 18.0 - t * 3.2);
+      return smoothstep(0.35, 0.0, abs(sweep - 0.5)) * (0.65 + 0.35 * ring);
+    }
+    case 2u: {
+      let seg = fract(uvX * 8.0);
+      let stroke = smoothstep(0.22, 0.0, abs(seg - 0.5));
+      let gate = step(0.45, sin(t * 8.0 + floor(uvX * 8.0) * 1.7));
+      return gate * stroke;
+    }
+    default: {
+      return smoothstep(0.0, 0.08, 0.08 - abs(fract(t * 3.4 - uvX * 2.6) - 0.5));
+    }
+  }
+}
+
+fn patternPulse(mode: u32, uvX: f32, t: f32) -> f32 {
+  switch mode {
+    case 0u: {
+      let flicker = sin(t * 21.0 + uvX * 53.0) * sin(t * 33.0 - uvX * 19.0);
+      return 0.42 + 0.58 * (0.5 + 0.5 * flicker);
+    }
+    case 1u: {
+      return 0.58 + 0.42 * (0.5 + 0.5 * sin(t * 2.8 - uvX * 1.1));
+    }
+    case 2u: {
+      let gate = sin(t * 7.2 - uvX * 3.8);
+      return 0.38 + 0.62 * smoothstep(0.1, 0.92, 0.5 + 0.5 * gate);
+    }
+    default: {
+      return 0.6 + 0.4 * sin(t * 8.0 - uvX * 10.0);
+    }
+  }
+}
+
+fn groundProjectionTint(color: vec3f, viewFlags: u32, atmScatter: f32) -> vec3f {
+  let isSurface = ((viewFlags >> 16u) & 1u) == 1u || (viewFlags & 0xFFFFu) == 5u;
+  if (!isSurface) { return color; }
+
+  // Beams grazing the night atmosphere pick up warm Mie forward-scatter.
+  let mieAmt = smoothstep(0.04, 0.62, atmScatter) * 0.58;
+  let mieWarm = vec3f(1.0, 0.72, 0.38);
+  let skyCool = vec3f(0.55, 0.72, 1.0);
+  let scatterCol = mix(mieWarm, skyCool, smoothstep(0.25, 0.75, atmScatter));
+  return mix(color, color * scatterCol, mieAmt) + scatterCol * mieAmt * 0.18;
 }
 
 @vertex
@@ -35,6 +124,7 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) instance: u32) ->
   let end = beams[instance * 2u + 1u];
   let p0 = start.xyz;
   let p1 = end.xyz;
+  let beamMode = u32(end.w);
   let beamDir = normalize(p1 - p0 + vec3f(0.0001, 0.0, 0.0));
   var offsetDir = normalize(cross(beamDir, uni.camera_up.xyz));
   if (length(offsetDir) < 0.0001) {
@@ -43,30 +133,40 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) instance: u32) ->
 
   let center = mix(p0, p1, t);
   let distance = max(length(uni.camera_pos.xyz - center), 1.0);
-  let thickness = (0.0008 + 0.0014 * start.w) * distance;
+  var thickness = (0.0008 + 0.0014 * start.w) * distance;
+  if (beamMode == 0u) {
+    thickness *= 1.0 + 0.7 * fract(sin(f32(instance) * 12.9898) * 43758.5453);
+  } else if (beamMode == 2u) {
+    thickness *= 0.82;
+  }
   let worldPos = center + offsetDir * sideSign * thickness;
 
   out.cp = uni.view_proj * vec4f(worldPos, 1.0);
   out.uv = vec2f(t, select(0.0, 1.0, sideSign > 0.0));
   out.intensity = start.w;
   out.mode = end.w;
+  let surfaceUp = normalize(uni.camera_pos.xyz);
+  out.atmScatter = abs(dot(beamDir, surfaceUp));
   return out;
 }
 
 @fragment
 fn fs(in: VOut) -> @location(0) vec4f {
   let mode = u32(in.mode);
-  let base = beam_color(mode);
-  let edge = pow(max(0.0, 1.0 - abs(in.uv.y - 0.5) * 2.0), 3.0);
-  let pulse = 0.6 + 0.4 * sin(uni.time * 8.0 - in.uv.x * 10.0);
-  let travel = smoothstep(0.0, 0.08, 0.08 - abs(fract(uni.time * 3.4 - in.uv.x * 2.6) - 0.5));
-  let glow = max(0.35, travel);
-  let alpha = clamp(edge * in.intensity * pulse * glow, 0.0, 1.0);
-  let color = mix(base * 0.8, base * 1.4, travel);
-  if (((uni.view_mode >> 16u) & 1u) == 1u) {
-    let groundTint = mix(color, vec3f(1.0, 0.8, 0.45), 0.24);
-    return vec4f(groundTint * alpha * 1.05, alpha * 0.85);
-  }
-  return vec4f(color * alpha, alpha * 0.85);
+  let viewScale = viewBeamScale(uni.view_mode);
+  let base = beamPalette(mode, in.uv.x);
+  let edge = ribbonEdge(mode, in.uv.y);
+  let pulse = patternPulse(mode, in.uv.x, uni.time);
+  let travel = patternTravel(mode, in.uv.x, uni.time);
+  let glow = max(select(0.28, 0.35, mode == 2u), travel);
+
+  var hdrBoost = select(select(1.35, 1.55, mode == 1u), 1.2, mode == 2u);
+  let alpha = clamp(edge * in.intensity * pulse * glow * viewScale, 0.0, 1.0);
+  var color = mix(base * 0.75, base * hdrBoost, travel + 0.35);
+  color = groundProjectionTint(color, uni.view_mode, in.atmScatter);
+
+  let isSurface = ((uni.view_mode >> 16u) & 1u) == 1u || (uni.view_mode & 0xFFFFu) == 5u;
+  let alphaScale = select(0.85, 0.78, isSurface);
+  return vec4f(color * alpha, alpha * alphaScale);
 }
 `;

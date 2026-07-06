@@ -25,6 +25,8 @@ struct MotionBlurUni {
   satellite_stretch : f32,
   delta_time : f32,
   tap_count : u32,
+  host_velocity : vec3f,
+  fleet_pad : f32,
 }
 @group(0) @binding(4) var<uniform> motion : MotionBlurUni;
 
@@ -85,6 +87,8 @@ fn patternVertexBright(sample: PatternSample, atten: f32, selectionBoost: f32) -
   let distFade = mix(1.0, atten, 0.32);
   return sample.strength * sample.tier * distFade * selectionBoost;
 }
+
+fn sat_color(idx: u32) -> vec3f {
   let c = idx % 7u;
   switch c {
     case 0u: { return vec3f(1.0, 0.18, 0.18); }
@@ -398,8 +402,13 @@ fn vs(
   if (abs(dot(normalize(wp), axis)) > 0.96) {
     axis = vec3f(0.0, 1.0, 0.0);
   }
-  let tangent = normalize(cross(axis, normalize(wp)));
-  let futurePos = wp + tangent * (7.6 * max(motion.delta_time, 0.0));
+  let isFleetViewVs = (uni.view_mode & 0xFFFFu) == 2u;
+  var tangent = normalize(cross(axis, normalize(wp)));
+  if (isFleetViewVs && length(motion.host_velocity) > 1e-5) {
+    tangent = normalize(motion.host_velocity);
+  }
+  let simDt = motion.delta_time * max(uni.time_scale, 0.0);
+  let futurePos = wp + tangent * (7.6 * max(simDt, 0.0));
   let futureClip = uni.view_proj * vec4f(futurePos, 1.0);
   let futureNdc = futureClip.xy / max(futureClip.w, 1e-5);
 
@@ -409,13 +418,20 @@ fn vs(
   let motionLen = length(screenMotion);
   let motionDir2 = select(vec2f(0.0, 0.0), screenMotion / motionLen, motionLen > 1e-5);
   let trailingMask = clamp(dot(-qv, motionDir2), 0.0, 1.0);
-  let stretch = clamp(motionLen * 380.0 * motion.satellite_stretch, 0.0, 2.4) * trailingMask;
+  let stretchScale = select(1.0, clamp(sqrt(uni.time_scale), 1.0, 10.0), isFleetViewVs);
+  let stretch = clamp(motionLen * 380.0 * motion.satellite_stretch * stretchScale, 0.0, 2.4) * trailingMask;
   let stretchWorld = (motionDir2.x * right + motionDir2.y * up) * bsize * stretch;
 
   let fpos = wp + offset + stretchWorld;
 
   let baseColor = sat_color(u32(abs(cdat)) % 7u);
-  let shellTint = shellColorShift(shellIdx);
+  var shellTint = shellColorShift(shellIdx);
+  let isGodViewVs = (uni.view_mode & 0xFFFFu) == 1u;
+  let camDist = length(uni.camera_pos.xyz);
+  let zoomOut = smoothstep(12000.0, 45000.0, camDist);
+  if (isGodViewVs && shellIdx == 0u) {
+    shellTint *= mix(vec3f(1.0), vec3f(1.14, 1.06, 0.92), zoomOut);
+  }
   var col = baseColor * shellTint;
   let isHighlighted = select(0.0, 1.0, ii == params.selected_satellite);
   if (isHighlighted > 0.0) {
@@ -482,11 +498,17 @@ const LOD_NEAR_KM: f32 = 5000.0;
 const LOD_MID_KM: f32 = 25000.0;
 const LOD_NEAR_BLEND_KM: f32 = 1000.0;
 const LOD_MID_BLEND_KM: f32 = 3000.0;
+// God View cinematography bands — sharper near, softer far (#GodView)
+const GOD_LOD_NEAR_KM: f32 = 15000.0;
+const GOD_LOD_MID_KM: f32 = 40000.0;
+const GOD_LOD_NEAR_BLEND_KM: f32 = 2500.0;
+const GOD_LOD_MID_BLEND_KM: f32 = 4000.0;
+const FLEET_LOD_NEAR_KM: f32 = 50.0;
 const MOON_BILLBOARD_SCALE: f32 = 750.0;
 
-fn lodTierWeights(lodDist: f32) -> vec3f {
-  let nearToMid = smoothstep(LOD_NEAR_KM - LOD_NEAR_BLEND_KM, LOD_NEAR_KM + LOD_NEAR_BLEND_KM, lodDist);
-  let midToFar = smoothstep(LOD_MID_KM - LOD_MID_BLEND_KM, LOD_MID_KM + LOD_MID_BLEND_KM, lodDist);
+fn lodTierWeights(lodDist: f32, nearKm: f32, midKm: f32, nearBlend: f32, midBlend: f32) -> vec3f {
+  let nearToMid = smoothstep(nearKm - nearBlend, nearKm + nearBlend, lodDist);
+  let midToFar = smoothstep(midKm - midBlend, midKm + midBlend, lodDist);
   let nearW = 1.0 - nearToMid;
   let farW = midToFar;
   let midW = max(0.0, nearToMid - farW);
@@ -502,8 +524,13 @@ struct LodKernel {
   core_boost: f32,
 }
 
-fn resolveLodKernel(lodDist: f32) -> LodKernel {
-  let w = lodTierWeights(lodDist);
+fn resolveLodKernel(lodDist: f32, isGodView: bool, isFleetView: bool) -> LodKernel {
+  var w: vec3f;
+  if (isGodView) {
+    w = lodTierWeights(lodDist, GOD_LOD_NEAR_KM, GOD_LOD_MID_KM, GOD_LOD_NEAR_BLEND_KM, GOD_LOD_MID_BLEND_KM);
+  } else {
+    w = lodTierWeights(lodDist, LOD_NEAR_KM, LOD_MID_KM, LOD_NEAR_BLEND_KM, LOD_MID_BLEND_KM);
+  }
 
   let n_outer = satVisual.core_outer;
   let n_inner = satVisual.core_inner;
@@ -533,6 +560,13 @@ fn resolveLodKernel(lodDist: f32) -> LodKernel {
   k.halo_inner = w.x * n_halo_i + w.y * m_halo_i + w.z * f_halo_i;
   k.halo_strength = w.x * n_halo_s + w.y * m_halo_s + w.z * f_halo_s;
   k.core_boost = w.x * n_boost + w.y * m_boost + w.z * f_boost;
+
+  if (isFleetView) {
+    let nearFleet = 1.0 - smoothstep(FLEET_LOD_NEAR_KM * 0.35, FLEET_LOD_NEAR_KM, lodDist);
+    k.core_outer = mix(k.core_outer, k.core_outer * 0.82, nearFleet);
+    k.core_inner = mix(k.core_inner, k.core_inner * 0.82, nearFleet);
+  }
+
   return k;
 }
 
@@ -544,7 +578,9 @@ fn fs(in: VOut) -> @location(0) vec4f {
   var lodDist = in.world_dist / select(1.0, MOON_BILLBOARD_SCALE, isMoonView);
   lodDist = min(lodDist, select(lodDist, LOD_NEAR_KM * 0.35, in.highlight > 0.5));
 
-  let k = resolveLodKernel(lodDist);
+  let isGodView = (uni.view_mode & 0xFFFFu) == 1u;
+  let isFleetView = (uni.view_mode & 0xFFFFu) == 2u;
+  let k = resolveLodKernel(lodDist, isGodView, isFleetView);
 
   // Pattern-specific kernel tweaks (only when an animation pattern is active).
   var core_outer = k.core_outer;
@@ -565,6 +601,11 @@ fn fs(in: VOut) -> @location(0) vec4f {
   let halo = smoothstep(k.halo_outer, k.halo_inner, uvDist) * k.halo_strength;
 
   let alpha = (core + halo) * in.bright;
+
+  if (isFleetView) {
+    let nearFleet = 1.0 - smoothstep(FLEET_LOD_NEAR_KM * 0.35, FLEET_LOD_NEAR_KM, lodDist);
+    pat_boost = pat_boost * (1.0 + 0.4 * nearFleet);
+  }
 
   let alphaCutoff = select(0.02, 0.03, lodDist > LOD_MID_KM);
   if (alpha < alphaCutoff) {

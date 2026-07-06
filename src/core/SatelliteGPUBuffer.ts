@@ -558,6 +558,11 @@ export class SatelliteGPUBuffer {
     return this.orbitalElementData;
   }
 
+  /** Shared orbital store (same data as WebGL2 backend). */
+  getOrbitalElements(): OrbitalElements {
+    return this.orbital;
+  }
+
   /**
    * Calculate satellite position on CPU (multi-shell)
    */

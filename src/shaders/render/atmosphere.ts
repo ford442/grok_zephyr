@@ -65,10 +65,15 @@ fn miePhase(cosTheta:f32, g:f32)->f32 {
     let nightFade = smoothstep(-0.2, 0.1, sun_dot);
     var atmColor = inScatter * nightFade + sunsetColor * opticalDepth;
     let limb = pow(rim, 2.8);
-    let intensity = limb * 1.8 + opticalDepth * 0.3;
+    var intensity = limb * 1.8 + opticalDepth * 0.3;
     let sunsetLimb = pow(rim, 4.0) * smoothstep(-0.15, 0.25, sun_dot) * smoothstep(0.4, 0.05, sun_dot);
     let sunsetTint = vec3f(1.0, 0.5, 0.12) * sunsetLimb * 1.2;
-    return vec4f(atmColor * intensity + sunsetTint, limb * 0.8);
+    let isMoonView = (uni.view_mode & 0xFFFFu) == 4u;
+    if (isMoonView) {
+      intensity *= 1.4;
+      atmColor += vec3f(0.10, 0.22, 0.48) * limb * 0.35;
+    }
+    return vec4f(atmColor * intensity + sunsetTint, limb * select(0.8, 1.0, isMoonView));
   }
 
   let cosViewZenith = dot(N, V);
@@ -92,8 +97,17 @@ fn miePhase(cosTheta:f32, g:f32)->f32 {
   let sunset = smoothstep(-0.25, 0.18, sun_dot) * smoothstep(0.3, -0.05, sun_dot);
   let sunsetTint = vec3f(1.0, 0.44, 0.16) * sunset * horizon * 0.55;
   let haze = atmosphereSettings.hazeStrength * horizon;
-  let atmColor = (inScatter * (10.0 + haze * 3.0)) + nightGlow + sunsetTint;
-  let alpha = clamp(horizon * (0.55 + atmosphereSettings.hazeStrength), 0.0, 0.95);
+  var atmColor = (inScatter * (10.0 + haze * 3.0)) + nightGlow + sunsetTint;
+  var alpha = clamp(horizon * (0.55 + atmosphereSettings.hazeStrength), 0.0, 0.95);
+
+  // Moon View: stronger limb halo so Earth reads as a blue marble at 384,400 km.
+  let isMoonView = (uni.view_mode & 0xFFFFu) == 4u;
+  if (isMoonView) {
+    let limbBoost = pow(horizon, 1.6) * 1.35;
+    atmColor += vec3f(0.12, 0.28, 0.55) * limbBoost * (0.45 + 0.55 * dayWeight);
+    alpha = clamp(alpha * 1.25 + limbBoost * 0.12, 0.0, 0.98);
+  }
+
   return vec4f(atmColor, alpha);
 }
 `;

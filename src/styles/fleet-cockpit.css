@@ -1,0 +1,103 @@
+/**
+ * Fleet POV minimal cockpit HUD — semi-transparent, matches Zephyr UI palette.
+ */
+
+#fleet-cockpit-hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 90;
+  display: none;
+  font-family: 'Courier New', monospace;
+  color: #b8f5ff;
+  text-shadow: 0 0 8px rgba(95, 224, 255, 0.35);
+}
+
+#fleet-cockpit-hud.visible {
+  display: block;
+}
+
+#fleet-reticle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  border: 1px solid rgba(95, 224, 255, 0.55);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    inset 0 0 12px rgba(95, 224, 255, 0.08);
+  transition: transform 0.05s linear;
+}
+
+#fleet-reticle::before,
+#fleet-reticle::after {
+  content: '';
+  position: absolute;
+  background: rgba(95, 224, 255, 0.65);
+}
+
+#fleet-reticle::before {
+  left: 50%;
+  top: 2px;
+  width: 1px;
+  height: 6px;
+  margin-left: -0.5px;
+}
+
+#fleet-reticle::after {
+  top: 50%;
+  left: 2px;
+  height: 1px;
+  width: 6px;
+  margin-top: -0.5px;
+}
+
+.fleet-hud-panel {
+  position: absolute;
+  padding: 10px 12px;
+  background: rgba(0, 12, 24, 0.42);
+  border: 1px solid rgba(95, 224, 255, 0.22);
+  border-radius: 2px;
+  backdrop-filter: blur(4px);
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  line-height: 1.55;
+  transition: transform 0.05s linear;
+}
+
+.fleet-hud-panel.tl {
+  top: 72px;
+  left: 16px;
+}
+
+.fleet-hud-panel.br {
+  bottom: 24px;
+  right: 16px;
+  text-align: right;
+}
+
+.fleet-hud-label {
+  color: rgba(184, 245, 255, 0.55);
+  font-size: 9px;
+  letter-spacing: 1.2px;
+}
+
+.fleet-hud-value {
+  color: #e8fcff;
+  font-size: 11px;
+}
+
+.fleet-hud-row {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 140px;
+}
+
+.fleet-hud-panel.br .fleet-hud-row {
+  justify-content: flex-end;
+  gap: 12px;
+}

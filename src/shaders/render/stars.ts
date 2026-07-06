@@ -38,6 +38,8 @@ struct AtmosphereSettings {
 const PI: f32 = 3.14159265;
 const RAYLEIGH_COEFF = vec3f(5.8e-3, 13.5e-3, 33.1e-3);
 const MIE_COEFF = vec3f(2.1e-2);
+// Angular radius of Earth as seen from the Moon (~0.949°).
+const EARTH_ANG_RAD: f32 = 0.01655;
 
 // ── Hash / noise ─────────────────────────────────────────────────────────────
 
@@ -234,6 +236,18 @@ fn starHdrLuminance(mag: f32) -> f32 {
   let isGroundBg = uni.background_mode == 2u;
   let groundStarScale = select(1.0, 0.62, isGroundView || isGroundBg);
   stars *= groundStarScale;
+
+  // Moon View: soft blue-marble disk glow + star dimming near Earth for dynamic range.
+  let isMoonView = (uni.view_mode & 0xFFFFu) == 4u;
+  if (isMoonView) {
+    let toEarth = normalize(-uni.camera_pos.xyz);
+    let cosEarth = dot(dir, toEarth);
+    let earthDiskGlow = smoothstep(cos(EARTH_ANG_RAD * 1.6), cos(EARTH_ANG_RAD * 0.75), cosEarth);
+    sky += vec3f(0.08, 0.16, 0.32) * earthDiskGlow * 1.35;
+    let earthDiskCos = cos(EARTH_ANG_RAD * 1.12);
+    let earthMask = smoothstep(earthDiskCos, 0.99998, cosEarth);
+    stars *= mix(1.0, 0.22, earthMask);
+  }
 
   // ── Compose – HDR output; bright stars bloom, bulk stays sub-threshold ─────
   let modeBoost = select(0.88, select(1.02, 1.05, uni.background_mode == 1u),

@@ -154,15 +154,18 @@ fn anamorphicStreak(uv: vec2f) -> vec3f {
 }
 
 // Post-threshold compensation with scene-guided star vs satellite bloom layering.
+// Limb mid-band is attenuated so atmospheric glow does not wash out stars (#77).
 fn compositeBloom(bloom: vec3f, scene: vec3f, intensity: f32) -> vec3f {
   let sceneLum = dot(scene, vec3f(0.2126, 0.7152, 0.0722));
 
   // Tight bloom on hot satellite peaks; softer wide star bloom elsewhere.
   let satMix = smoothstep(2.4, 4.2, sceneLum);
   let starMix = (1.0 - smoothstep(2.8, 4.5, sceneLum)) * smoothstep(0.12, 1.0, sceneLum);
+  let limbBand = smoothstep(0.32, 1.25, sceneLum) * (1.0 - smoothstep(1.25, 2.5, sceneLum));
 
   var layered = bloom * mix(0.72, 1.18, satMix);
   layered += bloom * starMix * 0.48;
+  layered *= mix(1.0, 0.48, limbBand);
 
   let lum = dot(layered, vec3f(0.2126, 0.7152, 0.0722));
   let haloLift = mix(1.42, 1.0, smoothstep(0.03, 0.38, lum));

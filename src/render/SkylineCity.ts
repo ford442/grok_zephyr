@@ -14,8 +14,8 @@ import { v3norm, v3cross, v3sub, v3scale, v3dot, mat4lookAt, mat4persp, mat4mul 
 /** Floats per Building instance (must match the 32-byte WGSL struct). */
 const BUILDING_FLOATS = 8;
 
-/** Bytes in the CityUni uniform (mat4x4f + vec4f + vec4f = 96 bytes). */
-const CITY_UNI_BYTES = 96;
+/** Bytes in the CityUni uniform (mat4x4f + vec4f + vec4f + vec4f = 112 bytes). */
+const CITY_UNI_BYTES = 112;
 
 export interface SkylineConfig {
   /** PRNG seed for deterministic, stable layout across frames. */
@@ -104,6 +104,22 @@ export class SkylineCity {
       this.buildingData[o + 6] = rng();
       this.buildingData[o + 7] = 0;
     }
+
+    // Mark tallest decile for rooftop equipment silhouettes.
+    const heights: number[] = [];
+    for (let i = 0; i < this.buildingCount; i++) {
+      const h = this.buildingData[i * BUILDING_FLOATS + 4]!;
+      if (h > 0) heights.push(h);
+    }
+    heights.sort((a, b) => a - b);
+    const threshold = heights[Math.floor(heights.length * 0.9)] ?? this.config.maxHeightKm;
+    for (let i = 0; i < this.buildingCount; i++) {
+      const o = i * BUILDING_FLOATS;
+      const h = this.buildingData[o + 4]!;
+      if (h >= threshold && h > 0) {
+        this.buildingData[o + 7] = 1;
+      }
+    }
   }
 
   /** Allocate the GPU storage/uniform buffers and upload the static instance data. */
@@ -190,6 +206,7 @@ export class SkylineCity {
   updateUniform(
     device: GPUDevice,
     cityViewProj: Float32Array,
+    cameraEci: Vec3,
     sunDirEci: Vec3,
     nightFactor: number,
     time: number,
@@ -197,15 +214,18 @@ export class SkylineCity {
   ): void {
     if (!this.cityUniformBuffer) return;
 
+    if (!this.observerSet) this.setObserver(cameraEci);
+
     const sunEnu = v3norm([
       v3dot(sunDirEci, this.east),
       v3dot(sunDirEci, this.north),
       v3dot(sunDirEci, this.up),
     ]);
+    const camEnu = this.eciToEnu(cameraEci);
 
     const data = new ArrayBuffer(CITY_UNI_BYTES);
     new Float32Array(data, 0, 16).set(cityViewProj);
-    const tail = new Float32Array(data, 64, 8);
+    const tail = new Float32Array(data, 64, 12);
     tail[0] = sunEnu[0];
     tail[1] = sunEnu[1];
     tail[2] = sunEnu[2];
@@ -214,6 +234,10 @@ export class SkylineCity {
     tail[5] = this.buildingCount;
     tail[6] = time;
     tail[7] = emissiveBoost;
+    tail[8] = camEnu[0];
+    tail[9] = camEnu[1];
+    tail[10] = camEnu[2];
+    tail[11] = 0;
 
     device.queue.writeBuffer(this.cityUniformBuffer, 0, data);
   }

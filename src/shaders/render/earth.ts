@@ -207,6 +207,16 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
     surf = mix(surf, sunTint * vec3f(0.14, 0.22, 0.36), clamp(haze * 0.25, 0.0, 0.35));
   }
 
+  // Moon View: earthshine + cohesive blue-marble disk at ~1.9° angular diameter.
+  let isMoonView = (uni.view_mode & 0xFFFFu) == 4u;
+  if (isMoonView) {
+    let nightSide = 1.0 - diff;
+    let earthshine = vec3f(0.06, 0.10, 0.22) * nightSide * smoothstep(0.05, -0.30, sunDot);
+    surf += earthshine * 0.85;
+    surf += vec3f(0.06, 0.12, 0.24) * (0.32 + 0.68 * diff);
+    surf *= 1.55;
+  }
+
   return vec4f(surf + cityWarm, 1.0);
 }
 `;

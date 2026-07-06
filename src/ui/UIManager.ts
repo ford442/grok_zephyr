@@ -52,7 +52,21 @@ export interface UIElements {
   tuneSatCoreValue?: HTMLElement;
   tuneSatFalloffSlider?: HTMLInputElement;
   tuneSatFalloffValue?: HTMLElement;
+  godIdleOrbitToggle?: HTMLInputElement;
+  constellationGuidesToggle?: HTMLInputElement;
+  moonRingGuideToggle?: HTMLInputElement;
+  moonScaleHudToggle?: HTMLInputElement;
   horizonIndicator: HTMLElement;
+  horizonLimbLine: HTMLElement;
+  moonScaleAnnotation: HTMLElement;
+  fleetCockpitHud: HTMLElement;
+  fleetReticle: HTMLElement;
+  fleetHudLeft: HTMLElement;
+  fleetHudRight: HTMLElement;
+  fleetHudSpeed: HTMLElement;
+  fleetHudAltitude: HTMLElement;
+  fleetHudHeading: HTMLElement;
+  fleetHudNearby: HTMLElement;
   angleInfo: HTMLElement;
   resetAngleBtn: HTMLElement;
   animationControls: HTMLElement;
@@ -107,6 +121,10 @@ export class UIManager {
   private onExposureAdaptationSpeedChangeCallback: ((value: number) => void) | null = null;
   private onTonemapModeChangeCallback: ((mode: TonemapMode) => void) | null = null;
   private onImageTuningChangeCallback: ((settings: ImageTuningSettings) => void) | null = null;
+  private onGodIdleOrbitToggleCallback: ((enabled: boolean) => void) | null = null;
+  private onConstellationGuidesToggleCallback: ((enabled: boolean) => void) | null = null;
+  private onMoonRingGuideToggleCallback: ((enabled: boolean) => void) | null = null;
+  private onMoonScaleHudToggleCallback: ((enabled: boolean) => void) | null = null;
   private imageTuningEnforceFloors = true;
   private lastImageTuning: ImageTuningSettings = { ...SHIPPING_IMAGE_TUNING };
   
@@ -194,7 +212,21 @@ export class UIManager {
       tuneSatCoreValue: document.getElementById('tuneSatCoreValue') ?? undefined,
       tuneSatFalloffSlider: (document.getElementById('tuneSatFalloff') as HTMLInputElement | null) ?? undefined,
       tuneSatFalloffValue: document.getElementById('tuneSatFalloffValue') ?? undefined,
+      godIdleOrbitToggle: (document.getElementById('godIdleOrbitToggle') as HTMLInputElement | null) ?? undefined,
+      constellationGuidesToggle: (document.getElementById('constellationGuidesToggle') as HTMLInputElement | null) ?? undefined,
+      moonRingGuideToggle: (document.getElementById('moonRingGuideToggle') as HTMLInputElement | null) ?? undefined,
+      moonScaleHudToggle: (document.getElementById('moonScaleHudToggle') as HTMLInputElement | null) ?? undefined,
       horizonIndicator: getEl('horizon-indicator'),
+      horizonLimbLine: getEl('horizon-limb-line'),
+      moonScaleAnnotation: getEl('moon-scale-annotation'),
+      fleetCockpitHud: getEl('fleet-cockpit-hud'),
+      fleetReticle: getEl('fleet-reticle'),
+      fleetHudLeft: getEl('fleet-hud-left'),
+      fleetHudRight: getEl('fleet-hud-right'),
+      fleetHudSpeed: getEl('fleet-hud-speed'),
+      fleetHudAltitude: getEl('fleet-hud-altitude'),
+      fleetHudHeading: getEl('fleet-hud-heading'),
+      fleetHudNearby: getEl('fleet-hud-nearby'),
       angleInfo: getEl('angleInfo'),
       resetAngleBtn: getEl('resetAngle'),
       animationControls: getEl('animation-controls'),
@@ -375,6 +407,34 @@ export class UIManager {
         this.emitImageTuningChange();
       });
     }
+
+    this.elements.godIdleOrbitToggle?.addEventListener('change', () => {
+      const enabled = this.elements.godIdleOrbitToggle?.checked ?? true;
+      if (this.onGodIdleOrbitToggleCallback) {
+        this.onGodIdleOrbitToggleCallback(enabled);
+      }
+    });
+
+    this.elements.constellationGuidesToggle?.addEventListener('change', () => {
+      const enabled = this.elements.constellationGuidesToggle?.checked ?? false;
+      if (this.onConstellationGuidesToggleCallback) {
+        this.onConstellationGuidesToggleCallback(enabled);
+      }
+    });
+
+    this.elements.moonRingGuideToggle?.addEventListener('change', () => {
+      const enabled = this.elements.moonRingGuideToggle?.checked ?? false;
+      if (this.onMoonRingGuideToggleCallback) {
+        this.onMoonRingGuideToggleCallback(enabled);
+      }
+    });
+
+    this.elements.moonScaleHudToggle?.addEventListener('change', () => {
+      const enabled = this.elements.moonScaleHudToggle?.checked ?? false;
+      if (this.onMoonScaleHudToggleCallback) {
+        this.onMoonScaleHudToggleCallback(enabled);
+      }
+    });
   }
 
   private readImageTuningFromUI(): ImageTuningSettings {
@@ -555,6 +615,7 @@ export class UIManager {
     // Show/hide horizon indicator and update content
     if (modeName === '720km Horizon') {
       this.elements.horizonIndicator.style.display = 'block';
+      this.elements.horizonLimbLine.style.display = 'block';
       this.elements.horizonIndicator.innerHTML = `
         <div>Earth Radius: 6,371 km</div>
         <div>Orbit Altitude: 550 km</div>
@@ -563,6 +624,7 @@ export class UIManager {
       `;
     } else if (modeName === 'Ground View') {
       this.elements.horizonIndicator.style.display = 'block';
+      this.elements.horizonLimbLine.style.display = 'none';
       this.elements.horizonIndicator.innerHTML = `
         <div>Earth Radius: 6,371 km</div>
         <div>Orbit Altitude: 550 km</div>
@@ -571,15 +633,62 @@ export class UIManager {
       `;
     } else if (modeName === 'Moon View') {
       this.elements.horizonIndicator.style.display = 'block';
+      this.elements.horizonLimbLine.style.display = 'none';
       this.elements.horizonIndicator.innerHTML = `
         <div>Earth-Moon Distance: 384,400 km</div>
-        <div>Earth Radius: 6,371 km</div>
-        <div>Orbit Altitude: 550 km</div>
-        <div>View: Earth with Satellite Swarm</div>
+        <div>Earth Angular Diameter: ~1.9°</div>
+        <div>Constellation Ring: 550 km altitude</div>
+        <div>View: Lunar surface toward Earth</div>
       `;
     } else {
       this.elements.horizonIndicator.style.display = 'none';
+      this.elements.horizonLimbLine.style.display = 'none';
+      this.elements.moonScaleAnnotation.style.display = 'none';
     }
+  }
+
+  /** Dev annotation: angular scale reference for Moon View. */
+  setMoonScaleAnnotation(visible: boolean): void {
+    const el = this.elements.moonScaleAnnotation;
+    el.style.display = visible ? 'block' : 'none';
+    if (visible) {
+      el.textContent = 'Earth Ø 1.9° · Ring @ 550 km';
+    }
+  }
+
+  /**
+   * Position the horizon limb guide line (720 km Horizon only).
+   * @param normalizedY 0 = top of screen, 1 = bottom; null hides the guide.
+   */
+  setHorizonLimbGuide(normalizedY: number | null): void {
+    const line = this.elements.horizonLimbLine;
+    if (normalizedY === null || !Number.isFinite(normalizedY)) {
+      line.style.display = 'none';
+      return;
+    }
+    line.style.display = 'block';
+    const clamped = Math.max(0.02, Math.min(0.98, normalizedY));
+    line.style.top = `${(clamped * 100).toFixed(2)}%`;
+  }
+
+  setFleetCockpitVisible(visible: boolean): void {
+    this.elements.fleetCockpitHud.classList.toggle('visible', visible);
+    this.elements.fleetCockpitHud.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  }
+
+  setFleetCockpitTelemetry(speedKms: number, altitudeKm: number, headingDeg: number, nearbyCount: number): void {
+    this.elements.fleetHudSpeed.textContent = `${speedKms.toFixed(2)} km/s`;
+    this.elements.fleetHudAltitude.textContent = `${Math.round(altitudeKm)} km`;
+    this.elements.fleetHudHeading.textContent = `${Math.round(headingDeg)}°`;
+    this.elements.fleetHudNearby.textContent = String(nearbyCount);
+  }
+
+  /** WASD drift feedback — reticle shift and subtle HUD jitter (px). */
+  setFleetCockpitDrift(reticlePxX: number, reticlePxY: number, hudJitterPx: number): void {
+    this.elements.fleetReticle.style.transform = `translate(${reticlePxX.toFixed(1)}px, ${reticlePxY.toFixed(1)}px)`;
+    const jitter = `translate(${hudJitterPx.toFixed(2)}px, ${(-hudJitterPx * 0.6).toFixed(2)}px)`;
+    this.elements.fleetHudLeft.style.transform = jitter;
+    this.elements.fleetHudRight.style.transform = jitter;
   }
 
   /** Update active per-view tuning profile label (debug HUD). */
@@ -782,6 +891,32 @@ export class UIManager {
 
   onImageTuningChange(callback: (settings: ImageTuningSettings) => void): void {
     this.onImageTuningChangeCallback = callback;
+  }
+
+  onGodIdleOrbitToggle(callback: (enabled: boolean) => void): void {
+    this.onGodIdleOrbitToggleCallback = callback;
+  }
+
+  onConstellationGuidesToggle(callback: (enabled: boolean) => void): void {
+    this.onConstellationGuidesToggleCallback = callback;
+  }
+
+  onMoonRingGuideToggle(callback: (enabled: boolean) => void): void {
+    this.onMoonRingGuideToggleCallback = callback;
+  }
+
+  onMoonScaleHudToggle(callback: (enabled: boolean) => void): void {
+    this.onMoonScaleHudToggleCallback = callback;
+  }
+
+  setGodIdleOrbitEnabled(enabled: boolean): void {
+    const el = this.elements.godIdleOrbitToggle;
+    if (el) el.checked = enabled;
+  }
+
+  setConstellationGuidesEnabled(enabled: boolean): void {
+    const el = this.elements.constellationGuidesToggle;
+    if (el) el.checked = enabled;
   }
 
   setImageTuningControls(settings: ImageTuningSettings, options?: { enforceFloors?: boolean }): void {
@@ -1068,6 +1203,7 @@ export class UIManager {
           </div>
         </section>
       </div>
+      <div id="horizon-limb-line" aria-hidden="true"></div>
       <div id="horizon-indicator">
         <div>Earth Radius: 6,371 km</div>
         <div>Orbit Altitude: 550 km</div>

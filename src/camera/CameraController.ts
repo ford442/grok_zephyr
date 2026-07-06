@@ -10,6 +10,8 @@
 
 import type { Vec3, ViewMode } from '@/types/index.js';
 import { CONSTANTS, CAMERA, MATH, VIEW_MODES } from '@/types/constants.js';
+import { HORIZON_FRAMING } from '@/camera/HorizonLimb.js';
+import { GOD_FRAMING } from '@/camera/GodFraming.js';
 import { v3add, v3scale, v3norm, v3sub, v3cross, v3dot, mat4lookAt, mat4persp } from '@/utils/math.js';
 
 /** Camera state for each view mode */
@@ -62,9 +64,9 @@ export class CameraController {
   
   // God view state
   private godView: GodViewParams = {
-    yaw: 0,
-    pitch: 0.35,
-    distance: CAMERA.GOD_VIEW_DISTANCE,
+    yaw: GOD_FRAMING.HERO_YAW_DEG * MATH.DEG_TO_RAD,
+    pitch: GOD_FRAMING.HERO_PITCH_DEG * MATH.DEG_TO_RAD,
+    distance: GOD_FRAMING.HERO_DISTANCE_KM,
   };
   
   // Camera angles for ALL modes (yaw/pitch in degrees)
@@ -171,6 +173,15 @@ export class CameraController {
     fromModeIndex: number;
     toModeIndex: number;
   } | null = null;
+
+  // Horizon 720 km idle drift (disabled while user drags or recently interacted)
+  private horizonDriftYawDeg = 0;
+  private horizonInteractionUntil = 0;
+
+  // God View idle orbit (disableable; pauses on interaction)
+  private godIdleYawDeg = 0;
+  private godInteractionUntil = 0;
+  private godIdleOrbitEnabled = true;
 
   constructor() {
     // Event listeners are attached lazily via attachToCanvas()
@@ -486,13 +497,20 @@ export class CameraController {
    * Reset camera angle to default
    */
   resetCameraAngle(): void {
+    if (this.currentMode === 'god') {
+      this.applyGodHeroPose();
+      this.modeTransition = null;
+      console.log('🔄 God View — hero pose');
+      return;
+    }
+
     this.cameraAngles.yaw = 0;
     this.cameraAngles.pitch = 0;
     this.cameraAngles.distance = 25000;
 
     this.panOffset = [0, 0, 0];
-    this.godView.yaw = 0;
-    this.godView.pitch = 0.35;
+    this.godView.yaw = GOD_FRAMING.HERO_YAW_DEG * MATH.DEG_TO_RAD;
+    this.godView.pitch = GOD_FRAMING.HERO_PITCH_DEG * MATH.DEG_TO_RAD;
     this.godView.distance = CAMERA.GOD_VIEW_DISTANCE;
     this.fleetRoll = 0;
     this.fleetTouchRoll = 0;
@@ -665,6 +683,7 @@ export class CameraController {
         break;
       case 1:
         this.currentMode = 'god';
+        this.applyGodHeroPose();
         break;
       case 2:
         this.currentMode = 'sat-pov';
@@ -882,7 +901,7 @@ export class CameraController {
 
     switch (this.currentMode) {
       case 'horizon-720':
-        return this.calculateHorizonView();
+        return this.calculateHorizonView(time);
       case 'god':
         return this.calculateGodView();
       case 'sat-pov':
@@ -894,7 +913,7 @@ export class CameraController {
       case 'skyline':
         return this.calculateSkylineView();
       default:
-        return this.calculateHorizonView();
+        return this.calculateHorizonView(time);
     }
   }
 
@@ -1087,11 +1106,57 @@ export class CameraController {
   }
 
   private handleUserInteraction(): void {
+    if (this.currentMode === 'horizon-720') {
+      this.horizonInteractionUntil = performance.now() * 0.001 + HORIZON_FRAMING.DRIFT_IDLE_SEC;
+    }
+    if (this.currentMode === 'god') {
+      this.godInteractionUntil = performance.now() * 0.001 + GOD_FRAMING.IDLE_PAUSE_SEC;
+    }
     if (this.userInteractionCallback) {
       this.userInteractionCallback();
     }
     if (this.cinematicActive) {
       this.stopCinematic();
+    }
+  }
+
+  /** Advance optional Horizon idle yaw drift (call once per frame). */
+  updateHorizonDrift(time: number, deltaTime: number): void {
+    if (this.currentMode !== 'horizon-720') return;
+    if (this.mouse.down || time < this.horizonInteractionUntil) return;
+    this.horizonDriftYawDeg += HORIZON_FRAMING.DRIFT_YAW_DEG_PER_SEC * deltaTime;
+  }
+
+  /** Advance optional God View idle yaw orbit (call once per frame). */
+  updateGodIdleOrbit(time: number, deltaTime: number): void {
+    if (this.currentMode !== 'god' || !this.godIdleOrbitEnabled) return;
+    if (this.mouse.down || time < this.godInteractionUntil) return;
+    this.godIdleYawDeg += GOD_FRAMING.IDLE_YAW_DEG_PER_SEC * deltaTime;
+  }
+
+  setGodIdleOrbitEnabled(enabled: boolean): void {
+    this.godIdleOrbitEnabled = enabled;
+    if (!enabled) this.godIdleYawDeg = 0;
+  }
+
+  isGodIdleOrbitEnabled(): boolean {
+    return this.godIdleOrbitEnabled;
+  }
+
+  /** Snap God View to the hero pose (53° shell edge-on, RAAN fan). */
+  applyGodHeroPose(): void {
+    this.cameraAngles.yaw = GOD_FRAMING.HERO_YAW_DEG;
+    this.cameraAngles.pitch = GOD_FRAMING.HERO_PITCH_DEG;
+    this.cameraAngles.distance = GOD_FRAMING.HERO_DISTANCE_KM;
+    this.godView.yaw = GOD_FRAMING.HERO_YAW_DEG * MATH.DEG_TO_RAD;
+    this.godView.pitch = GOD_FRAMING.HERO_PITCH_DEG * MATH.DEG_TO_RAD;
+    this.godView.distance = GOD_FRAMING.HERO_DISTANCE_KM;
+    this.godIdleYawDeg = 0;
+    this.godVelocity.yaw = 0;
+    this.godVelocity.pitch = 0;
+    this.panOffset = [0, 0, 0];
+    if (this.angleChangeCallback) {
+      this.angleChangeCallback(this.cameraAngles.yaw, this.cameraAngles.pitch);
     }
   }
 
@@ -1125,47 +1190,49 @@ export class CameraController {
 
   /**
    * 720km Horizon View
-   * 
-   * Camera at 720km altitude with full pitch/yaw control
-   * Now supports looking up/down and around the constellation wall
+   *
+   * Flagship establishing shot: Earth limb on the lower third, constellation band
+   * in the upper two-thirds. Supports user pitch/yaw with subtle roll framing.
    */
-  private calculateHorizonView(): CameraState {
-    const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
-    const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
-    
-    // Base position at 720km on X axis
+  private calculateHorizonView(_time: number): CameraState {
+    const yaw =
+      (this.cameraAngles.yaw + this.horizonDriftYawDeg) * MATH.DEG_TO_RAD;
+    const pitch =
+      (this.cameraAngles.pitch + HORIZON_FRAMING.BASE_PITCH_DEG) * MATH.DEG_TO_RAD;
+
     const baseRadius = CONSTANTS.CAMERA_RADIUS_KM;
-    
-    // Apply yaw rotation around Z axis (look left/right along orbit)
-    // Apply pitch to look up/down at the constellation
     const cosY = Math.cos(yaw);
     const sinY = Math.sin(yaw);
     const cosP = Math.cos(pitch);
     const sinP = Math.sin(pitch);
-    
-    // Position: fixed radius, rotated by yaw
+
     const position: Vec3 = [
       baseRadius * cosY,
       baseRadius * sinY,
-      0
+      0,
     ];
-    
-    // Target: look outward + pitch offset
-    // Pitch looks up/down relative to the orbital plane
+
+    const tangential = HORIZON_FRAMING.TANGENTIAL_LOOK_KM;
+    const upward = HORIZON_FRAMING.BASE_UPWARD_LOOK_KM;
     const target: Vec3 = [
-      baseRadius * cosY + 1000 * cosP * cosY,
-      baseRadius * sinY + 1000 * cosP * sinY,
-      1000 * sinP + 5000  // Base upward look + pitch
+      baseRadius * cosY + tangential * cosP * cosY,
+      baseRadius * sinY + tangential * cosP * sinY,
+      tangential * sinP + upward,
     ];
-    
-    // Up vector: radial outward from Earth center
-    const up: Vec3 = v3norm(position);
-    
+
+    const radial = v3norm(position);
+    const forward = v3norm(v3sub(target, position));
+    const right = v3norm(v3cross(forward, radial));
+    const roll = HORIZON_FRAMING.ROLL_DEG * MATH.DEG_TO_RAD;
+    const up = v3norm(
+      v3add(v3scale(radial, Math.cos(roll)), v3scale(right, Math.sin(roll))),
+    );
+
     return {
       position,
       target,
       up,
-      fov: CAMERA.DEFAULT_FOV,
+      fov: CAMERA.DEFAULT_FOV * 0.97,
       near: CAMERA.NEAR_PLANE,
       far: CAMERA.FAR_PLANE,
     };
@@ -1177,8 +1244,8 @@ export class CameraController {
    * Full spherical orbit with pitch/yaw/distance control
    */
   private calculateGodView(): CameraState {
-    // Use cameraAngles directly (in degrees, convert to radians)
-    const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
+    const yaw =
+      (this.cameraAngles.yaw + this.godIdleYawDeg) * MATH.DEG_TO_RAD;
     const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
     const distance = this.cameraAngles.distance;
     
@@ -1399,49 +1466,41 @@ export class CameraController {
   private calculateMoonView(): CameraState {
     const yaw = this.cameraAngles.yaw * MATH.DEG_TO_RAD;
     const pitch = this.cameraAngles.pitch * MATH.DEG_TO_RAD;
-    
-    // Moon distance from Earth center (Moon radius ~1737km + distance)
+
     const moonRadius = CONSTANTS.MOON_DISTANCE_KM;
-    
-    // Position: on the Moon's surface, rotated by yaw around Z axis
-    // Base position: Moon on +X axis relative to Earth
+
+    // Observer on the near-side Moon (+X axis by default, yaw rotates around Z).
     const position: Vec3 = [
       moonRadius * Math.cos(yaw),
       moonRadius * Math.sin(yaw),
-      0
+      0,
     ];
-    
-    // Look direction: pitch affects how high/low we look at Earth
-    // By default, look directly at Earth center (0,0,0)
-    const lookPitch = pitch * 0.5; // Reduced sensitivity for moon view
-    
-    // Calculate look direction from Moon to Earth
-    // The vector from Moon to Earth is -position normalized
-    const toEarth: Vec3 = [
-      -position[0] / moonRadius,
-      -position[1] / moonRadius,
-      -position[2] / moonRadius
-    ];
-    
-    // Apply pitch to look slightly above/below Earth
-    // When pitch is positive, look "up" relative to the orbital plane
 
-    // Target: Earth center with pitch offset
-    // We create a target that's slightly offset by pitch
+    const toEarth = v3norm(v3scale(position, -1));
+    const lookPitch = pitch * 0.5;
+
+    // Local tangent frame for pitch offset while keeping Earth centered.
+    const worldUp: Vec3 = [0, 0, 1];
+    const right = v3norm(v3cross(toEarth, worldUp));
+    const tangentUp = v3norm(v3cross(right, toEarth));
+
+    // Target: Earth center with a small pitch offset above/below the limb.
+    const pitchOffset = Math.sin(lookPitch) * 60000;
     const target: Vec3 = [
-      position[0] + toEarth[0] * moonRadius * 0.5,
-      position[1] + toEarth[1] * moonRadius * 0.5,
-      position[2] + toEarth[2] * moonRadius * 0.5 + Math.sin(lookPitch) * 50000
+      tangentUp[0] * pitchOffset,
+      tangentUp[1] * pitchOffset,
+      tangentUp[2] * pitchOffset,
     ];
-    
-    // Up vector: radial outward from Earth center (zenith direction from Moon)
-    const up: Vec3 = v3norm(position);
-    
+
+    // Use the tangent frame for lookAt — radial position is parallel to the view
+    // axis at yaw=0 and would degenerate mat4lookAt (cross(f, up) → 0).
+    const up: Vec3 = tangentUp;
+
     return {
       position,
       target,
       up,
-      fov: CAMERA.DEFAULT_FOV * 0.8, // Slightly zoomed in for better Earth view
+      fov: CAMERA.DEFAULT_FOV * 0.85,
       near: 1000,
       far: CAMERA.FAR_PLANE,
     };
@@ -1629,11 +1688,12 @@ export class CameraController {
    * Reset God view to default
    */
   resetGodView(): void {
-    this.godView = {
-      yaw: 0,
-      pitch: 0.35,
-      distance: CAMERA.GOD_VIEW_DISTANCE,
-    };
+    this.applyGodHeroPose();
+  }
+
+  /** WASD micro-drift offset in Fleet POV (km, local frame). */
+  getFleetDriftOffset(): Readonly<Vec3> {
+    return this.fleetOffset;
   }
 
   /**

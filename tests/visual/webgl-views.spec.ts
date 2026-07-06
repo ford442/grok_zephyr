@@ -24,8 +24,11 @@ interface ViewCase {
 
 const VIEW_CASES: ViewCase[] = [
   { name: 'god-view', query: 'mode=1' },
+  { name: 'fleet-pov', query: 'mode=2' },
   { name: 'horizon-720km', query: 'mode=0' },
   { name: 'ground-house', query: 'mode=3&ground=houseWindow' },
+  { name: 'ground-beach', query: 'mode=3&ground=beachNight' },
+  { name: 'ground-car', query: 'mode=3&ground=carWindshield' },
   { name: 'moon-view', query: 'mode=4' },
   { name: 'skyline', query: 'mode=5' },
 ];

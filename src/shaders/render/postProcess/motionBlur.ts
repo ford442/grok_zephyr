@@ -10,6 +10,8 @@ struct MotionBlurUni {
   satellite_stretch : f32,
   delta_time : f32,
   tap_count : u32,
+  host_velocity : vec3f,
+  fleet_pad : f32,
 };
 
 @group(0) @binding(0) var sceneTex : texture_2d<f32>;

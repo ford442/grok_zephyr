@@ -43,7 +43,9 @@ fn vs(@builtin(vertex_index) vid: u32) -> VSOut {
 
 // Attenuate star/limb mid-band; full extraction for hot satellite cores.
 fn sourceBloomWeight(luminance: f32) -> f32 {
-  return mix(0.36, 1.0, smoothstep(2.0, 4.0, luminance));
+  let satHot = smoothstep(2.0, 4.0, luminance);
+  let limbMid = smoothstep(0.35, 1.35, luminance) * (1.0 - smoothstep(1.35, 2.6, luminance));
+  return mix(mix(0.36, 1.0, satHot), 0.22, limbMid * 0.7);
 }
 
 @fragment

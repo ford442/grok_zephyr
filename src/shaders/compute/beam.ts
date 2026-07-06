@@ -95,6 +95,42 @@ fn earth_surface_point(pos: vec3f) -> vec3f {
   return normalize(point) * 6371.0;
 }
 
+fn patternPulse(mode: u32, beam_idx: u32, pos_a: vec3f, time: f32) -> f32 {
+  switch mode {
+    case 0u: {
+      // CHAOS — high-frequency flicker, irregular per-beam phases.
+      let flicker = hashf(beam_idx * 7u + u32(time * 55.0));
+      let phase = hashf(beam_idx * 3u) * 6.2831853;
+      let rate = 14.0 + flicker * 26.0;
+      return 0.28 + 0.72 * abs(sin(time * rate + phase));
+    }
+    case 1u: {
+      // GROK — synchronized radial sweep across the constellation.
+      let r = length(pos_a.xy);
+      let sweep = sin(time * 2.6 - r * 0.0018);
+      return 0.48 + 0.52 * (0.5 + 0.5 * sweep);
+    }
+    case 2u: {
+      // 𝕏 LOGO — sharp geometric gate, higher contrast.
+      let gate = sin(time * 7.4 + f32(beam_idx) * 0.035);
+      return 0.32 + 0.68 * smoothstep(0.12, 0.88, 0.5 + 0.5 * gate);
+    }
+    default: {
+      return 0.52 + 0.48 * sin(time * 8.6 + f32(beam_idx) * 0.12);
+    }
+  }
+}
+
+fn patternThickness(mode: u32, beam_idx: u32) -> f32 {
+  if (mode == 0u) {
+    return 0.55 + 0.95 * hashf(beam_idx * 11u);
+  }
+  if (mode == 2u) {
+    return 0.72 + 0.18 * hashf(beam_idx * 5u);
+  }
+  return 1.0;
+}
+
 @compute @workgroup_size(256,1,1)
 fn main(@builtin(global_invocation_id) gid : vec3u) {
   let beam_idx = gid.x;
@@ -104,16 +140,12 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
   let pos_a = sat_pos[sat_a_idx].xyz;
 
   var is_active = false;
-  var intensity = 0.0;
+  let intensity = 1.0;
 
   if (params.mode == 0u) {
     is_active = true;
-    intensity = 1.0;
-  } else {
-    if (is_active_node(pos_a, params.mode)) {
-      is_active = true;
-      intensity = 1.0;
-    }
+  } else if (is_active_node(pos_a, params.mode)) {
+    is_active = true;
   }
 
   if (!is_active) {
@@ -128,7 +160,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
   if (params.mode == 0u) {
     pos_b = earth_surface_point(pos_a);
     let angle = hashf(beam_idx * 13u) * 6.2831853;
-    let jitter = vec3f(cos(angle), sin(angle), 0.0) * 6.0;
+    let jitter = vec3f(cos(angle), sin(angle), 0.0) * (4.0 + hashf(beam_idx * 19u) * 10.0);
     pos_b += jitter;
     found = true;
   } else {
@@ -152,8 +184,9 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     return;
   }
 
-  let pulse = 0.52 + 0.48 * sin(params.time * 8.6 + f32(beam_idx) * 0.12);
-  let final_intensity = intensity * pulse;
+  let pulse = patternPulse(params.mode, beam_idx, pos_a, params.time);
+  let thick = patternThickness(params.mode, beam_idx);
+  let final_intensity = intensity * pulse * thick;
 
   beams[beam_idx * 2u] = vec4f(pos_a, final_intensity);
   beams[beam_idx * 2u + 1u] = vec4f(pos_b, f32(params.mode));

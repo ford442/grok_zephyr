@@ -16,13 +16,14 @@ struct Building {
   height     : f32,   // extrusion height, km
   colorSeed  : f32,   // window tint variation seed
   windowSeed : f32,   // window on/off pattern seed
-  pad        : f32,
+  roofEquip  : f32,   // 1.0 = tallest decile — rooftop HVAC silhouettes
 };
 
 struct CityUni {
   city_view_proj : mat4x4f,
   sun_dir_enu    : vec4f,
   params         : vec4f, // x = nightFactor, y = buildingCount, z = time, w = emissiveBoost
+  camera_enu     : vec4f, // xyz = observer eye in local ENU (km)
 };
 
 @group(0) @binding(1) var<uniform> city : CityUni;
@@ -33,6 +34,9 @@ struct VOut {
   @location(0) localUV  : vec2f,
   @location(1) faceId   : f32,
   @location(2) instSeed : vec2f,
+  @location(3) worldPos : vec3f,
+  @location(4) bldgHeight : f32,
+  @location(5) roofEquip : f32,
 };
 
 const CUBE_POS = array<vec3f, 36>(
@@ -56,9 +60,28 @@ const CUBE_POS = array<vec3f, 36>(
   vec3f(0.0, 0.0, 1.0), vec3f(1.0, 1.0, 1.0), vec3f(1.0, 0.0, 1.0)
 );
 
+const FLOOR_PITCH_KM : f32 = 0.006;  // 6 m floor-to-floor
+const WINDOW_PITCH_KM : f32 = 0.004; // 4 m window spacing along facade
+
 fn hash21(p : vec2f) -> f32 {
   let h = dot(p, vec2f(127.1, 311.7));
   return fract(sin(h) * 43758.5453123);
+}
+
+fn faceNormal(faceId : f32) -> vec3f {
+  switch i32(faceId) {
+    case 0: { return vec3f(-1.0, 0.0, 0.0); }
+    case 1: { return vec3f( 1.0, 0.0, 0.0); }
+    case 2: { return vec3f( 0.0,-1.0, 0.0); }
+    case 3: { return vec3f( 0.0, 1.0, 0.0); }
+    default: { return vec3f(0.0, 0.0, 1.0); }
+  }
+}
+
+fn applyCityFog(color : vec3f, distKm : f32) -> vec3f {
+  let fog = exp(-distKm * 1.65);
+  let fogColor = vec3f(0.010, 0.016, 0.030);
+  return mix(fogColor, color, clamp(fog, 0.0, 1.0));
 }
 
 @vertex
@@ -67,7 +90,6 @@ fn vs(@builtin(vertex_index) vi : u32, @builtin(instance_index) ii : u32) -> VOu
   let local = CUBE_POS[vi];
   let faceId = f32(vi / 6u);
 
-  // East/North offset around the footprint center, Up extruded from the ground.
   let worldX = b.posXZ.x + (local.x - 0.5) * b.size.x;
   let worldY = b.posXZ.y + (local.y - 0.5) * b.size.y;
   let worldZ = local.z * b.height;
@@ -75,42 +97,120 @@ fn vs(@builtin(vertex_index) vi : u32, @builtin(instance_index) ii : u32) -> VOu
   var out : VOut;
   out.cp = city.city_view_proj * vec4f(worldX, worldY, worldZ, 1.0);
 
-  // UVs span the perimeter (u) and height (v) for the side faces; unused for roof/floor.
   let perimeterU = select(local.x * b.size.x, local.y * b.size.y, faceId > 1.5);
   out.localUV = vec2f(perimeterU, worldZ);
   out.faceId = faceId;
   out.instSeed = vec2f(b.colorSeed, b.windowSeed);
+  out.worldPos = vec3f(worldX, worldY, worldZ);
+  out.bldgHeight = b.height;
+  out.roofEquip = b.roofEquip;
   return out;
 }
 
 @fragment
 fn fs(in : VOut) -> @location(0) vec4f {
-  // Roof (4) and floor (5) faces: flat dark rooftop concrete, no windows.
-  if (in.faceId > 3.5) {
-    return vec4f(0.018, 0.02, 0.026, 1.0);
+  let cam = city.camera_enu.xyz;
+  let distKm = length(in.worldPos - cam);
+  let night = city.params.x;
+  let windowBoost = max(city.params.w, 0.5);
+  let viewDir = normalize(cam - in.worldPos);
+  let N = faceNormal(in.faceId);
+  let fresnel = pow(1.0 - max(dot(normalize(viewDir), N), 0.0), 2.4);
+
+  // Bottom face: dark foundation, no windows.
+  if (in.faceId > 3.5 && in.faceId < 4.5) {
+    return vec4f(applyCityFog(vec3f(0.008, 0.010, 0.014), distKm), 1.0);
   }
 
-  // Window grid: ~6m floor pitch, ~4m window pitch along the facade.
-  let gridU = in.localUV.x / 4.0 + in.instSeed.x * 11.0;
-  let gridV = in.localUV.y / 6.0 + in.instSeed.y * 7.0;
+  // Roof face: concrete + optional HVAC silhouettes on tallest buildings.
+  if (in.faceId > 4.5) {
+    var roof = vec3f(0.014, 0.017, 0.022);
+    if (in.roofEquip > 0.5) {
+      let equipU = in.localUV.x / 0.010;
+      let equipV = in.localUV.y / 0.010;
+      let cell = floor(vec2f(equipU, equipV));
+      let equipHash = hash21(cell + in.instSeed * 5.3);
+      let boxMask = step(0.62, equipHash) * step(0.15, fract(equipU)) * step(fract(equipU), 0.85)
+                  * step(0.15, fract(equipV)) * step(fract(equipV), 0.85);
+      roof = mix(roof, vec3f(0.006, 0.008, 0.012), boxMask * 0.9);
+      let rail = smoothstep(0.92, 0.98, fract(equipV)) * 0.04;
+      roof += vec3f(0.02, 0.025, 0.03) * rail;
+    }
+    return vec4f(applyCityFog(roof, distKm), 1.0);
+  }
+
+  // ── Facade faces ────────────────────────────────────────────────────────
+  let heightNorm = clamp(in.localUV.y / max(in.bldgHeight, 0.001), 0.0, 1.0);
+
+  let gridU = in.localUV.x / WINDOW_PITCH_KM + in.instSeed.x * 11.0;
+  let gridV = in.localUV.y / FLOOR_PITCH_KM + in.instSeed.y * 7.0;
   let cellIdU = floor(gridU);
   let cellIdV = floor(gridV);
   let cellU = fract(gridU);
   let cellV = fract(gridV);
 
   let litRoll = hash21(vec2f(cellIdU, cellIdV) + in.instSeed * 13.0);
-  let isLit = step(0.55, litRoll);
-  let windowMask = step(0.18, cellU) * step(cellU, 0.82) * step(0.22, cellV) * step(cellV, 0.78);
+  // Brighter lower floors (retail), dimmer penthouses; random dark units.
+  let floorBright = mix(1.45, 0.48, pow(heightNorm, 0.85));
+  let isLit = step(0.38, litRoll);
+  let isDark = step(litRoll, 0.07);
+  // Slow, TAA-friendly occupancy flicker — living city without per-pixel soup.
+  let flicker = 0.86 + 0.14 * sin(city.params.z * 0.55 + litRoll * 47.0 + cellIdU * 0.3);
+  let windowLit = isLit * (1.0 - isDark) * flicker;
 
-  let facadeColor = vec3f(0.028, 0.032, 0.045);
-  let warmWindow = vec3f(1.0, 0.74, 0.42);
-  let coolWindow = vec3f(0.55, 0.78, 1.0);
-  let windowTint = mix(warmWindow, coolWindow, hash21(in.instSeed + vec2f(3.1, 1.7)));
+  let windowMask = step(0.16, cellU) * step(cellU, 0.84)
+                   * step(0.20, cellV) * step(cellV, 0.80);
 
-  let emissive = isLit * windowMask * city.params.x;
-  let windowBoost = max(city.params.w, 0.5);
-  let color = mix(facadeColor, windowTint * (2.4 * windowBoost), emissive);
+  // Per-building facade tint so blocks don't read as identical gray slabs.
+  let bldgHue = hash21(in.instSeed * 2.7);
+  var facadeColor = mix(
+    vec3f(0.020, 0.026, 0.040),
+    vec3f(0.028, 0.032, 0.048),
+    bldgHue,
+  );
+  let skyLow = vec3f(0.018, 0.024, 0.042);
+  let skyHigh = vec3f(0.05, 0.08, 0.14);
+  let skyGrad = mix(skyLow, skyHigh, clamp(viewDir.z * 0.5 + 0.5, 0.0, 1.0));
+  facadeColor = mix(facadeColor, skyGrad, fresnel * 0.55 * night);
 
+  let warmWindow = vec3f(1.0, 0.76, 0.44);
+  let coolWindow = vec3f(0.58, 0.80, 1.0);
+  let retailWarm = vec3f(1.0, 0.82, 0.52);
+  let windowTint = mix(
+    mix(warmWindow, coolWindow, hash21(in.instSeed + vec2f(3.1, 1.7))),
+    retailWarm,
+    (1.0 - heightNorm) * 0.65,
+  );
+
+  // HDR window cores (> 2.0) drive cohesive bloom halos, not per-pixel soup.
+  let hdrCore = (2.15 + floorBright * 1.35) * windowBoost * night;
+  let windowColor = windowTint * hdrCore;
+
+  // Recessed window depth — darker mullion inset so panes read as 3D.
+  let recess = smoothstep(0.16, 0.24, cellU) * smoothstep(0.84, 0.76, cellU)
+             * smoothstep(0.20, 0.28, cellV) * smoothstep(0.80, 0.72, cellV);
+  let recessShade = mix(0.62, 1.0, recess);
+
+  var color = mix(facadeColor, windowColor * recessShade, windowLit * windowMask);
+
+  // Cheap inter-window ambient bounce on the dark glass between lit units.
+  color += windowTint * windowLit * windowMask * 0.06 * night;
+
+  // Street-level sodium light strips along the building base.
+  let streetBand = smoothstep(0.014, 0.005, in.localUV.y) * smoothstep(0.0, 0.002, in.localUV.y);
+  let sodium = vec3f(1.0, 0.70, 0.30) * streetBand * 2.6 * night;
+  color += sodium * (1.0 - windowMask * 0.55);
+
+  // Retail spill — warm glow bleeding up from the first two floors.
+  let retailSpill = smoothstep(0.028, 0.0, in.localUV.y) * (1.0 - heightNorm);
+  color += vec3f(1.0, 0.78, 0.42) * retailSpill * 0.35 * night * windowBoost;
+
+  // Mullion lines between floors for depth.
+  let mullionH = smoothstep(0.02, 0.0, abs(cellV - 0.5) - 0.38);
+  let mullionV = smoothstep(0.02, 0.0, abs(cellU - 0.5) - 0.36);
+  color *= 1.0 - (mullionH + mullionV) * 0.22;
+
+  color = applyCityFog(color, distKm);
   return vec4f(color, 1.0);
 }
 `;

@@ -16,15 +16,18 @@ import { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
 import { FocusManager, type ConstellationStats, type FocusSelection } from '@/focus.js';
 import { AudioEngine } from '@/audio/AudioEngine.js';
 import { TrailRenderer } from '@/render/TrailRenderer.js';
+import { ConstellationGuides } from '@/render/ConstellationGuides.js';
+import { MoonRingGuide } from '@/render/MoonRingGuide.js';
 import { EarthAtmosphereRenderer } from '@/earth.js';
 import { SkylineCity } from '@/render/SkylineCity.js';
-import { genSphere, extractFrustum, mat4inv, v3norm, v3dot, smoothstep } from '@/utils/math.js';
+import { genSphere, extractFrustum, mat4inv, v3norm, v3dot, v3scale, smoothstep } from '@/utils/math.js';
 import { getBeamPatternTitle } from '@/patterns.js';
 import { CONSTANTS, BUFFER_SIZES, UI as UI_CONSTANTS } from '@/types/constants.js';
 import { TLELoader } from '@/data/TLELoader.js';
 import { getBackgroundModeIndex, resolveBackgroundMode, setBackgroundMode } from '@/background.js';
 import {
   type QualityLevel,
+  type VolumetricBeamQualitySettings,
   QUALITY_PRESETS,
   saveQualityLevel,
   parseQualityParam,
@@ -32,6 +35,7 @@ import {
 import { OnboardingManager } from '@/ui/OnboardingManager.js';
 import { WebGPUCompatibilityManager } from '@/ui/WebGPUCompatibilityManager.js';
 import type { TrailConfig } from '@/types/animation.js';
+import { DEFAULT_POSTPROCESS_CONFIG } from '@/types/animation.js';
 import { OrbitalElements } from '@/core/OrbitalElements.js';
 import { WebGLRenderer, type EarthMesh } from '@/webgl/WebGLRenderer.js';
 import { WebGLDebugOverlay, parseDebugFlags } from '@/webgl/WebGLDebug.js';
@@ -41,11 +45,26 @@ import {
   saveImageTuning,
   type ImageTuningSettings,
 } from '@/core/ImageTuning.js';
+import { mergeVolumetricBeamConfig } from '@/core/BeamPatternProfile.js';
 import { resolveViewTuning, skylineEmissiveScale } from '@/core/ViewTuningProfile.js';
 import { parseVisualHarnessParams, type VisualHarnessParams } from '@/visualHarness.js';
+import {
+  groundPresetMotionBlurWeight,
+  kelvinToColorGrading,
+} from '@/camera/groundPresetEffects.js';
+import {
+  computeEarthLimbScreenUv,
+  computeEarthLimbScreenYNormalized,
+} from '@/camera/HorizonLimb.js';
+import { applyGodZoomBloomTuning } from '@/camera/GodFraming.js';
+import {
+  computeFleetCockpitTelemetry,
+  FLEET_COCKPIT,
+} from '@/camera/FleetCockpit.js';
 
 import './styles.css';
 import './styles/onboarding.css';
+import './styles/fleet-cockpit.css';
 
 /**
  * Known CelesTrak group names for the ?tle= query param shorthand.
@@ -137,7 +156,7 @@ function saveExposureSettings(settings: ExposureRuntimeSettings): void {
  * Main Application Class
  */
 class GrokZephyrApp {
-  private static readonly CAPTURE_UI_HIDE_IDS = ['ui', 'controls', 'horizon-indicator', 'ground-preset-selector', 'capture-gallery'];
+  private static readonly CAPTURE_UI_HIDE_IDS = ['ui', 'controls', 'horizon-indicator', 'horizon-limb-line', 'fleet-cockpit-hud', 'ground-preset-selector', 'capture-gallery'];
   private static readonly CAPTURE_GALLERY_LIMIT = 6;
   private static readonly PREFERRED_VIDEO_MIME_TYPES = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
 
@@ -154,6 +173,9 @@ class GrokZephyrApp {
   private audio: AudioEngine;
   private focusManager: FocusManager | null = null;
   private trailRenderer: TrailRenderer | null = null;
+  private constellationGuides: ConstellationGuides | null = null;
+  private moonRingGuide: MoonRingGuide | null = null;
+  private moonScaleHudEnabled = false;
   private earthAtmosphereRenderer: EarthAtmosphereRenderer | null = null;
   private skyline: SkylineCity = new SkylineCity();
   private selectedSatelliteIndex = -1;
@@ -230,6 +252,7 @@ class GrokZephyrApp {
 
   /** Current beam pattern mode (0=chaos, 1=GROK, 2=X logo) */
   private currentPatternMode = 1;
+  private volumetricBeamQuality: VolumetricBeamQualitySettings | null = null;
 
   /** Current animation pattern mode (0=none, 3=smile, 4=digital_rain, 5=heartbeat) */
   private currentAnimationPattern = 0;
@@ -239,6 +262,19 @@ class GrokZephyrApp {
 
   /** Current quality preset level */
   private currentQualityLevel: QualityLevel = 'high';
+
+  /** Quality-preset atmosphere baseline (scaled by ground preset scatter in Ground View). */
+  private qualityAtmosphereHaze = 0.28;
+  private qualityAtmosphereScatteringEnabled = false;
+
+  /** Base bloom intensity from per-view tuning before ground preset multiplier. */
+  private baseViewBloomIntensity = 1.7;
+
+  /** Horizon mode pushed anamorphic bloom (restored when leaving). */
+  private horizonLensActive = false;
+
+  /** Fleet POV helmet-glass lens (restored when leaving). */
+  private fleetLensActive = false;
 
   /** Whether TAA (Temporal Anti-Aliasing) is currently active */
   private taaEnabled = true;
@@ -263,6 +299,7 @@ class GrokZephyrApp {
       this.ui.setViewMode(name, altitude);
       this.ui.setActiveButton(this.camera.getViewModeIndex());
       this.updateGroundObserverOverlay();
+      this.applyGroundPresetEffects(0);
       this.audio.setViewMode(_mode);
       this.audio.playModeWhoosh();
     });
@@ -326,6 +363,21 @@ class GrokZephyrApp {
       this.imageTuning = settings;
       this.imageTuningManualOverride = true;
       this.applyImageTuning();
+    });
+    this.ui.onGodIdleOrbitToggle((enabled) => {
+      this.camera.setGodIdleOrbitEnabled(enabled);
+    });
+    this.ui.onConstellationGuidesToggle((enabled) => {
+      this.constellationGuides?.setEnabled(enabled);
+    });
+    this.ui.onMoonRingGuideToggle((enabled) => {
+      this.moonRingGuide?.setEnabled(enabled);
+    });
+    this.ui.onMoonScaleHudToggle((enabled) => {
+      this.moonScaleHudEnabled = enabled;
+      this.ui.setMoonScaleAnnotation(
+        enabled && this.camera.getViewMode() === 'moon',
+      );
     });
 
     this.ui.setDemoActive(false);
@@ -490,8 +542,9 @@ class GrokZephyrApp {
 
         this.groundObserver.setPreset(preset);
 
-        // Update overlay class
+        // Update overlay class + push preset personality into the render pipeline
         this.applyGroundOverlayClass(this.groundObserver.getOverlayClass());
+        this.applyGroundPresetEffects(0);
 
         // Update active button
         presetButtons.forEach(b => b.classList.remove('active'));
@@ -991,6 +1044,7 @@ class GrokZephyrApp {
     this.writePatternParamsBuffer();
     this.updatePatternTitle();
     this.audio.playPatternChange(mode);
+    this.syncVolumetricBeamConfig();
     
     const modeNames = ['CHAOS', 'GROK', '𝕏 LOGO'];
     console.log(`🔄 Beam pattern switched to: ${modeNames[mode]}`);
@@ -1209,10 +1263,207 @@ class GrokZephyrApp {
       blend.t,
       this.imageTuning.enforceFloors,
     );
+    this.baseViewBloomIntensity = resolved.settings.bloomIntensity;
     this.imageTuning = resolved.settings;
     this.pipeline?.setImageTuning(resolved.settings);
     this.webglRenderer?.setImageTuning(resolved.settings);
     this.ui.setTuningProfile(resolved.profileLabel);
+  }
+
+  /**
+   * Push ground observer preset effects into post-process, bloom, atmosphere,
+   * and motion blur. Restores quality baselines when not in Ground View.
+   */
+  private applyGroundPresetEffects(deltaTime: number): void {
+    const isGround = this.camera.getViewMode() === 'ground';
+
+    if (!isGround) {
+      this.pipeline?.setAtmosphereScatteringConfig(
+        this.qualityAtmosphereScatteringEnabled,
+        this.qualityAtmosphereHaze,
+      );
+      if (this.postProcessStack) {
+        this.postProcessStack.setLensEffects(DEFAULT_POSTPROCESS_CONFIG.lensEffects);
+        this.postProcessStack.setColorGrading(DEFAULT_POSTPROCESS_CONFIG.colorGrading);
+      }
+      return;
+    }
+
+    this.groundObserver.updatePresetBlend(deltaTime);
+    const effects = this.groundObserver.getBlendedEffects();
+    const grading = kelvinToColorGrading(effects.colorTemperature);
+
+    this.pipeline?.setAtmosphereScatteringConfig(
+      this.qualityAtmosphereScatteringEnabled,
+      this.qualityAtmosphereHaze * effects.atmosphericScatter,
+    );
+
+    if (this.postProcessStack) {
+      this.postProcessStack.setColorGrading({
+        ...DEFAULT_POSTPROCESS_CONFIG.colorGrading,
+        ...grading,
+      });
+      this.postProcessStack.setLensEffects({
+        vignetting: {
+          enabled: effects.vignette > 0,
+          intensity: effects.vignette,
+          smoothness: 1.0,
+          roundness: 2.0,
+        },
+      });
+    }
+
+    if (!this.imageTuningManualOverride) {
+      const bloomIntensity = this.baseViewBloomIntensity * effects.bloomIntensity;
+      const tuned = { ...this.imageTuning, bloomIntensity };
+      this.imageTuning = tuned;
+      this.pipeline?.setImageTuning(tuned);
+      this.webglRenderer?.setImageTuning(tuned);
+    }
+  }
+
+  /**
+   * Horizon 720 km polish: limb HUD sync, warm terminator grade, cinematic anamorphic.
+   */
+  private applyHorizonViewEffects(
+    cameraState: CameraState,
+    viewProjection: Float32Array,
+    sunPos: readonly [number, number, number],
+    screenHeight: number,
+  ): void {
+    const isHorizon = this.camera.getViewMode() === 'horizon-720';
+
+    if (!isHorizon) {
+      this.ui.setHorizonLimbGuide(null);
+      if (this.horizonLensActive && this.postProcessStack) {
+        this.postProcessStack.setLensEffects(DEFAULT_POSTPROCESS_CONFIG.lensEffects);
+        this.horizonLensActive = false;
+      }
+      return;
+    }
+
+    const limbY = computeEarthLimbScreenYNormalized(
+      viewProjection,
+      cameraState.position as [number, number, number],
+      screenHeight,
+    );
+    this.ui.setHorizonLimbGuide(limbY);
+
+    const toEarth = v3norm(v3scale(cameraState.position as [number, number, number], -1));
+    const sunDir = v3norm([sunPos[0], sunPos[1], sunPos[2]] as [number, number, number]);
+    const terminator = smoothstep(0.05, 0.42, 1 - Math.abs(v3dot(toEarth, sunDir)));
+
+    if (this.postProcessStack && terminator > 0.01) {
+      const warm = kelvinToColorGrading(4200);
+      const base = DEFAULT_POSTPROCESS_CONFIG.colorGrading;
+      const t = terminator * 0.6;
+      const mix3 = (a: number, b: number) => a + (b - a) * t;
+      this.postProcessStack.setColorGrading({
+        ...base,
+        lift: [mix3(base.lift[0], warm.lift[0]), mix3(base.lift[1], warm.lift[1]), mix3(base.lift[2], warm.lift[2])],
+        gamma: [mix3(base.gamma[0], warm.gamma[0]), mix3(base.gamma[1], warm.gamma[1]), mix3(base.gamma[2], warm.gamma[2])],
+        gain: [mix3(base.gain[0], warm.gain[0]), mix3(base.gain[1], warm.gain[1]), mix3(base.gain[2], warm.gain[2])],
+        saturation: mix3(base.saturation, 1.14),
+      });
+    }
+
+    const cinematic = this.currentQualityLevel === 'cinematic';
+    if (cinematic && this.postProcessStack) {
+      const uv = computeEarthLimbScreenUv(
+        viewProjection,
+        cameraState.position as [number, number, number],
+      );
+      if (uv) {
+        this.postProcessStack.setLensEffects({
+          chromaticAberration: { enabled: false, strength: 0 },
+          lensFlare: { enabled: true, intensity: 0.2, anamorphic: true },
+          starburst: { enabled: false, points: 6, intensity: 0 },
+          vignetting: { enabled: false, intensity: 0, smoothness: 1, roundness: 2 },
+        });
+        this.postProcessStack.setSunScreenPosition(uv[0], uv[1], 0.3 + terminator * 0.55);
+        this.horizonLensActive = true;
+      }
+      this.pipeline?.setBloomConfig({ anamorphicEnabled: true, anamorphicRatio: 0.2 });
+    } else if (this.horizonLensActive && this.postProcessStack) {
+      this.postProcessStack.setLensEffects(DEFAULT_POSTPROCESS_CONFIG.lensEffects);
+      this.horizonLensActive = false;
+    }
+  }
+
+  /**
+   * God View: zoom-dependent bloom threshold so zoomed-out shells resist soup.
+   */
+  private applyGodViewEffects(cameraState: CameraState): void {
+    const isGod = this.camera.getViewMode() === 'god';
+    if (!isGod || this.imageTuningManualOverride) return;
+
+    const distanceKm = Math.hypot(
+      cameraState.position[0],
+      cameraState.position[1],
+      cameraState.position[2],
+    );
+    const tuned = applyGodZoomBloomTuning(this.imageTuning, distanceKm);
+    this.imageTuning = tuned;
+    this.pipeline?.setImageTuning(tuned);
+    this.webglRenderer?.setImageTuning(tuned);
+  }
+
+  /**
+   * Fleet POV: cockpit HUD, WASD drift feedback, cinematic helmet-glass grade.
+   */
+  private applyFleetViewEffects(simTime: number): void {
+    const isFleet = this.camera.getViewMode() === 'sat-pov';
+
+    if (!isFleet) {
+      this.ui.setFleetCockpitVisible(false);
+      if (this.fleetLensActive && this.postProcessStack) {
+        this.postProcessStack.setLensEffects(DEFAULT_POSTPROCESS_CONFIG.lensEffects);
+        this.fleetLensActive = false;
+      }
+      return;
+    }
+
+    this.ui.setFleetCockpitVisible(true);
+
+    const orbital = this.buffers?.getOrbitalElements() ?? this.webglOrbital;
+    if (orbital) {
+      const hostIdx = FLEET_COCKPIT.HOST_SATELLITE_INDEX;
+      const hostPos = orbital.calculatePosition(hostIdx, simTime);
+      const velDir = orbital.calculateVelocity(hostIdx, simTime);
+      const telem = computeFleetCockpitTelemetry(orbital, hostIdx, hostPos, velDir, simTime);
+      this.ui.setFleetCockpitTelemetry(
+        telem.speedKms,
+        telem.altitudeKm,
+        telem.headingDeg,
+        telem.nearbyCount,
+      );
+    }
+
+    const drift = this.camera.getFleetDriftOffset();
+    const driftMag = Math.hypot(drift[0], drift[1], drift[2]);
+    const reticleX = (drift[0] / 80) * 10;
+    const reticleY = (-drift[2] / 80) * 8;
+    const hudJitter = Math.min(3.5, driftMag * 0.04);
+    this.ui.setFleetCockpitDrift(reticleX, reticleY, hudJitter);
+
+    const cinematic = this.currentQualityLevel === 'cinematic';
+    if (cinematic && this.postProcessStack) {
+      this.postProcessStack.setLensEffects({
+        chromaticAberration: { enabled: true, strength: 0.14 },
+        vignetting: {
+          enabled: true,
+          intensity: 0.38,
+          smoothness: 1.15,
+          roundness: 1.55,
+        },
+        lensFlare: { enabled: false, intensity: 0, anamorphic: false },
+        starburst: { enabled: false, points: 6, intensity: 0 },
+      });
+      this.fleetLensActive = true;
+    } else if (this.fleetLensActive && this.postProcessStack) {
+      this.postProcessStack.setLensEffects(DEFAULT_POSTPROCESS_CONFIG.lensEffects);
+      this.fleetLensActive = false;
+    }
   }
 
   private applyImageTuning(): void {
@@ -1251,6 +1502,8 @@ class GrokZephyrApp {
       preset.atmosphere.scatteringLUT,
       preset.atmosphere.hazeStrength
     );
+    this.qualityAtmosphereHaze = preset.atmosphere.hazeStrength;
+    this.qualityAtmosphereScatteringEnabled = preset.atmosphere.scatteringLUT;
 
     // Apply TAA setting from quality preset
     if (this.postProcessStack) {
@@ -1265,16 +1518,9 @@ class GrokZephyrApp {
       }
     }
 
-    // Apply volumetric beam settings
-    this.applyVolumetricBeamPreset(preset.volumetricBeams.enabled, {
-      maxSteps:     preset.volumetricBeams.maxSteps,
-      density:      preset.volumetricBeams.density,
-      intensity:    preset.volumetricBeams.intensity,
-      mieG:         preset.volumetricBeams.mieG,
-      beamRadius:   preset.volumetricBeams.beamRadius,
-      ambientFactor:preset.volumetricBeams.ambientFactor,
-      earthShadow:  preset.volumetricBeams.earthShadow,
-    });
+    // Apply volumetric beam settings (pattern-coupled)
+    this.volumetricBeamQuality = preset.volumetricBeams;
+    this.syncVolumetricBeamConfig();
 
     this.pipeline?.setDepthOfFieldConfig(preset.depthOfField);
     this.pipeline?.setMotionBlurConfig(preset.motionBlur);
@@ -1336,6 +1582,16 @@ class GrokZephyrApp {
     this.volumetricBeamRenderer.setConfig(config);
   }
 
+  /** Re-apply volumetric beam config from quality preset + active pattern mode. */
+  private syncVolumetricBeamConfig(): void {
+    if (!this.volumetricBeamQuality) return;
+    const merged = mergeVolumetricBeamConfig(
+      this.volumetricBeamQuality,
+      this.currentPatternMode,
+    );
+    this.applyVolumetricBeamPreset(this.volumetricBeamQuality.enabled, merged);
+  }
+
   /**
    * Apply visual-harness URL params (?demo, ?simTime, ?timescale, ?ground, ?seed).
    * Used by Playwright to freeze camera/sim state for golden-frame comparisons.
@@ -1351,6 +1607,7 @@ class GrokZephyrApp {
     if (harness.groundPreset !== null) {
       this.groundObserver.setPreset(harness.groundPreset);
       this.applyGroundOverlayClass(this.groundObserver.getOverlayClass());
+      this.applyGroundPresetEffects(0);
     }
     return harness;
   }
@@ -1494,6 +1751,9 @@ class GrokZephyrApp {
         ribbonWidth: 8.0,
       });
       this.trailRenderer.initialize();
+
+      this.constellationGuides = new ConstellationGuides(this.context);
+      this.moonRingGuide = new MoonRingGuide(this.context);
 
       this.earthAtmosphereRenderer = new EarthAtmosphereRenderer(this.context, {
         enabled: true,
@@ -1667,6 +1927,9 @@ class GrokZephyrApp {
     this.simTime += deltaTime * this.timeScale;
 
     this.applyViewTuning(time);
+    this.applyGroundPresetEffects(deltaTime);
+    this.camera.updateHorizonDrift(time, deltaTime);
+    this.camera.updateGodIdleOrbit(time, deltaTime);
 
     if (
       this.demoAutoEnabled &&
@@ -1681,18 +1944,29 @@ class GrokZephyrApp {
       this.groundObserver.update();
     }
 
+    const aspect = this.canvas.width / Math.max(1, this.canvas.height);
     const orbital = this.webglOrbital;
     const cameraState = this.camera.calculateCamera(
       (idx, t) => orbital.calculatePosition(idx, t),
       (idx, t) => orbital.calculateVelocity(idx, t),
       time,
     );
-
-    const aspect = this.canvas.width / Math.max(1, this.canvas.height);
     const { viewProjection } = this.camera.buildViewProjection(cameraState, aspect);
-
     const sun = this.calculateSunPosition(this.simTime);
+    this.applyHorizonViewEffects(
+      cameraState,
+      viewProjection,
+      sun,
+      this.canvas.height,
+    );
+    this.applyGodViewEffects(cameraState);
+    this.applyFleetViewEffects(this.simTime);
+
     const sunLen = Math.hypot(sun[0], sun[1], sun[2]) || 1;
+    const fleetHostVel =
+      this.camera.getViewMode() === 'sat-pov'
+        ? orbital.calculateVelocity(FLEET_COCKPIT.HOST_SATELLITE_INDEX, this.simTime)
+        : undefined;
 
     this.webglRenderer.renderFrame({
       viewProj: viewProjection,
@@ -1702,6 +1976,8 @@ class GrokZephyrApp {
       time,
       backgroundMode: getBackgroundModeIndex(),
       viewMode: this.camera.getViewModeIndex(),
+      timeScale: this.timeScale,
+      hostVelocity: fleetHostVel,
     });
 
     this.animationId = requestAnimationFrame(this.renderWebGL);
@@ -1934,7 +2210,22 @@ class GrokZephyrApp {
     
     // Write to GPU
     this.context.writeBuffer(this.buffers.getBuffers().uniforms, uniformData);
-    this.pipeline?.setMotionBlurFrameData(viewProjection, inverseViewProjection, viewMode, deltaTime);
+    const motionBlurWeight =
+      this.camera.getViewMode() === 'ground'
+        ? groundPresetMotionBlurWeight(this.groundObserver.getBlendedEffects())
+        : undefined;
+    const fleetHostVel =
+      viewMode === 2
+        ? this.buffers!.calculateSatelliteVelocity(FLEET_COCKPIT.HOST_SATELLITE_INDEX, this.simTime)
+        : undefined;
+    this.pipeline?.setMotionBlurFrameData(
+      viewProjection,
+      inverseViewProjection,
+      viewMode,
+      deltaTime,
+      motionBlurWeight,
+      fleetHostVel,
+    );
     
     // Update beam params time
     this.updateBeamParamsTime(time);
@@ -1987,6 +2278,9 @@ class GrokZephyrApp {
     this.simTime += deltaTime * this.timeScale;
 
     this.applyViewTuning(time);
+    this.applyGroundPresetEffects(deltaTime);
+    this.camera.updateHorizonDrift(time, deltaTime);
+    this.camera.updateGodIdleOrbit(time, deltaTime);
 
     if (
       this.demoAutoEnabled &&
@@ -2014,6 +2308,12 @@ class GrokZephyrApp {
       (idx, t) => this.buffers!.calculateSatelliteVelocity(idx, t),
       time
     );
+    const aspect = width / height;
+    const { viewProjection } = this.camera.buildViewProjection(cameraState, aspect);
+    const sunPos = this.calculateSunPosition(this.simTime);
+    this.applyHorizonViewEffects(cameraState, viewProjection, sunPos, height);
+    this.applyGodViewEffects(cameraState);
+    this.applyFleetViewEffects(this.simTime);
     this.recordTrailSamplesForCamera(this.simTime, cameraState);
 
     if (this.focusManager) {
@@ -2066,13 +2366,30 @@ class GrokZephyrApp {
         encoder,
         this.earthVertexBuffer,
         this.earthIndexBuffer,
-        this.earthIndexCount
+        this.earthIndexCount,
+        this.camera.getViewMode() === 'moon',
       );
     }
 
     // Pass 2.5: Trails rendered additively onto HDR target
     if (this.trailRenderer) {
       this.pipeline.encodeTrailPass(encoder, this.trailRenderer);
+    }
+
+    // Pass 2.55: Shell wireframe guides (God View dev overlay)
+    if (this.camera.getViewMode() === 'god' && this.constellationGuides?.isEnabled()) {
+      this.pipeline.encodeConstellationGuidesPass(encoder, this.constellationGuides);
+    }
+
+    // Pass 2.56: Moon View ring guide + lunar regolith foreground
+    if (this.camera.getViewMode() === 'moon') {
+      this.pipeline.encodeMoonOverlayPass(
+        encoder,
+        this.moonRingGuide?.isEnabled() ? this.moonRingGuide : null,
+      );
+      this.ui.setMoonScaleAnnotation(this.moonScaleHudEnabled);
+    } else {
+      this.ui.setMoonScaleAnnotation(false);
     }
 
     // Pass 2.6: Volumetric beams (Cinematic quality only)
@@ -2097,10 +2414,13 @@ class GrokZephyrApp {
       const sunPos = this.calculateSunPosition(this.simTime);
       const sunDir = v3norm(sunPos);
       const up = v3norm(cameraState.position);
-      const nightFactor = smoothstep(0.10, -0.10, v3dot(up, sunDir));
+      let nightFactor = smoothstep(0.10, -0.10, v3dot(up, sunDir));
+      // Skyline is always a night-city vista — never let solar geometry extinguish windows.
+      nightFactor = Math.max(nightFactor, 0.94);
       this.skyline.updateUniform(
         this.context.getDevice(),
         cityViewProj,
+        cameraState.position,
         sunDir,
         nightFactor,
         this.simTime,
@@ -2299,6 +2619,8 @@ class GrokZephyrApp {
     }
     this.webglDebugOverlay?.destroy();
     this.webglRenderer?.destroy();
+    this.constellationGuides?.destroy();
+    this.moonRingGuide?.destroy();
     this.pipeline?.destroy();
     this.postProcessStack?.destroy();
     this.volumetricBeamRenderer?.destroy();

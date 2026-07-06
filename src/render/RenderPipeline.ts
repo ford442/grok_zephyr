@@ -60,6 +60,7 @@ export interface PipelineBindGroups {
   satellites: GPUBindGroup;
   beam: GPUBindGroup;
   groundTerrain: GPUBindGroup;
+  moonForeground: GPUBindGroup;
   bloomThreshold: GPUBindGroup;
   composite: GPUBindGroup;
 }
@@ -79,6 +80,7 @@ export interface Pipelines {
   satellites: GPURenderPipeline;
   beam: GPURenderPipeline;
   groundTerrain: GPURenderPipeline;
+  moonForeground: GPURenderPipeline;
   skyline: GPURenderPipeline;
   bloomThreshold: GPURenderPipeline;
   bloomBlur: GPURenderPipeline;
@@ -613,6 +615,31 @@ export class RenderPipeline {
         },
       }),
 
+      moonForeground: device.createRenderPipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [sceneAtmosphereLayout] }),
+        vertex: {
+          module: this.context.createShaderModule(SHADERS.render.moonForeground, 'moon-foreground'),
+          entryPoint: 'vs',
+        },
+        fragment: {
+          module: this.context.createShaderModule(SHADERS.render.moonForeground, 'moon-foreground'),
+          entryPoint: 'fs',
+          targets: [{
+            format: RENDER.HDR_FORMAT,
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+            },
+          }],
+        },
+        primitive: { topology: 'triangle-list' },
+        depthStencil: {
+          format: RENDER.DEPTH_FORMAT,
+          depthWriteEnabled: false,
+          depthCompare: 'always',
+        },
+      }),
+
       skyline: device.createRenderPipeline({
         layout: device.createPipelineLayout({ bindGroupLayouts: [skylineLayout] }),
         vertex: {
@@ -949,6 +976,16 @@ export class RenderPipeline {
       ],
     }),
 
+    moonForeground: device.createBindGroup({
+      layout: this.pipelines.moonForeground.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.buffers.uniforms } },
+        { binding: 1, resource: this.atmosphereLUTView },
+        { binding: 2, resource: this.linearSampler },
+        { binding: 3, resource: { buffer: this.atmosphereSettingsBuffer } },
+      ],
+    }),
+
     bloomThreshold: device.createBindGroup({
       layout: this.pipelines.bloomThreshold.getBindGroupLayout(0),
       entries: [
@@ -1059,7 +1096,8 @@ export class RenderPipeline {
     encoder: GPUCommandEncoder,
     earthVertexBuffer: GPUBuffer,
     earthIndexBuffer: GPUBuffer,
-    earthIndexCount: number
+    earthIndexCount: number,
+    moonView = false,
   ): void {
     if (!this.pipelines || !this.bindGroups || !this.renderTargets) return;
 
@@ -1086,19 +1124,28 @@ export class RenderPipeline {
     pass.setBindGroup(0, this.bindGroups.stars);
     pass.draw(3);
 
-    // Earth
-    pass.setPipeline(this.pipelines.earth);
-    pass.setBindGroup(0, this.bindGroups.earth);
-    pass.setVertexBuffer(0, earthVertexBuffer);
-    pass.setIndexBuffer(earthIndexBuffer, 'uint32');
-    pass.drawIndexed(earthIndexCount);
+    const drawEarth = (): void => {
+      pass.setPipeline(this.pipelines.earth);
+      pass.setBindGroup(0, this.bindGroups.earth);
+      pass.setVertexBuffer(0, earthVertexBuffer);
+      pass.setIndexBuffer(earthIndexBuffer, 'uint32');
+      pass.drawIndexed(earthIndexCount);
+    };
 
-    // Atmosphere
-    pass.setPipeline(this.pipelines.atmosphere);
-    pass.setBindGroup(0, this.bindGroups.atmosphere);
-    pass.setVertexBuffer(0, earthVertexBuffer);
-    pass.setIndexBuffer(earthIndexBuffer, 'uint32');
-    pass.drawIndexed(earthIndexCount);
+    const drawAtmosphere = (): void => {
+      pass.setPipeline(this.pipelines.atmosphere);
+      pass.setBindGroup(0, this.bindGroups.atmosphere);
+      pass.setVertexBuffer(0, earthVertexBuffer);
+      pass.setIndexBuffer(earthIndexBuffer, 'uint32');
+      pass.drawIndexed(earthIndexCount);
+    };
+
+    // Moon View: draw Earth after the constellation so 750× billboards do not
+    // fully occlude the ~1.9° blue marble at the disk center.
+    if (!moonView) {
+      drawEarth();
+      drawAtmosphere();
+    }
 
     // Satellites
     pass.setPipeline(this.pipelines.satellites);
@@ -1109,6 +1156,11 @@ export class RenderPipeline {
     pass.setPipeline(this.pipelines.beam);
     pass.setBindGroup(0, this.bindGroups.beam);
     pass.draw(4, MAX_BEAMS);
+
+    if (moonView) {
+      drawEarth();
+      drawAtmosphere();
+    }
 
     pass.end();
   }
@@ -1129,6 +1181,58 @@ export class RenderPipeline {
 
     pass.setViewport(0, 0, this.width, this.height, 0, 1);
     trailRenderer.encodeRenderPass(pass, this.buffers.uniforms);
+    pass.end();
+  }
+
+  /**
+   * Faint great-circle shell guides (God View dev overlay).
+   */
+  encodeConstellationGuidesPass(
+    encoder: GPUCommandEncoder,
+    guides: { encodeRenderPass(pass: GPURenderPassEncoder, uniformBuffer: GPUBuffer): void } | null,
+  ): void {
+    if (!this.renderTargets || !guides) return;
+
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: this.renderTargets.hdrView,
+        loadOp: 'load',
+        storeOp: 'store',
+      }],
+    });
+
+    pass.setViewport(0, 0, this.width, this.height, 0, 1);
+    guides.encodeRenderPass(pass, this.buffers.uniforms);
+    pass.end();
+  }
+
+  /**
+   * Moon View overlays: faint ring guide (optional) + lunar regolith foreground.
+   */
+  encodeMoonOverlayPass(
+    encoder: GPUCommandEncoder,
+    ringGuide: { encodeRenderPass(pass: GPURenderPassEncoder, uniformBuffer: GPUBuffer): void } | null,
+  ): void {
+    if (!this.pipelines || !this.bindGroups || !this.renderTargets) return;
+
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: this.renderTargets.hdrView,
+        loadOp: 'load',
+        storeOp: 'store',
+      }],
+    });
+
+    pass.setViewport(0, 0, this.width, this.height, 0, 1);
+
+    if (ringGuide) {
+      ringGuide.encodeRenderPass(pass, this.buffers.uniforms);
+    }
+
+    pass.setPipeline(this.pipelines.moonForeground);
+    pass.setBindGroup(0, this.bindGroups.moonForeground);
+    pass.draw(6);
+
     pass.end();
   }
 
@@ -1701,7 +1805,14 @@ export class RenderPipeline {
     };
   }
 
-  setMotionBlurFrameData(viewProjection: Float32Array, inverseViewProjection: Float32Array, viewModeIndex: number, deltaTime: number): void {
+  setMotionBlurFrameData(
+    viewProjection: Float32Array,
+    inverseViewProjection: Float32Array,
+    viewModeIndex: number,
+    deltaTime: number,
+    viewWeightOverride?: number,
+    hostVelocity?: readonly [number, number, number],
+  ): void {
     if (!this.motionBlurUniformBuffer) return;
 
     if (!this.motionBlurHistoryReady) {
@@ -1710,11 +1821,11 @@ export class RenderPipeline {
     }
 
     const viewModeScale = [0.55, 0.7, 1.0, 0.08, 0.22, 0.08];
-    const viewWeight = viewModeScale[viewModeIndex] ?? 0.5;
+    const viewWeight = viewWeightOverride ?? (viewModeScale[viewModeIndex] ?? 0.5);
     const cameraStrength = this.motionBlurConfig.enabled ? this.motionBlurConfig.cameraStrength * viewWeight : 0.0;
     const satelliteStretch = this.motionBlurConfig.enabled ? this.motionBlurConfig.satelliteStretch * viewWeight : 0.0;
 
-    const data = new ArrayBuffer(144);
+    const data = new ArrayBuffer(160);
     const f32 = new Float32Array(data);
     const u32 = new Uint32Array(data);
     f32.set(this.prevViewProjection, 0);
@@ -1723,6 +1834,11 @@ export class RenderPipeline {
     f32[33] = satelliteStretch;
     f32[34] = Math.max(0.0, deltaTime);
     u32[35] = this.motionBlurConfig.tapCount;
+    if (hostVelocity) {
+      f32[36] = hostVelocity[0];
+      f32[37] = hostVelocity[1];
+      f32[38] = hostVelocity[2];
+    }
 
     this.context.getDevice().queue.writeBuffer(this.motionBlurUniformBuffer, 0, data);
     this.prevViewProjection.set(viewProjection);
@@ -1972,7 +2088,7 @@ export class RenderPipeline {
 
     if (!this.motionBlurUniformBuffer) {
       this.motionBlurUniformBuffer = device.createBuffer({
-        size: 144,
+        size: 160,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         label: 'Motion Blur Uniform',
       });
