@@ -27,6 +27,7 @@ const VIEW_CASES: ViewCase[] = [
   { name: 'horizon-720km', query: 'mode=0' },
   { name: 'ground-house', query: 'mode=3&ground=houseWindow' },
   { name: 'moon-view', query: 'mode=4' },
+  { name: 'skyline', query: 'mode=5' },
 ];
 
 test.describe('WebGL2 visual regression', () => {

@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
   VIEW_TUNING_PROFILES,
+  SKYLINE_EMISSIVE_CORE_REF,
   blendViewTuningProfiles,
   formatTuningProfileLabel,
   getViewTuningProfile,
   interpolateViewTuningProfiles,
   resolveViewTuning,
+  skylineEmissiveScale,
 } from './ViewTuningProfile.js';
 
 describe('VIEW_TUNING_PROFILES', () => {
-  it('defines a documented profile for each of the 5 view modes', () => {
-    expect(VIEW_TUNING_PROFILES).toHaveLength(5);
-    for (let i = 0; i < 5; i++) {
+  it('defines a documented profile for each of the 6 view modes', () => {
+    expect(VIEW_TUNING_PROFILES).toHaveLength(6);
+    for (let i = 0; i < 6; i++) {
       const profile = getViewTuningProfile(i);
       expect(profile.viewModeIndex).toBe(i);
       expect(profile.shortName.length).toBeGreaterThan(0);
@@ -41,6 +43,19 @@ describe('VIEW_TUNING_PROFILES', () => {
     const horizon = getViewTuningProfile(0);
     expect(moon.distanceCullKm).toBeGreaterThan(horizon.distanceCullKm);
     expect(moon.bloomThreshold).toBeLessThan(horizon.bloomThreshold);
+  });
+
+  it('gives Skyline lower bloom threshold than Ground for window emissives', () => {
+    const skyline = getViewTuningProfile(5);
+    const ground = getViewTuningProfile(3);
+    expect(skyline.shortName).toBe('Skyline');
+    expect(skyline.bloomThreshold).toBeLessThan(ground.bloomThreshold);
+    expect(skyline.coreBoost).toBeGreaterThan(ground.coreBoost);
+  });
+
+  it('clamps out-of-range indices to the nearest profile', () => {
+    expect(getViewTuningProfile(99).shortName).toBe('Skyline');
+    expect(getViewTuningProfile(-1).shortName).toBe('Horizon');
   });
 });
 
@@ -73,5 +88,19 @@ describe('profile interpolation', () => {
     expect(resolved.profileLabel).toBe('Moon');
     expect(resolved.settings.distanceCullKm).toBe(500_000);
     expect(resolved.settings.haloStrength).toBeCloseTo(0.28);
+  });
+
+  it('blends Ground and Skyline profiles during surface mode transitions', () => {
+    const mid = blendViewTuningProfiles(3, 5, 0.5);
+    const ground = getViewTuningProfile(3);
+    const skyline = getViewTuningProfile(5);
+    expect(mid.bloomThreshold).toBeGreaterThan(skyline.bloomThreshold);
+    expect(mid.bloomThreshold).toBeLessThan(ground.bloomThreshold);
+    expect(formatTuningProfileLabel(3, 5, 0.5)).toBe('Ground → Skyline');
+  });
+
+  it('derives skyline window emissive scale from coreBoost', () => {
+    const skyline = getViewTuningProfile(5);
+    expect(skylineEmissiveScale(skyline.coreBoost)).toBeCloseTo(skyline.coreBoost / SKYLINE_EMISSIVE_CORE_REF);
   });
 });

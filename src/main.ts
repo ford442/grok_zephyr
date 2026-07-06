@@ -41,7 +41,7 @@ import {
   saveImageTuning,
   type ImageTuningSettings,
 } from '@/core/ImageTuning.js';
-import { resolveViewTuning } from '@/core/ViewTuningProfile.js';
+import { resolveViewTuning, skylineEmissiveScale } from '@/core/ViewTuningProfile.js';
 import { parseVisualHarnessParams, type VisualHarnessParams } from '@/visualHarness.js';
 
 import './styles.css';
@@ -1360,7 +1360,7 @@ class GrokZephyrApp {
    * Parse initial-state URL parameters for the application.
    *
    * Supported params:
-   *   ?mode=0-4            view mode index
+   *   ?mode=0-5            view mode index
    *   ?preset=low|balanced|high|cinematic   quality preset
    *   ?physics=0-2         physics mode
    *   ?pattern=0-2         beam pattern mode
@@ -1619,7 +1619,7 @@ class GrokZephyrApp {
     this.dataSourceLabel = dataSourceLabel;
     this.ui.hideError();
 
-    // Apply initial view mode from URL (?mode=0-4).
+    // Apply initial view mode from URL (?mode=0-5).
     const urlParams = this.parseInitialStateFromURL();
     this.camera.setViewMode(urlParams.viewMode ?? 0);
     this.applyVisualHarnessParams();
@@ -2104,7 +2104,14 @@ class GrokZephyrApp {
       const sunDir = v3norm(sunPos);
       const up = v3norm(cameraState.position);
       const nightFactor = smoothstep(0.10, -0.10, v3dot(up, sunDir));
-      this.skyline.updateUniform(this.context.getDevice(), cityViewProj, sunDir, nightFactor, this.simTime);
+      this.skyline.updateUniform(
+        this.context.getDevice(),
+        cityViewProj,
+        sunDir,
+        nightFactor,
+        this.simTime,
+        skylineEmissiveScale(this.imageTuning.coreBoost),
+      );
       this.pipeline.encodeSkylinePass(encoder, this.skyline.buildingCount);
     }
 

@@ -192,7 +192,8 @@ export class SkylineCity {
     cityViewProj: Float32Array,
     sunDirEci: Vec3,
     nightFactor: number,
-    time: number
+    time: number,
+    emissiveBoost = 1.0,
   ): void {
     if (!this.cityUniformBuffer) return;
 
@@ -212,7 +213,7 @@ export class SkylineCity {
     tail[4] = nightFactor;
     tail[5] = this.buildingCount;
     tail[6] = time;
-    tail[7] = 0;
+    tail[7] = emissiveBoost;
 
     device.queue.writeBuffer(this.cityUniformBuffer, 0, data);
   }

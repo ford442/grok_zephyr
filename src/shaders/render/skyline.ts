@@ -22,7 +22,7 @@ struct Building {
 struct CityUni {
   city_view_proj : mat4x4f,
   sun_dir_enu    : vec4f,
-  params         : vec4f, // x = nightFactor, y = buildingCount, z = time, w = pad
+  params         : vec4f, // x = nightFactor, y = buildingCount, z = time, w = emissiveBoost
 };
 
 @group(0) @binding(1) var<uniform> city : CityUni;
@@ -108,7 +108,8 @@ fn fs(in : VOut) -> @location(0) vec4f {
   let windowTint = mix(warmWindow, coolWindow, hash21(in.instSeed + vec2f(3.1, 1.7)));
 
   let emissive = isLit * windowMask * city.params.x;
-  let color = mix(facadeColor, windowTint * 2.4, emissive);
+  let windowBoost = max(city.params.w, 0.5);
+  let color = mix(facadeColor, windowTint * (2.4 * windowBoost), emissive);
 
   return vec4f(color, 1.0);
 }

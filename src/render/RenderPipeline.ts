@@ -1680,7 +1680,7 @@ export class RenderPipeline {
       this.motionBlurHistoryReady = true;
     }
 
-    const viewModeScale = [0.55, 0.7, 1.0, 0.08, 0.22];
+    const viewModeScale = [0.55, 0.7, 1.0, 0.08, 0.22, 0.08];
     const viewWeight = viewModeScale[viewModeIndex] ?? 0.5;
     const cameraStrength = this.motionBlurConfig.enabled ? this.motionBlurConfig.cameraStrength * viewWeight : 0.0;
     const satelliteStretch = this.motionBlurConfig.enabled ? this.motionBlurConfig.satelliteStretch * viewWeight : 0.0;

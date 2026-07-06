@@ -10,7 +10,7 @@ import { CULLING } from '@/types/constants.js';
 import type { ImageTuningSettings } from '@/core/ImageTuning.js';
 import { SHIPPING_IMAGE_TUNING } from '@/core/ImageTuning.js';
 
-/** Bloom + satellite kernel + cull distances keyed by view_mode (0–4). */
+/** Bloom + satellite kernel + cull distances keyed by view_mode (0–5). */
 export interface ViewTuningProfile {
   /** View mode index — matches VIEW_MODES / CameraController.modeIndex */
   viewModeIndex: number;
@@ -46,6 +46,8 @@ function smoothstep(t: number): number {
  * - Fleet POV: micro billboards + motion stretch; very tight kernel, high threshold.
  * - Ground View: few sats, bright limb; restrained bloom keeps stars distinct.
  * - Moon View: extreme range; softer kernel + lower threshold for ring visibility.
+ * - Skyline: night-city emissives in foreground; moderate bloom extracts window glow
+ *   without soup while background constellation stays restrained.
  */
 export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
   {
@@ -128,16 +130,42 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     coreBoost: 2.6,
     distanceCullKm: 500_000,
   },
+  {
+    viewModeIndex: 5,
+    shortName: 'Skyline',
+    rationale:
+      'Surface night-city vantage: HDR window emissives in the near field with the ' +
+      'constellation as background. Bloom threshold sits below Ground View so lit ' +
+      'windows bloom cohesively; coreBoost also scales building emissive output.',
+    bloomThreshold: 1.62,
+    bloomKnee: 0.055,
+    bloomIntensity: 1.88,
+    satCoreOuter: 0.40,
+    satCoreInner: 0.11,
+    haloStrength: 0.20,
+    coreBoost: 2.55,
+    distanceCullKm: 100_000,
+  },
 ] as const;
+
+/** Reference coreBoost used to normalize skyline window emissive scale (Horizon baseline). */
+export const SKYLINE_EMISSIVE_CORE_REF = 2.4;
 
 const PROFILE_BY_INDEX = new Map(
   VIEW_TUNING_PROFILES.map((p) => [p.viewModeIndex, p] as const),
 );
 
+const MAX_VIEW_MODE_INDEX = VIEW_TUNING_PROFILES.length - 1;
+
 /** Lookup profile for a view mode index (clamped to valid range). */
 export function getViewTuningProfile(viewModeIndex: number): ViewTuningProfile {
-  const clamped = Math.max(0, Math.min(4, viewModeIndex | 0));
+  const clamped = Math.max(0, Math.min(MAX_VIEW_MODE_INDEX, viewModeIndex | 0));
   return PROFILE_BY_INDEX.get(clamped) ?? VIEW_TUNING_PROFILES[0]!;
+}
+
+/** Window emissive multiplier for the skyline city pass from active coreBoost. */
+export function skylineEmissiveScale(coreBoost: number): number {
+  return coreBoost / SKYLINE_EMISSIVE_CORE_REF;
 }
 
 /** Linearly interpolate numeric fields between two profiles. */
