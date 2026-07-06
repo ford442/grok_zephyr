@@ -13,7 +13,6 @@
 
 import type WebGPUContext from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
-import type { EarthAtmosphereRenderer } from '@/earth.js';
 import type { BloomConfig } from '@/types/animation.js';
 import { SmileV2Pipeline } from './SmileV2Pipeline.js';
 import { SHADERS } from '@/shaders/index.js';
@@ -198,6 +197,12 @@ export class RenderPipeline {
   private dofUniformBuffer: GPUBuffer | null = null;
   /** Uniform buffer for atmosphere scattering controls. */
   private atmosphereSettingsBuffer: GPUBuffer | null = null;
+  /** Uniform buffer for ground-view horizon preset params (GroundParams). */
+  private groundParamsBuffer: GPUBuffer | null = null;
+  /** Current ground horizon params: oceanBias, urbanGlow, overlayFade, hazeBoost. */
+  private groundViewParams: [number, number, number, number] = [0, 0.4, 0.6, 1.0];
+  /** Whether the ground horizon quad is drawn in the ground scene pass. */
+  private groundTerrainEnabled = true;
   /** Motion blur uniforms (previous VP + inverse VP + strengths). */
   private motionBlurUniformBuffer: GPUBuffer | null = null;
   /** Auto exposure histogram (64 bins). */
@@ -282,13 +287,6 @@ export class RenderPipeline {
       ],
     });
 
-    // Uniform-only render layout
-    const uniformLayout = device.createBindGroupLayout({
-      entries: [
-        { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-      ],
-    });
-
     // Shared scene atmosphere layout (uniform + LUT + sampler + settings)
     const sceneAtmosphereLayout = device.createBindGroupLayout({
       entries: [
@@ -296,6 +294,17 @@ export class RenderPipeline {
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+      ],
+    });
+
+    // Ground horizon layout: scene atmosphere bindings + per-preset GroundParams
+    const groundTerrainLayout = device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
       ],
     });
 
@@ -580,7 +589,7 @@ export class RenderPipeline {
       }),
 
       groundTerrain: device.createRenderPipeline({
-        layout: device.createPipelineLayout({ bindGroupLayouts: [uniformLayout] }),
+        layout: device.createPipelineLayout({ bindGroupLayouts: [groundTerrainLayout] }),
         vertex: {
           module: this.context.createShaderModule(SHADERS.render.ground, 'ground-terrain'),
           entryPoint: 'vs',
@@ -848,7 +857,7 @@ export class RenderPipeline {
     if (!this.bloomThresholdUniformBuffer || !this.bloomCompositeUniformBuffer || !this.tonemapUniformBuffer) return;
     if (!this.motionBlurUniformBuffer) return;
     if (!this.atmosphereLUTView || !this.atmosphereSettingsBuffer) return;
-    if (!this.autoExposureStateBuffer) return;
+    if (!this.autoExposureStateBuffer || !this.groundParamsBuffer) return;
 
     const device = this.context.getDevice();
     const posBuffer = this.buffers.positions instanceof GPUBuffer
@@ -931,7 +940,13 @@ export class RenderPipeline {
 
     groundTerrain: device.createBindGroup({
       layout: this.pipelines.groundTerrain.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: this.buffers.uniforms } }],
+      entries: [
+        { binding: 0, resource: { buffer: this.buffers.uniforms } },
+        { binding: 1, resource: this.atmosphereLUTView },
+        { binding: 2, resource: this.linearSampler },
+        { binding: 3, resource: { buffer: this.atmosphereSettingsBuffer } },
+        { binding: 4, resource: { buffer: this.groundParamsBuffer } },
+      ],
     }),
 
     bloomThreshold: device.createBindGroup({
@@ -1118,15 +1133,32 @@ export class RenderPipeline {
   }
 
   /**
-   * Execute ground view scene render pass (mountains, lake, satellites, beams)
+   * Set the ground horizon preset params (GroundParams uniform).
+   * Cheap no-op when values are unchanged.
    */
-  encodeGroundScenePass(
-    encoder: GPUCommandEncoder,
-    earthAtmosphereRenderer?: EarthAtmosphereRenderer,
-    earthVertexBuffer?: GPUBuffer,
-    earthIndexBuffer?: GPUBuffer,
-    earthIndexCount?: number
-  ): void {
+  setGroundViewParams(oceanBias: number, urbanGlow: number, overlayFade: number, hazeBoost: number): void {
+    const [o, u, f, h] = this.groundViewParams;
+    if (o === oceanBias && u === urbanGlow && f === overlayFade && h === hazeBoost) return;
+    this.groundViewParams = [oceanBias, urbanGlow, overlayFade, hazeBoost];
+    this.writeGroundViewParams();
+  }
+
+  /** Toggle the ground horizon quad (stars/satellites/beams still draw). */
+  setGroundTerrainEnabled(enabled: boolean): void {
+    this.groundTerrainEnabled = enabled;
+  }
+
+  private writeGroundViewParams(): void {
+    if (!this.groundParamsBuffer) return;
+    const device = this.context.getDevice();
+    device.queue.writeBuffer(this.groundParamsBuffer, 0, new Float32Array(this.groundViewParams));
+  }
+
+  /**
+   * Execute ground view scene render pass: starfield → ray-traced horizon
+   * (fullscreen quad, no Earth sphere draw) → satellites → beams.
+   */
+  encodeGroundScenePass(encoder: GPUCommandEncoder): void {
     if (!this.pipelines || !this.bindGroups || !this.renderTargets) return;
 
     const pass = encoder.beginRenderPass({
@@ -1146,15 +1178,12 @@ export class RenderPipeline {
 
     pass.setViewport(0, 0, this.width, this.height, 0, 1);
 
-    if (earthAtmosphereRenderer && earthAtmosphereRenderer.getEnabled() && earthVertexBuffer && earthIndexBuffer && earthIndexCount) {
-      pass.setPipeline(this.pipelines.earth);
-      pass.setBindGroup(0, this.bindGroups.earth);
-      pass.setVertexBuffer(0, earthVertexBuffer);
-      pass.setIndexBuffer(earthIndexBuffer, 'uint32');
-      pass.drawIndexed(earthIndexCount);
+    // Starfield behind everything; the horizon quad's sky alpha lets it show
+    pass.setPipeline(this.pipelines.stars);
+    pass.setBindGroup(0, this.bindGroups.stars);
+    pass.draw(3);
 
-      earthAtmosphereRenderer.encode(pass, earthVertexBuffer, earthIndexBuffer, earthIndexCount);
-    } else {
+    if (this.groundTerrainEnabled) {
       pass.setPipeline(this.pipelines.groundTerrain);
       pass.setBindGroup(0, this.bindGroups.groundTerrain);
       pass.draw(6);
@@ -1729,6 +1758,8 @@ export class RenderPipeline {
     this.dofUniformBuffer = null;
     this.atmosphereSettingsBuffer?.destroy();
     this.atmosphereSettingsBuffer = null;
+    this.groundParamsBuffer?.destroy();
+    this.groundParamsBuffer = null;
     this.motionBlurUniformBuffer?.destroy();
     this.motionBlurUniformBuffer = null;
     this.autoExposureHistogramBuffer?.destroy();
@@ -1929,6 +1960,15 @@ export class RenderPipeline {
       });
     }
     this.writeAtmosphereScatteringUniform();
+
+    if (!this.groundParamsBuffer) {
+      this.groundParamsBuffer = device.createBuffer({
+        size: 16,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        label: 'Ground View Params',
+      });
+      this.writeGroundViewParams();
+    }
 
     if (!this.motionBlurUniformBuffer) {
       this.motionBlurUniformBuffer = device.createBuffer({

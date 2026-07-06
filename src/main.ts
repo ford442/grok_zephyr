@@ -156,7 +156,6 @@ class GrokZephyrApp {
   private trailRenderer: TrailRenderer | null = null;
   private earthAtmosphereRenderer: EarthAtmosphereRenderer | null = null;
   private skyline: SkylineCity = new SkylineCity();
-  private groundViewEnabled = true;
   private selectedSatelliteIndex = -1;
   private patternSeed = 0;
   private patternAnimationStart = 0;
@@ -1029,8 +1028,8 @@ class GrokZephyrApp {
   }
 
   setGroundViewEnabled(enabled: boolean): void {
-    this.groundViewEnabled = enabled;
     this.earthAtmosphereRenderer?.setEnabled(enabled);
+    this.pipeline?.setGroundTerrainEnabled(enabled);
   }
 
   private writePatternParamsBuffer(): void {
@@ -2059,14 +2058,9 @@ class GrokZephyrApp {
 
     // Pass 2: Scene rendering (different for ground view)
     if (this.camera.getViewMode() === 'ground') {
-      const groundRenderer = this.groundViewEnabled ? this.earthAtmosphereRenderer : null;
-      this.pipeline.encodeGroundScenePass(
-        encoder,
-        groundRenderer ?? undefined,
-        this.earthVertexBuffer ?? undefined,
-        this.earthIndexBuffer ?? undefined,
-        this.earthIndexCount
-      );
+      const hz = this.groundObserver.getHorizonSettings();
+      this.pipeline.setGroundViewParams(hz.oceanBias, hz.urbanGlow, hz.overlayFade, hz.hazeBoost);
+      this.pipeline.encodeGroundScenePass(encoder);
     } else {
       this.pipeline.encodeScenePass(
         encoder,

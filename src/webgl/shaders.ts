@@ -280,12 +280,61 @@ in vec2 vNdc;
 uniform mat4 uInvViewProj;
 uniform float uTime;
 uniform int uBackgroundMode;
+uniform vec3 uCameraPos;
+uniform vec3 uSunDir;
 out vec4 fragColor;
 
 float hash21(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
   p += dot(p, p + 45.32);
   return fract(p.x * p.y);
+}
+
+// Small 2-octave value noise for the ground-view horizon terrain fill.
+float vnoise21(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  float a = mix(hash21(i), hash21(i + vec2(1, 0)), u.x);
+  float b = mix(hash21(i + vec2(0, 1)), hash21(i + vec2(1, 1)), u.x);
+  return mix(a, b, u.y);
+}
+
+// Ground View (backgroundMode 2): simplified horizon matching the WebGPU
+// ray-traced horizon pass — terrain fill below the geometric horizon,
+// haze band + night city-light glow above it.
+vec3 groundViewHorizon(vec3 color, vec3 dir) {
+  float r = max(length(uCameraPos), 6371.0 + 1.0);
+  vec3 up = uCameraPos / r;
+  float cosH = -sqrt(max(1.0 - (6371.0 * 6371.0) / (r * r), 0.0));
+  float cosVZ = dot(dir, up);
+  float sunElev = dot(up, normalize(uSunDir));
+  float day = smoothstep(-0.08, 0.25, sunElev);
+  float night = smoothstep(0.02, -0.10, sunElev);
+  float twilight = smoothstep(-0.28, -0.05, sunElev) * (1.0 - smoothstep(-0.02, 0.14, sunElev));
+
+  if (cosVZ < cosH) {
+    // Below the horizon: procedural terrain fill with night city speckle.
+    vec2 gp = vec2(atan(dir.y, dir.x), asin(clamp(dir.z, -1.0, 1.0))) * 40.0;
+    float n = vnoise21(gp) * 0.65 + vnoise21(gp * 2.7) * 0.35;
+    vec3 land = mix(vec3(0.020, 0.030, 0.028), vec3(0.10, 0.12, 0.09), n);
+    vec3 ground = land * (0.10 + 0.90 * day);
+    float city = step(0.985, hash21(floor(gp * 5.0))) * night * step(0.45, n);
+    ground += vec3(1.0, 0.70, 0.30) * city * 0.55;
+    // Haze just below the horizon line.
+    float hb = exp(-(cosH - cosVZ) * 30.0);
+    ground = mix(ground, mix(vec3(0.04, 0.06, 0.11), vec3(0.40, 0.52, 0.72), day), hb * 0.75);
+    ground += vec3(0.9, 0.35, 0.10) * twilight * hb * 0.4;
+    return ground;
+  }
+
+  // Above the horizon: Mie haze band + night city glow hugging the line.
+  float band = exp(-(cosVZ - cosH) * 16.0);
+  vec3 haze = mix(vec3(0.03, 0.05, 0.10), vec3(0.35, 0.50, 0.80), day);
+  haze += vec3(1.0, 0.42, 0.14) * twilight * 0.8;
+  float clump = vnoise21(vec2(atan(dir.y, dir.x) * 10.0, 1.7));
+  vec3 cityGlow = vec3(1.0, 0.60, 0.28) * band * band * night * (0.20 + 0.35 * clump);
+  return mix(color, haze, band * 0.7) + cityGlow;
 }
 
 void main() {
@@ -310,7 +359,11 @@ void main() {
   bright = min(bright, starCap);
   // Subtle deep-space gradient.
   vec3 bg = mix(vec3(0.004, 0.006, 0.015), vec3(0.0, 0.0, 0.004), uv.y * 0.5 + 0.5);
-  fragColor = vec4(bg + vec3(bright), 1.0);
+  vec3 color = bg + vec3(bright);
+  if (uBackgroundMode == 2) {
+    color = groundViewHorizon(color, dir);
+  }
+  fragColor = vec4(color, 1.0);
 }
 `;
 
