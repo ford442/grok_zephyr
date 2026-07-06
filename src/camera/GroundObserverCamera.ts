@@ -44,6 +44,23 @@ export interface GroundObserverConfig {
   };
   /** Atmospheric scattering multiplier */
   atmosphericScatter: number;
+  /** Horizon rendering bias for the ground terrain pass */
+  horizon: {
+    /** >0 sinks terrain toward ocean at the horizon (beach shimmer) */
+    oceanBias: number;
+    /** Night city-light glow strength near the horizon (rooftop urban glow) */
+    urbanGlow: number;
+    /** How much the terrain pass fades where the CSS frame overlay covers it */
+    overlayFade: number;
+  };
+}
+
+/** Params consumed by RenderPipeline.setGroundViewParams */
+export interface GroundHorizonSettings {
+  oceanBias: number;
+  urbanGlow: number;
+  overlayFade: number;
+  hazeBoost: number;
 }
 
 /** Preset configurations */
@@ -65,6 +82,7 @@ export const GROUND_OBSERVER_PRESETS: Record<GroundObserverPreset, GroundObserve
       strength: 0.02,
     },
     atmosphericScatter: 1.0,
+    horizon: { oceanBias: 0.0, urbanGlow: 0.35, overlayFade: 0.85 },
   },
 
   [GroundObserverPreset.CAR_WINDSHIELD]: {
@@ -85,6 +103,7 @@ export const GROUND_OBSERVER_PRESETS: Record<GroundObserverPreset, GroundObserve
       strength: 0.08,
     },
     atmosphericScatter: 0.8,
+    horizon: { oceanBias: 0.0, urbanGlow: 0.5, overlayFade: 0.85 },
   },
 
   [GroundObserverPreset.BEACH_NIGHT]: {
@@ -104,6 +123,7 @@ export const GROUND_OBSERVER_PRESETS: Record<GroundObserverPreset, GroundObserve
       strength: 0,
     },
     atmosphericScatter: 1.2,
+    horizon: { oceanBias: 0.3, urbanGlow: 0.12, overlayFade: 0.15 },
   },
 
   [GroundObserverPreset.ROOFTOP]: {
@@ -123,6 +143,7 @@ export const GROUND_OBSERVER_PRESETS: Record<GroundObserverPreset, GroundObserve
       strength: 0.03,
     },
     atmosphericScatter: 1.5,
+    horizon: { oceanBias: -0.06, urbanGlow: 1.0, overlayFade: 0.35 },
   },
 
   [GroundObserverPreset.AIRPLANE_WINDOW]: {
@@ -142,6 +163,7 @@ export const GROUND_OBSERVER_PRESETS: Record<GroundObserverPreset, GroundObserve
       strength: 0,
     },
     atmosphericScatter: 0.5,
+    horizon: { oceanBias: 0.05, urbanGlow: 0.45, overlayFade: 0.4 },
   },
 };
 
@@ -269,6 +291,14 @@ export class GroundObserverCamera {
   /** Get atmospheric scattering multiplier */
   getAtmosphericScatter(): number {
     return this.config.atmosphericScatter;
+  }
+
+  /** Get the horizon params for the ground terrain pass (preset-aware) */
+  getHorizonSettings(): GroundHorizonSettings {
+    return {
+      ...this.config.horizon,
+      hazeBoost: this.config.atmosphericScatter,
+    };
   }
 
   /** Cycle to next preset */

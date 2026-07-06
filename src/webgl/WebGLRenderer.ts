@@ -252,6 +252,8 @@ export class WebGLRenderer {
     gl.uniformMatrix4fv(this.starU.loc('uInvViewProj'), false, invViewProj);
     gl.uniform1f(this.starU.loc('uTime'), frame.time);
     gl.uniform1i(this.starU.loc('uBackgroundMode'), frame.backgroundMode | 0);
+    gl.uniform3f(this.starU.loc('uCameraPos'), frame.cameraPos[0], frame.cameraPos[1], frame.cameraPos[2]);
+    gl.uniform3fv(this.starU.loc('uSunDir'), frame.sunDir);
     gl.bindVertexArray(this.fsTriangle);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
