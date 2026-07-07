@@ -1,8 +1,8 @@
 /**
- * Faint orbital ring guide for Moon View (dev toggle, off by default).
+ * Orbital ring guide for Moon View.
  *
- * Renders a single great-circle at the 550 km shell radius to help viewers
- * parse the constellation geometry against Earth.
+ * Renders a faint great-circle at the 550 km shell radius (always on in Moon View).
+ * Dev toggle boosts brightness for geometry debugging.
  */
 
 import type WebGPUContext from '@/core/WebGPUContext.js';
@@ -14,8 +14,10 @@ const RING_RADIUS_KM = CONSTANTS.ORBIT_RADIUS_KM;
 export class MoonRingGuide {
   private context: WebGPUContext;
   private enabled = false;
+  private subtleRing = true;
   private pipeline: GPURenderPipeline | null = null;
   private vertexBuffer: GPUBuffer | null = null;
+  private alphaBuffer: GPUBuffer | null = null;
   private vertexCount = 0;
 
   constructor(context: WebGPUContext) {
@@ -24,7 +26,15 @@ export class MoonRingGuide {
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
-    if (enabled && !this.pipeline) {
+    if (!this.pipeline) {
+      this.createResources();
+    }
+  }
+
+  /** Subtle ring always visible in Moon View; dev toggle boosts brightness. */
+  setSubtleRing(visible: boolean): void {
+    this.subtleRing = visible;
+    if (visible && !this.pipeline) {
       this.createResources();
     }
   }
@@ -33,21 +43,45 @@ export class MoonRingGuide {
     return this.enabled;
   }
 
+  shouldRender(): boolean {
+    return this.subtleRing || this.enabled;
+  }
+
   encodeRenderPass(pass: GPURenderPassEncoder, uniformBuffer: GPUBuffer): void {
-    if (!this.enabled || !this.pipeline || !this.vertexBuffer) return;
-    const bindGroup = this.context.getDevice().createBindGroup({
-      layout: this.pipeline.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
-    });
-    pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, bindGroup);
-    pass.setVertexBuffer(0, this.vertexBuffer);
-    pass.draw(this.vertexCount);
+    if (!this.shouldRender() || !this.pipeline || !this.vertexBuffer || !this.alphaBuffer) {
+      return;
+    }
+    const device = this.context.getDevice();
+    const layout = this.pipeline.getBindGroupLayout(0);
+
+    const drawRing = (alpha: number): void => {
+      device.queue.writeBuffer(this.alphaBuffer!, 0, new Float32Array([alpha, 0, 0, 0]));
+      const bindGroup = device.createBindGroup({
+        layout,
+        entries: [
+          { binding: 0, resource: { buffer: uniformBuffer } },
+          { binding: 1, resource: { buffer: this.alphaBuffer! } },
+        ],
+      });
+      pass.setPipeline(this.pipeline!);
+      pass.setBindGroup(0, bindGroup);
+      pass.setVertexBuffer(0, this.vertexBuffer!);
+      pass.draw(this.vertexCount);
+    };
+
+    if (this.subtleRing) {
+      drawRing(0.055);
+    }
+    if (this.enabled) {
+      drawRing(0.14);
+    }
   }
 
   destroy(): void {
     this.vertexBuffer?.destroy();
+    this.alphaBuffer?.destroy();
     this.vertexBuffer = null;
+    this.alphaBuffer = null;
     this.pipeline = null;
   }
 
@@ -68,6 +102,12 @@ export class MoonRingGuide {
       vertices.byteOffset,
       vertices.byteLength,
     );
+
+    this.alphaBuffer = device.createBuffer({
+      size: 16,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      label: 'MoonRingGuideAlpha',
+    });
 
     const shader = device.createShaderModule({
       label: 'MoonRingGuide',
@@ -93,6 +133,8 @@ export class MoonRingGuide {
           sun_position: vec4f,
         };
         @group(0) @binding(0) var<uniform> uni: Uni;
+        struct RingAlpha { alpha: f32, _pad: vec3f, }
+        @group(0) @binding(1) var<uniform> ring: RingAlpha;
 
         struct VSOut {
           @builtin(position) pos: vec4f,
@@ -108,7 +150,7 @@ export class MoonRingGuide {
         @fragment
         fn fs(in: VSOut) -> @location(0) vec4f {
           let c = vec3f(0.55, 0.82, 1.0);
-          return vec4f(c, 0.14);
+          return vec4f(c, ring.alpha);
         }
       `,
     });
@@ -116,11 +158,18 @@ export class MoonRingGuide {
     const layout = device.createPipelineLayout({
       bindGroupLayouts: [
         device.createBindGroupLayout({
-          entries: [{
-            binding: 0,
-            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-            buffer: { type: 'uniform' },
-          }],
+          entries: [
+            {
+              binding: 0,
+              visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+              buffer: { type: 'uniform' },
+            },
+            {
+              binding: 1,
+              visibility: GPUShaderStage.FRAGMENT,
+              buffer: { type: 'uniform' },
+            },
+          ],
         }),
       ],
     });

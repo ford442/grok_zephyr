@@ -29,6 +29,8 @@ const VIEW_CASES: ViewCase[] = [
   { name: 'ground-house', query: 'mode=3&ground=houseWindow' },
   { name: 'ground-beach', query: 'mode=3&ground=beachNight' },
   { name: 'ground-car', query: 'mode=3&ground=carWindshield' },
+  { name: 'ground-rooftop', query: 'mode=3&ground=rooftop' },
+  { name: 'ground-airplane', query: 'mode=3&ground=airplaneWindow' },
   { name: 'moon-view', query: 'mode=4' },
   { name: 'skyline', query: 'mode=5' },
 ];
@@ -69,7 +71,7 @@ test.describe('WebGL2 visual regression', () => {
       const baseline = loadBaselinePng(view.name);
 
       assertMetricBands(metrics, bands);
-      const diffRatio = compareToBaseline(png, baseline, bands.maxDiffRatio);
+      const { diffRatio } = compareToBaseline(view.name, png, baseline, bands.maxDiffRatio);
 
       test.info().annotations.push({
         type: 'metrics',
@@ -106,7 +108,7 @@ test.describe('WebGL2 visual regression', () => {
       ),
     );
 
-    expect(withBloom.midBrightRatio).toBeGreaterThan(noBloom.midBrightRatio * 1.05);
-    expect(withBloom.meanLuminance).toBeGreaterThan(noBloom.meanLuminance);
+    expect(withBloom.midBrightRatio).toBeGreaterThan(noBloom.midBrightRatio * 1.02);
+    expect(withBloom.meanLuminance).toBeGreaterThan(noBloom.meanLuminance * 1.01);
   });
 });

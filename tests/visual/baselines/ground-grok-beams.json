@@ -1,0 +1,12 @@
+{
+  "meanLuminance": [
+    0.45073091571912655,
+    0.8370717006212349
+  ],
+  "brightRatio": [
+    0.0014576822916666666,
+    0.0034012586805555554
+  ],
+  "maxDiffRatio": 0.1,
+  "description": "Ground View GROK beams with Mie scatter tint (?pattern=1)"
+}

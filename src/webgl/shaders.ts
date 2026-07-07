@@ -286,9 +286,9 @@ void main() {
     color += vec3(0.06, 0.10, 0.22) * nightSide * smoothstep(0.05, -0.30, ndotl) * 0.85;
     // Blue-marble disk floor + limb halo (WebGL has no separate atmosphere pass).
     color = max(color, vec3(0.05, 0.11, 0.24) * (0.32 + 0.68 * day));
-    color *= 2.1;
-    color += vec3(0.20, 0.42, 0.78) * rim * 0.72;
-    color += vec3(0.10, 0.20, 0.38) * (1.0 - rim) * 0.32;
+    color *= 2.35;
+    color += vec3(0.22, 0.45, 0.82) * rim * 0.78;
+    color += vec3(0.12, 0.22, 0.42) * (1.0 - rim) * 0.36;
   }
 
   fragColor = vec4(color, 1.0);
@@ -580,5 +580,90 @@ void main() {
   float edgeFade = smoothstep(horizonY - 0.02, horizonY + 0.008, vUv.y);
   float alpha = regolithMask * mix(0.92, 0.0, edgeFade);
   fragColor = vec4(regolith * 0.48, alpha * 0.88);
+}
+`;
+
+export const MOON_EARTH_DISK_FRAG = /* glsl */ `#version 300 es
+precision highp float;
+precision highp int;
+in vec2 vUv;
+uniform vec3 uCameraPos;
+uniform vec3 uSunDir;
+uniform mat4 uInvViewProj;
+uniform int uViewMode;
+out vec4 fragColor;
+
+const float EARTH_ANG_RAD = 0.01655;
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+float noise21(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
+    mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x),
+    u.y
+  );
+}
+
+vec3 skyDir(vec2 uv) {
+  vec4 far = uInvViewProj * vec4(uv * 2.0 - 1.0, 1.0, 1.0);
+  vec4 near = uInvViewProj * vec4(uv * 2.0 - 1.0, -1.0, 1.0);
+  return normalize(far.xyz / far.w - near.xyz / near.w);
+}
+
+void main() {
+  if ((uViewMode & 0xFFFF) != 4) {
+    fragColor = vec4(0.0);
+    return;
+  }
+
+  vec3 dir = skyDir(vUv);
+  vec3 toEarth = normalize(-uCameraPos);
+  float cosEarth = dot(dir, toEarth);
+  float angDist = acos(clamp(cosEarth, -1.0, 1.0));
+  float normAng = angDist / EARTH_ANG_RAD;
+  if (normAng > 1.05) {
+    fragColor = vec4(0.0);
+    return;
+  }
+
+  vec3 worldUp = vec3(0.0, 0.0, 1.0);
+  vec3 east = cross(worldUp, toEarth);
+  if (length(east) < 0.01) east = vec3(0.0, 1.0, 0.0);
+  east = normalize(east);
+  vec3 north = normalize(cross(toEarth, east));
+  vec3 tangent = dir - toEarth * cosEarth;
+  float diskU = dot(tangent, east) / max(sin(EARTH_ANG_RAD), 1e-4);
+  float diskV = dot(tangent, north) / max(sin(EARTH_ANG_RAD), 1e-4);
+
+  float sunDot = dot(toEarth, normalize(uSunDir));
+  float day = smoothstep(-0.08, 0.28, sunDot);
+
+  vec2 sp = vec2(diskU, diskV) * 4.2;
+  float landNoise = noise21(sp) * 0.6 + noise21(sp * 2.1) * 0.35;
+  float isLand = smoothstep(0.48, 0.58, landNoise);
+  vec3 ocean = vec3(0.04, 0.16, 0.38);
+  vec3 landCol = mix(vec3(0.10, 0.32, 0.14), vec3(0.42, 0.36, 0.22), landNoise);
+  vec3 col = mix(ocean, landCol, isLand);
+  col *= 0.18 + 0.92 * day;
+
+  float night = 1.0 - day;
+  col += vec3(0.07, 0.12, 0.26) * night * smoothstep(0.12, -0.25, sunDot) * 0.95;
+  float cities = smoothstep(0.58, 0.64, noise21(sp * 3.5)) * isLand * night;
+  col += vec3(1.0, 0.82, 0.45) * cities * 0.55;
+
+  float limb = smoothstep(0.55, 1.0, normAng);
+  col += vec3(0.14, 0.32, 0.62) * limb * (0.35 + 0.45 * day);
+
+  float disk = 1.0 - smoothstep(0.92, 1.05, normAng);
+  float alpha = disk * mix(0.42, 0.28, day);
+  fragColor = vec4(col * 1.65, alpha);
 }
 `;

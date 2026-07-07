@@ -38,7 +38,8 @@ struct SatelliteVisualUni {
   halo_strength    : f32,
   core_boost       : f32,
   distance_cull_km : f32,
-  pad1             : f32,
+  animation_intensity : f32,
+  animation_contrast  : f32,
 }
 @group(0) @binding(5) var<uniform> satVisual : SatelliteVisualUni;
 
@@ -83,9 +84,37 @@ struct PatternSample {
   feature: f32, // 0=bg, 1=accent, 2=hero — drives fragment kernel/boost
 }
 
-fn patternVertexBright(sample: PatternSample, atten: f32, selectionBoost: f32) -> f32 {
+fn patternVertexBright(sample: PatternSample, atten: f32, selectionBoost: f32, pattern: u32) -> f32 {
   let distFade = mix(1.0, atten, 0.32);
-  return sample.strength * sample.tier * distFade * selectionBoost;
+  var strength = sample.strength * sample.tier * distFade * selectionBoost;
+  strength *= satVisual.animation_intensity;
+  strength *= patternViewIntensityBoost(pattern);
+  // Contrast < 1 lifts shadow tier (heartbeat diastole); > 1 crushes bg bleed.
+  let gamma = 1.0 / max(satVisual.animation_contrast, 0.5);
+  return pow(clamp(strength, 0.0, 1.5), gamma);
+}
+
+// Per-pattern view-mode scalars layered on profile animationIntensity.
+fn patternViewIntensityBoost(pattern: u32) -> f32 {
+  let vm = uni.view_mode & 0xFFFFu;
+  switch pattern {
+    case PATTERN_SMILE: {
+      if (vm == 3u) { return 1.12; }  // Ground: face outline readable
+      if (vm == 1u) { return 0.88; }  // God: reduce halo bleed
+      return 1.0;
+    }
+    case PATTERN_DIGITAL_RAIN: {
+      if (vm == 4u) { return 0.68; }  // Moon: faint columns
+      if (vm == 0u) { return 1.0; }   // Horizon: medium
+      if (vm == 1u) { return 0.85; }  // God: less column soup
+      return 1.0;
+    }
+    case PATTERN_HEARTBEAT: {
+      if (vm == 2u || vm == 1u) { return 0.92; }  // Fleet/God: diastole headroom
+      return 1.0;
+    }
+    default: { return 1.0; }
+  }
 }
 
 fn sat_color(idx: u32) -> vec3f {
@@ -188,6 +217,8 @@ fn smile_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, earth_dir: vec3f) -> P
 
   if (feature == 0u) {
     var bg_strength = 0.35;
+    let isGodView = (uni.view_mode & 0xFFFFu) == 1u;
+    if (isGodView) { bg_strength *= 0.82; }
     switch phase {
       case SMILE_PHASE_EMERGE: { bg_strength = mix(0.55, 0.35, t); }
       case SMILE_PHASE_GLOW: { bg_strength = 0.32; }
@@ -294,6 +325,9 @@ fn heartbeat_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> PatternSample {
   let wave_pulse = smoothstep(0.0, 0.1, fract((time - wave_delay) * 1.25)) * 0.45;
 
   let total_pulse = max(pulse, wave_pulse);
+  // Lift diastole floor when contrast < 1 (Fleet/God profiles).
+  let diastole_floor = mix(0.0, 0.07, 1.0 - satVisual.animation_contrast);
+  total_pulse = max(total_pulse, diastole_floor);
   let pinkness = 0.35 + 0.45 * total_pulse;
   let col = vec3f(1.0, pinkness, pinkness);
 
@@ -476,7 +510,7 @@ fn vs(
       }
     }
     out.color = sample.rgb;
-    out.bright = patternVertexBright(sample, atten, selectionBoost);
+    out.bright = patternVertexBright(sample, atten, selectionBoost, params.pattern_mode);
     out.pattern_feature = sample.feature;
   } else {
     out.color = col;

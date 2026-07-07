@@ -28,6 +28,7 @@ describe('VIEW_TUNING_PROFILES', () => {
     const ground = getViewTuningProfile(3);
     expect(god.satCoreOuter).toBeLessThan(ground.satCoreOuter);
     expect(god.bloomThreshold).toBeLessThan(ground.bloomThreshold);
+    expect(ground.animationIntensity).toBeGreaterThan(god.animationIntensity);
   });
 
   it('gives Fleet POV the tightest kernel to resist streak soup', () => {
@@ -88,6 +89,8 @@ describe('profile interpolation', () => {
     expect(resolved.profileLabel).toBe('Moon');
     expect(resolved.settings.distanceCullKm).toBe(500_000);
     expect(resolved.settings.haloStrength).toBeCloseTo(0.28);
+    expect(resolved.settings.animationIntensity).toBeGreaterThan(1.0);
+    expect(resolved.settings.animationContrast).toBeLessThan(1.0);
   });
 
   it('blends Ground and Skyline profiles during surface mode transitions', () => {

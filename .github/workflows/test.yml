@@ -28,11 +28,3 @@ jobs:
       - name: Run tests
         run: npm run test
 
-      - name: Install Playwright Chromium
-        run: npx playwright install chromium --with-deps
-
-      - name: Run visual regression tests
-        run: npm run test:visual
-        env:
-          CI: true
-

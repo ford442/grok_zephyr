@@ -243,7 +243,7 @@ fn starHdrLuminance(mag: f32) -> f32 {
     let toEarth = normalize(-uni.camera_pos.xyz);
     let cosEarth = dot(dir, toEarth);
     let earthDiskGlow = smoothstep(cos(EARTH_ANG_RAD * 1.6), cos(EARTH_ANG_RAD * 0.75), cosEarth);
-    sky += vec3f(0.08, 0.16, 0.32) * earthDiskGlow * 1.35;
+    sky += vec3f(0.10, 0.20, 0.40) * earthDiskGlow * 1.55;
     let earthDiskCos = cos(EARTH_ANG_RAD * 1.12);
     let earthMask = smoothstep(earthDiskCos, 0.99998, cosEarth);
     stars *= mix(1.0, 0.22, earthMask);

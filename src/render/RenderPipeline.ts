@@ -61,6 +61,7 @@ export interface PipelineBindGroups {
   beam: GPUBindGroup;
   groundTerrain: GPUBindGroup;
   moonForeground: GPUBindGroup;
+  moonEarthDisk: GPUBindGroup;
   bloomThreshold: GPUBindGroup;
   composite: GPUBindGroup;
 }
@@ -81,6 +82,7 @@ export interface Pipelines {
   beam: GPURenderPipeline;
   groundTerrain: GPURenderPipeline;
   moonForeground: GPURenderPipeline;
+  moonEarthDisk: GPURenderPipeline;
   skyline: GPURenderPipeline;
   bloomThreshold: GPURenderPipeline;
   bloomBlur: GPURenderPipeline;
@@ -640,6 +642,31 @@ export class RenderPipeline {
         },
       }),
 
+      moonEarthDisk: device.createRenderPipeline({
+        layout: device.createPipelineLayout({ bindGroupLayouts: [sceneAtmosphereLayout] }),
+        vertex: {
+          module: this.context.createShaderModule(SHADERS.render.moonEarthDisk, 'moon-earth-disk'),
+          entryPoint: 'vs',
+        },
+        fragment: {
+          module: this.context.createShaderModule(SHADERS.render.moonEarthDisk, 'moon-earth-disk'),
+          entryPoint: 'fs',
+          targets: [{
+            format: RENDER.HDR_FORMAT,
+            blend: {
+              color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+            },
+          }],
+        },
+        primitive: { topology: 'triangle-list' },
+        depthStencil: {
+          format: RENDER.DEPTH_FORMAT,
+          depthWriteEnabled: false,
+          depthCompare: 'always',
+        },
+      }),
+
       skyline: device.createRenderPipeline({
         layout: device.createPipelineLayout({ bindGroupLayouts: [skylineLayout] }),
         vertex: {
@@ -986,6 +1013,16 @@ export class RenderPipeline {
       ],
     }),
 
+    moonEarthDisk: device.createBindGroup({
+      layout: this.pipelines.moonEarthDisk.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.buffers.uniforms } },
+        { binding: 1, resource: this.atmosphereLUTView },
+        { binding: 2, resource: this.linearSampler },
+        { binding: 3, resource: { buffer: this.atmosphereSettingsBuffer } },
+      ],
+    }),
+
     bloomThreshold: device.createBindGroup({
       layout: this.pipelines.bloomThreshold.getBindGroupLayout(0),
       entries: [
@@ -1224,6 +1261,10 @@ export class RenderPipeline {
     });
 
     pass.setViewport(0, 0, this.width, this.height, 0, 1);
+
+    pass.setPipeline(this.pipelines.moonEarthDisk);
+    pass.setBindGroup(0, this.bindGroups.moonEarthDisk);
+    pass.draw(6);
 
     if (ringGuide) {
       ringGuide.encodeRenderPass(pass, this.buffers.uniforms);
@@ -1975,7 +2016,7 @@ export class RenderPipeline {
 
     if (!this.satelliteVisualUniformBuffer) {
       this.satelliteVisualUniformBuffer = device.createBuffer({
-        size: 32,
+        size: 48,
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         label: 'Satellite Visual Uniform',
       });
@@ -2109,7 +2150,8 @@ export class RenderPipeline {
   private writeSatelliteVisualUni(): void {
     if (!this.satelliteVisualUniformBuffer) return;
     const p = packSatelliteVisualUniform(this.imageTuning);
-    const data = new Float32Array([p[0]!, p[1]!, p[2]!, p[3]!, p[4]!, p[5]!, p[6]!, 0]);
+    const data = new Float32Array(12);
+    data.set(p);
     this.context.getDevice().queue.writeBuffer(this.satelliteVisualUniformBuffer, 0, data);
   }
 

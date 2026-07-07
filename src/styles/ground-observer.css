@@ -556,7 +556,8 @@
     inset 0 0 0 16px rgba(20, 24, 32, 0.92),
     inset 0 0 0 18px rgba(8, 10, 16, 1),
     inset 0 0 120px rgba(120, 180, 255, 0.08),
-    inset 0 -80px 100px rgba(255, 170, 80, 0.06);
+    inset 0 -80px 100px rgba(255, 170, 80, 0.06),
+    inset 0 -28px 48px rgba(255, 140, 50, 0.12);
 }
 
 /* Stronger vignette + center mullion splitting the window into two panes */
@@ -600,6 +601,12 @@
     rgba(200, 220, 255, 0.05) 54%,
     transparent 62%,
     transparent 100%
+  ),
+  linear-gradient(
+    to top,
+    rgba(255, 150, 60, 0.14) 0%,
+    rgba(255, 120, 40, 0.06) 12%,
+    transparent 28%
   );
   pointer-events: none;
 }

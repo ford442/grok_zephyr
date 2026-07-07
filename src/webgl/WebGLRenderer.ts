@@ -29,7 +29,7 @@ import {
   SAT_VERT, SAT_FRAG,
   EARTH_VERT, EARTH_FRAG,
   STAR_VERT, STAR_FRAG,
-  FS_VERT, THRESHOLD_FRAG, BLUR_FRAG, COMPOSITE_FRAG, MOON_FOREGROUND_FRAG,
+  FS_VERT, THRESHOLD_FRAG, BLUR_FRAG, COMPOSITE_FRAG, MOON_FOREGROUND_FRAG, MOON_EARTH_DISK_FRAG,
 } from './shaders.js';
 
 /** Per-frame state handed to the renderer (shared with the WebGPU loop). */
@@ -93,6 +93,8 @@ export class WebGLRenderer {
   private compositeU!: UniformCache;
   private moonForegroundProgram!: WebGLProgram;
   private moonForegroundU!: UniformCache;
+  private moonEarthDiskProgram!: WebGLProgram;
+  private moonEarthDiskU!: UniformCache;
 
   // Geometry
   private satVao!: WebGLVertexArrayObject;
@@ -145,6 +147,8 @@ export class WebGLRenderer {
     this.compositeU = new UniformCache(gl, this.compositeProgram);
     this.moonForegroundProgram = createProgram(gl, FS_VERT, MOON_FOREGROUND_FRAG, 'moon-foreground');
     this.moonForegroundU = new UniformCache(gl, this.moonForegroundProgram);
+    this.moonEarthDiskProgram = createProgram(gl, FS_VERT, MOON_EARTH_DISK_FRAG, 'moon-earth-disk');
+    this.moonEarthDiskU = new UniformCache(gl, this.moonEarthDiskProgram);
 
     this.buildSatelliteGeometry();
     this.buildEarthGeometry(earth);
@@ -243,6 +247,7 @@ export class WebGLRenderer {
     if (!isMoonView && this.debug.showEarth) this.drawEarth(frame);
     if (this.debug.showSatellites) this.drawSatellites(frame);
     if (isMoonView && this.debug.showEarth) this.drawEarth(frame);
+    if (isMoonView) this.drawMoonEarthDisk(invViewProj, frame);
     if (isMoonView) this.drawMoonForeground(invViewProj, frame);
 
     // ── Bloom ──────────────────────────────────────────────────────────
@@ -317,6 +322,29 @@ export class WebGLRenderer {
     gl.uniform1f(this.satU.loc('uCoreBoost'), this.satVisualPacked[5]);
     gl.bindVertexArray(this.satVao);
     gl.drawArrays(gl.POINTS, 0, this.satCount);
+    gl.bindVertexArray(null);
+    gl.disable(gl.BLEND);
+    gl.depthMask(true);
+  }
+
+  private drawMoonEarthDisk(invViewProj: Float32Array, frame: WebGLFrame): void {
+    const gl = this.gl;
+    gl.useProgram(this.moonEarthDiskProgram);
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.uniformMatrix4fv(this.moonEarthDiskU.loc('uInvViewProj'), false, invViewProj);
+    gl.uniform1i(this.moonEarthDiskU.loc('uViewMode'), frame.viewMode | 0);
+    gl.uniform3f(
+      this.moonEarthDiskU.loc('uCameraPos'),
+      frame.cameraPos[0],
+      frame.cameraPos[1],
+      frame.cameraPos[2],
+    );
+    gl.uniform3fv(this.moonEarthDiskU.loc('uSunDir'), frame.sunDir);
+    gl.bindVertexArray(this.fsTriangle);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
     gl.disable(gl.BLEND);
     gl.depthMask(true);
@@ -418,7 +446,7 @@ export class WebGLRenderer {
     for (const p of [
       this.satProgram, this.earthProgram, this.starProgram,
       this.thresholdProgram, this.blurProgram, this.compositeProgram,
-      this.moonForegroundProgram,
+      this.moonForegroundProgram, this.moonEarthDiskProgram,
     ]) {
       if (p) gl.deleteProgram(p);
     }

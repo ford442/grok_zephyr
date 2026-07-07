@@ -78,8 +78,20 @@ npx playwright install chromium --with-deps
 npm run test:visual
 
 # Regenerate baselines after an intentional visual change
+UPDATE_BASELINES=1 npm run test:visual
+# or:
 npm run test:visual:update
 ```
+
+**When to rebaseline**
+
+- Intentional shader / bloom / kernel / view-tuning changes (`ViewTuningProfile`,
+  `ImageTuning`, satellite WGSL, ground-observer CSS)
+- New view mode or ground preset added to `tests/visual/webgl-views.spec.ts`
+- SwiftShader or Playwright Chromium version bump (rare — review diff PNGs first)
+
+Do **not** rebaseline to silence a failing test without reviewing
+`tests/visual/diffs/<case>-diff.png`.
 
 **Harness URL params** (used by `tests/visual/webgl-views.spec.ts`):
 
@@ -91,23 +103,37 @@ npm run test:visual:update
 | `demo=0` | Disable auto demo cinematic |
 | `simTime=180` | Fixed orbital phase |
 | `timescale=0` | Freeze simulation after load |
-| `mode=0..4` | View mode (horizon / god / fleet / ground / moon) |
-| `ground=houseWindow` | Ground observer preset when `mode=3` |
+| `mode=0..5` | View mode (horizon / god / fleet / ground / moon / skyline) |
+| `ground=houseWindow` | Ground observer preset when `mode=3` (`beachNight`, `carWindshield`, `rooftop`, `airplaneWindow`, …) |
+| `pattern=0..2` | Beam pattern (chaos / GROK / 𝕏) — harness smoke on WebGL |
+| `animation=3..5` | Constellation animation (smile / rain / heartbeat) — WebGPU renders; WebGL harness only |
 
-Each scene captures the canvas via `window.zephyrGL.capture()` after 120 warmup
-frames. Assertions combine:
+**Baseline inventory** — see `tests/visual/baselines/README.md` for the full
+table (10 view/preset cases + 2 pattern harness cases).
+
+Each scene captures the canvas via `window.zephyrGL.capture()` after warmup
+frames (60 for views, 90 for patterns). Assertions combine:
 
 1. **Golden PNG** comparison (`tests/visual/baselines/*.png`) with a per-scene
    pixel-diff ceiling tolerant of SwiftShader noise.
 2. **Mean luminance** and **bright-pixel ratio** bands (`*.json` sidecars) so bloom
    floor removal or alpha falloff widening fails even when pixels differ slightly.
 
+On failure, a red-highlight diff PNG is written to
+`tests/visual/diffs/<case>-diff.png` for local debugging.
+
 A dedicated **bloom pass guard** toggles `showBloom` off via `window.zephyrGL.setDebug`
 and asserts mid-tone energy drops — proving the bloom stack is active. Shipping
 appearance (threshold floors, satellite kernel) is guarded by the golden baselines.
 
-CI runs `npm run test:visual` on every push/PR (`.github/workflows/test.yml`)
-using Chromium with `--use-angle=swiftshader`.
+CI runs `npm run test:visual` via `.github/workflows/visual-regression.yml`:
+
+- Every push to `main`
+- Pull requests that touch `src/shaders/`, `ViewTuningProfile`, `ground-observer.css`,
+  WebGL/render paths, or `tests/visual/`
+
+Unit tests and type-check run separately on every PR (`.github/workflows/test.yml`).
+Visual diff artifacts upload on CI failure.
 
 ## What is shared vs. reimplemented
 

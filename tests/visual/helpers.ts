@@ -7,6 +7,7 @@ import pixelmatch from 'pixelmatch';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export const BASELINES_DIR = join(__dirname, 'baselines');
+export const DIFFS_DIR = join(__dirname, 'diffs');
 
 /** Shared harness params for deterministic WebGL captures. */
 export const HARNESS_QUERY =
@@ -26,6 +27,8 @@ export interface MetricBands {
   brightRatio: [number, number];
   /** Max fraction of pixels allowed to differ from the baseline PNG. */
   maxDiffRatio: number;
+  /** Human-readable scene description for baseline sidecars. */
+  description?: string;
 }
 
 export function dataUrlToPng(dataUrl: string): PNG {
@@ -115,11 +118,26 @@ export function assertMetricBands(metrics: ImageMetrics, bands: MetricBands): vo
   }
 }
 
+export interface CompareResult {
+  diffRatio: number;
+  /** Absolute path to a red-highlight diff PNG when comparison fails. */
+  diffPath?: string;
+}
+
+/** Write a pixel-diff image for debugging failed comparisons. */
+export function saveDiffPng(caseName: string, diff: PNG): string {
+  mkdirSync(DIFFS_DIR, { recursive: true });
+  const path = join(DIFFS_DIR, `${caseName}-diff.png`);
+  writeFileSync(path, PNG.sync.write(diff));
+  return path;
+}
+
 export function compareToBaseline(
+  caseName: string,
   actual: PNG,
   baseline: PNG,
   maxDiffRatio: number,
-): number {
+): CompareResult {
   if (actual.width !== baseline.width || actual.height !== baseline.height) {
     throw new Error(
       `Size mismatch: ${actual.width}x${actual.height} vs ${baseline.width}x${baseline.height}`,
@@ -136,11 +154,12 @@ export function compareToBaseline(
   );
   const ratio = mismatched / (actual.width * actual.height);
   if (ratio > maxDiffRatio) {
+    const diffPath = saveDiffPng(caseName, diff);
     throw new Error(
-      `Pixel diff ratio ${(ratio * 100).toFixed(2)}% exceeds ${(maxDiffRatio * 100).toFixed(2)}%`,
+      `Pixel diff ratio ${(ratio * 100).toFixed(2)}% exceeds ${(maxDiffRatio * 100).toFixed(2)}% — diff: ${diffPath}`,
     );
   }
-  return ratio;
+  return { diffRatio: ratio };
 }
 
 export const UI_HIDE_IDS = [

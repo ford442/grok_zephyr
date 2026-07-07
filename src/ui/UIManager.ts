@@ -52,6 +52,8 @@ export interface UIElements {
   tuneSatCoreValue?: HTMLElement;
   tuneSatFalloffSlider?: HTMLInputElement;
   tuneSatFalloffValue?: HTMLElement;
+  tuneAnimIntensitySlider?: HTMLInputElement;
+  tuneAnimIntensityValue?: HTMLElement;
   godIdleOrbitToggle?: HTMLInputElement;
   constellationGuidesToggle?: HTMLInputElement;
   moonRingGuideToggle?: HTMLInputElement;
@@ -212,6 +214,8 @@ export class UIManager {
       tuneSatCoreValue: document.getElementById('tuneSatCoreValue') ?? undefined,
       tuneSatFalloffSlider: (document.getElementById('tuneSatFalloff') as HTMLInputElement | null) ?? undefined,
       tuneSatFalloffValue: document.getElementById('tuneSatFalloffValue') ?? undefined,
+      tuneAnimIntensitySlider: (document.getElementById('tuneAnimIntensity') as HTMLInputElement | null) ?? undefined,
+      tuneAnimIntensityValue: document.getElementById('tuneAnimIntensityValue') ?? undefined,
       godIdleOrbitToggle: (document.getElementById('godIdleOrbitToggle') as HTMLInputElement | null) ?? undefined,
       constellationGuidesToggle: (document.getElementById('constellationGuidesToggle') as HTMLInputElement | null) ?? undefined,
       moonRingGuideToggle: (document.getElementById('moonRingGuideToggle') as HTMLInputElement | null) ?? undefined,
@@ -396,6 +400,7 @@ export class UIManager {
       { slider: this.elements.tuneBloomIntensitySlider, valueEl: this.elements.tuneBloomIntensityValue, decimals: 2 },
       { slider: this.elements.tuneSatCoreSlider, valueEl: this.elements.tuneSatCoreValue, decimals: 2 },
       { slider: this.elements.tuneSatFalloffSlider, valueEl: this.elements.tuneSatFalloffValue, decimals: 2 },
+      { slider: this.elements.tuneAnimIntensitySlider, valueEl: this.elements.tuneAnimIntensityValue, decimals: 2 },
     ];
 
     for (const { slider, valueEl, decimals } of tuningSliders) {
@@ -447,6 +452,9 @@ export class UIManager {
       haloStrength: this.lastImageTuning.haloStrength,
       coreBoost: this.lastImageTuning.coreBoost,
       distanceCullKm: this.lastImageTuning.distanceCullKm,
+      animationIntensity: this.lastImageTuning.animationIntensity,
+      animationContrast: this.lastImageTuning.animationContrast,
+      animationMasterIntensity: Number(this.elements.tuneAnimIntensitySlider?.value ?? 1.0),
       enforceFloors: this.imageTuningEnforceFloors,
     };
   }
@@ -930,6 +938,7 @@ export class UIManager {
       { el: this.elements.tuneBloomIntensitySlider, val: settings.bloomIntensity, label: this.elements.tuneBloomIntensityValue, decimals: 2 },
       { el: this.elements.tuneSatCoreSlider, val: settings.satCoreOuter, label: this.elements.tuneSatCoreValue, decimals: 2 },
       { el: this.elements.tuneSatFalloffSlider, val: settings.satCoreInner, label: this.elements.tuneSatFalloffValue, decimals: 2 },
+      { el: this.elements.tuneAnimIntensitySlider, val: settings.animationMasterIntensity, label: this.elements.tuneAnimIntensityValue, decimals: 2 },
     ] as const;
     for (const { el, val, label, decimals } of sliders) {
       if (el) el.value = String(val);

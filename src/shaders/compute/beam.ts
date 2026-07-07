@@ -98,11 +98,13 @@ fn earth_surface_point(pos: vec3f) -> vec3f {
 fn patternPulse(mode: u32, beam_idx: u32, pos_a: vec3f, time: f32) -> f32 {
   switch mode {
     case 0u: {
-      // CHAOS — high-frequency flicker, irregular per-beam phases.
+      // CHAOS — high-frequency flicker, irregular per-beam phases, stochastic dropout.
       let flicker = hashf(beam_idx * 7u + u32(time * 55.0));
       let phase = hashf(beam_idx * 3u) * 6.2831853;
       let rate = 14.0 + flicker * 26.0;
-      return 0.28 + 0.72 * abs(sin(time * rate + phase));
+      let wave = abs(sin(time * rate + phase));
+      let dropout = step(0.82, hashf(beam_idx * 23u + u32(time * 17.0)));
+      return (0.22 + 0.78 * wave) * (1.0 - dropout * 0.55);
     }
     case 1u: {
       // GROK — synchronized radial sweep across the constellation.

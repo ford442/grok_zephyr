@@ -226,6 +226,8 @@ class GrokZephyrApp {
   private imageTuning: ImageTuningSettings = resolveImageTuning();
   /** When true, dev IMAGE TUNING sliders override per-view profiles. */
   private imageTuningManualOverride = false;
+  /** Dev master multiplier for animation pattern brightness (0.25–2.0). */
+  private animationMasterIntensity = 1.0;
 
   constructor() {
     const canvas = document.getElementById('gpu-canvas') as HTMLCanvasElement;
@@ -361,8 +363,10 @@ class GrokZephyrApp {
     });
     this.ui.onImageTuningChange((settings) => {
       this.imageTuning = settings;
+      this.animationMasterIntensity = settings.animationMasterIntensity;
       this.imageTuningManualOverride = true;
-      this.applyImageTuning();
+      this.applyViewTuning(performance.now() * 0.001);
+      saveImageTuning(this.imageTuning);
     });
     this.ui.onGodIdleOrbitToggle((enabled) => {
       this.camera.setGodIdleOrbitEnabled(enabled);
@@ -1025,10 +1029,13 @@ class GrokZephyrApp {
    * Set beam pattern mode (0=chaos, 1=GROK, 2=X logo)
    */
   setPatternMode(mode: number): void {
-    if (!this.context || !this.buffers) return;
-    
     this.currentPatternMode = mode;
     this.patternAnimationStart = performance.now() / 1000;
+
+    if (!this.context || !this.buffers) {
+      this.updatePatternTitle();
+      return;
+    }
     
     // Update beam params uniform buffer
     const beamParamsData = new ArrayBuffer(16);
@@ -1054,8 +1061,6 @@ class GrokZephyrApp {
    * Set animation pattern mode (3=smile, 4=digital_rain, 5=heartbeat)
    */
   setAnimationPattern(mode: number): void {
-    if (!this.context || !this.buffers) return;
-
     // Toggle off if clicking the same pattern again
     if (this.currentAnimationPattern === mode) {
       mode = 0;
@@ -1063,10 +1068,13 @@ class GrokZephyrApp {
 
     this.currentAnimationPattern = mode;
     this.patternAnimationStart = performance.now() / 1000;
-    this.writePatternParamsBuffer();
 
     const modeNames = ['OFF', '', '', '😊 SMILE', '💧 DIGITAL RAIN', '💓 HEARTBEAT'];
     console.log(`🎭 Animation pattern: ${modeNames[mode]}`);
+
+    if (!this.context || !this.buffers) return;
+
+    this.writePatternParamsBuffer();
   }
 
   private updateSelectedSatelliteIndex(index: number): void {
@@ -1243,6 +1251,7 @@ class GrokZephyrApp {
       params.has('satFalloff') ||
       params.has('satCoreInner');
     this.imageTuning = resolveImageTuning(search);
+    this.animationMasterIntensity = this.imageTuning.animationMasterIntensity;
     this.ui.setImageTuningControls(this.imageTuning, {
       enforceFloors: this.imageTuning.enforceFloors,
     });
@@ -1253,20 +1262,33 @@ class GrokZephyrApp {
     }
   }
 
-  /** Blend per-view bloom/satellite profiles during camera mode transitions. */
+  /** Blend per-view bloom/satellite/animation profiles during camera mode transitions. */
   private applyViewTuning(time: number): void {
-    if (this.imageTuningManualOverride) return;
     const blend = this.camera.getViewTuningBlend(time);
     const resolved = resolveViewTuning(
       blend.fromIndex,
       blend.toIndex,
       blend.t,
       this.imageTuning.enforceFloors,
+      this.animationMasterIntensity,
     );
     this.baseViewBloomIntensity = resolved.settings.bloomIntensity;
-    this.imageTuning = resolved.settings;
-    this.pipeline?.setImageTuning(resolved.settings);
-    this.webglRenderer?.setImageTuning(resolved.settings);
+
+    if (!this.imageTuningManualOverride) {
+      this.imageTuning = resolved.settings;
+      this.pipeline?.setImageTuning(resolved.settings);
+      this.webglRenderer?.setImageTuning(resolved.settings);
+    } else {
+      // Always blend animation tuning during view transitions; bloom/kernel stay manual.
+      this.imageTuning = {
+        ...this.imageTuning,
+        animationIntensity: resolved.settings.animationIntensity,
+        animationContrast: resolved.settings.animationContrast,
+        animationMasterIntensity: this.animationMasterIntensity,
+      };
+      this.pipeline?.setImageTuning(this.imageTuning);
+      this.webglRenderer?.setImageTuning(this.imageTuning);
+    }
     this.ui.setTuningProfile(resolved.profileLabel);
   }
 
@@ -1620,12 +1642,14 @@ class GrokZephyrApp {
    *   ?preset=low|balanced|high|cinematic   quality preset
    *   ?physics=0-2         physics mode
    *   ?pattern=0-2         beam pattern mode
+   *   ?animation=3-5       constellation animation pattern (smile/rain/heartbeat)
    */
   private parseInitialStateFromURL(): {
     viewMode: number | null;
     qualityLevel: QualityLevel | null;
     physicsMode: number | null;
     patternMode: number | null;
+    animationMode: number | null;
   } {
     const params = new URLSearchParams(window.location.search);
 
@@ -1642,6 +1666,7 @@ class GrokZephyrApp {
       qualityLevel: parseQualityParam(params.get('preset')),
       physicsMode:  parseIntParam('physics', 0, 2),
       patternMode:  parseIntParam('pattern', 0, 2),
+      animationMode: parseIntParam('animation', 3, 5),
     };
   }
 
@@ -1808,6 +1833,10 @@ class GrokZephyrApp {
       if (urlParams.patternMode !== null) {
         this.setPatternMode(urlParams.patternMode);
       }
+
+      if (urlParams.animationMode !== null) {
+        this.setAnimationPattern(urlParams.animationMode);
+      }
       
       // Initialize performance dashboard
       await this.ui.initializeDashboard(this.profiler);
@@ -1881,6 +1910,12 @@ class GrokZephyrApp {
     // Apply initial view mode from URL (?mode=0-5).
     const urlParams = this.parseInitialStateFromURL();
     this.camera.setViewMode(urlParams.viewMode ?? 0);
+    if (urlParams.patternMode !== null) {
+      this.setPatternMode(urlParams.patternMode);
+    }
+    if (urlParams.animationMode !== null) {
+      this.setAnimationPattern(urlParams.animationMode);
+    }
     this.applyVisualHarnessParams();
     this.setupImageTuning();
 
@@ -2383,9 +2418,10 @@ class GrokZephyrApp {
 
     // Pass 2.56: Moon View ring guide + lunar regolith foreground
     if (this.camera.getViewMode() === 'moon') {
+      this.moonRingGuide?.setSubtleRing(true);
       this.pipeline.encodeMoonOverlayPass(
         encoder,
-        this.moonRingGuide?.isEnabled() ? this.moonRingGuide : null,
+        this.moonRingGuide,
       );
       this.ui.setMoonScaleAnnotation(this.moonScaleHudEnabled);
     } else {

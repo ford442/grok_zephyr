@@ -212,9 +212,9 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
   if (isMoonView) {
     let nightSide = 1.0 - diff;
     let earthshine = vec3f(0.06, 0.10, 0.22) * nightSide * smoothstep(0.05, -0.30, sunDot);
-    surf += earthshine * 0.85;
-    surf += vec3f(0.06, 0.12, 0.24) * (0.32 + 0.68 * diff);
-    surf *= 1.55;
+    surf += earthshine * 1.05;
+    surf += vec3f(0.07, 0.14, 0.28) * (0.35 + 0.65 * diff);
+    surf *= 1.72;
   }
 
   return vec4f(surf + cityWarm, 1.0);

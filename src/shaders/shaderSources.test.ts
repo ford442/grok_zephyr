@@ -48,6 +48,13 @@ describe('shader source of truth', () => {
     expect(moon).toContain('EARTH_ANG_RAD');
   });
 
+  it('moon earth disk reinforces the blue marble at correct angular size', () => {
+    const disk = SHADERS.render.moonEarthDisk;
+    expect(disk).toContain('EARTH_ANG_RAD');
+    expect(disk).toContain('Earthshine on the night hemisphere');
+    expect(disk).toContain('isMoonView');
+  });
+
   it('earth shader adds earthshine for Moon View', () => {
     expect(SHADERS.render.earth).toContain('earthshine');
     expect(SHADERS.render.earth).toContain('blue-marble');
@@ -77,8 +84,11 @@ describe('shader source of truth', () => {
   it('skyline shader uses per-floor HDR windows, depth fog, and street sodium', () => {
     const skyline = SHADERS.render.skyline;
     expect(skyline).toContain('fn applyCityFog');
+    expect(skyline).toContain('fn softWindowMask');
+    expect(skyline).toContain('fn facadeCornerAO');
     expect(skyline).toContain('floorBright');
     expect(skyline).toContain('hdrCore');
+    expect(skyline).toContain('clamp((2.05');
     expect(skyline).toContain('sodium');
     expect(skyline).toContain('roofEquip');
     expect(skyline).toContain('camera_enu');
@@ -94,10 +104,19 @@ describe('shader source of truth', () => {
     expect(ribbon).toContain('fn groundProjectionTint');
     expect(ribbon).toContain('fn beamPalette');
     expect(ribbon).toContain('atmScatter');
+    expect(ribbon).toContain('dropout');
     expect(compute).toContain('fn patternPulse');
     expect(compute).toContain('fn patternThickness');
+    expect(compute).toContain('dropout');
     expect(vol).toContain('fn patternVolScales');
     expect(vol).toContain('fn patternVolPulse');
     expect(vol).toContain('viewBeamScale');
+  });
+
+  it('viewBeamScale in ribbon shader matches BeamPatternProfile table', () => {
+    const ribbon = SHADERS.render.beam;
+    expect(ribbon).toContain('case 2u: { return 0.4; }');
+    expect(ribbon).toContain('case 3u: { return 0.6; }');
+    expect(ribbon).toContain('case 4u: { return 1.3; }');
   });
 });

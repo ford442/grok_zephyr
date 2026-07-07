@@ -4,6 +4,11 @@
  */
 
 import { CULLING, RENDER } from '@/types/constants.js';
+import {
+  ANIMATION_MASTER_INTENSITY_DEFAULT,
+  ANIMATION_MASTER_INTENSITY_MAX,
+  ANIMATION_MASTER_INTENSITY_MIN,
+} from '@/core/AnimationTuning.js';
 
 export interface ImageTuningSettings {
   /** Luminance threshold for bloom extraction (0.5–3.0) */
@@ -22,6 +27,12 @@ export interface ImageTuningSettings {
   coreBoost: number;
   /** Max world-space distance (km) for satellite rendering */
   distanceCullKm: number;
+  /** Per-view animation amplitude (blended during mode transitions) */
+  animationIntensity: number;
+  /** Per-view animation contrast / gamma curve */
+  animationContrast: number;
+  /** Dev master multiplier on animationIntensity (0.25–2.0) */
+  animationMasterIntensity: number;
   /** When true, shaders enforce shipping luminance/kernel floors */
   enforceFloors: boolean;
 }
@@ -38,6 +49,9 @@ export const SHIPPING_IMAGE_TUNING: ImageTuningSettings = {
   haloStrength: 0.20,
   coreBoost: 2.5,
   distanceCullKm: CULLING.MAX_DISTANCE,
+  animationIntensity: 1.0,
+  animationContrast: 1.0,
+  animationMasterIntensity: ANIMATION_MASTER_INTENSITY_DEFAULT,
   enforceFloors: true,
 };
 
@@ -71,6 +85,8 @@ export function packSatelliteVisualUniform(tuning: ImageTuningSettings): Float32
   const haloStrength = clamp(tuning.haloStrength, 0.05, 0.40);
   const coreBoost = clamp(tuning.coreBoost, 1.5, 3.0);
   const distanceCullKm = clamp(tuning.distanceCullKm, 10_000, 600_000);
+  const animationIntensity = clamp(tuning.animationIntensity, 0.25, 2.5);
+  const animationContrast = clamp(tuning.animationContrast, 0.5, 1.5);
   return new Float32Array([
     outer,
     inner,
@@ -79,7 +95,8 @@ export function packSatelliteVisualUniform(tuning: ImageTuningSettings): Float32
     haloStrength,
     coreBoost,
     distanceCullKm,
-    0,
+    animationIntensity,
+    animationContrast,
   ]);
 }
 
@@ -154,6 +171,16 @@ export function resolveImageTuning(search = ''): ImageTuningSettings {
       typeof stored.distanceCullKm === 'number'
         ? clamp(stored.distanceCullKm, 10_000, 600_000)
         : SHIPPING_IMAGE_TUNING.distanceCullKm,
+    animationIntensity: SHIPPING_IMAGE_TUNING.animationIntensity,
+    animationContrast: SHIPPING_IMAGE_TUNING.animationContrast,
+    animationMasterIntensity: parseFloatParam(
+      params.get('animIntensity'),
+      ANIMATION_MASTER_INTENSITY_MIN,
+      ANIMATION_MASTER_INTENSITY_MAX,
+      typeof stored.animationMasterIntensity === 'number'
+        ? stored.animationMasterIntensity
+        : SHIPPING_IMAGE_TUNING.animationMasterIntensity,
+    ),
     enforceFloors: devMode ? false : (stored.enforceFloors ?? SHIPPING_IMAGE_TUNING.enforceFloors),
   };
 }

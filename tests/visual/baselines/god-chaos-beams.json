@@ -1,0 +1,12 @@
+{
+  "meanLuminance": [
+    0.030076142944528927,
+    0.055855694039839435
+  ],
+  "brightRatio": [
+    0.0008769531249999999,
+    0.0020462239583333335
+  ],
+  "maxDiffRatio": 0.1,
+  "description": "God View with CHAOS beam pattern (?pattern=0)"
+}

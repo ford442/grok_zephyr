@@ -1,0 +1,12 @@
+{
+  "meanLuminance": [
+    0.02463593015076914,
+    0.045752441708571255
+  ],
+  "brightRatio": [
+    0,
+    0.0006453993055555555
+  ],
+  "maxDiffRatio": 0.1,
+  "description": "Horizon 720 km with SMILE animation (?animation=3)"
+}

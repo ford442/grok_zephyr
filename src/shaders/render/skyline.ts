@@ -1,10 +1,18 @@
 /**
  * Skyline City Shader
  *
- * Instanced extruded-box buildings rendered into the same HDR target as the
- * main scene, using a separate near-tuned city view-projection (CityUni)
- * rather than the global planetary frustum. Windows are an emissive grid
- * faked procedurally per-face; no textures are sampled.
+ * Instanced extruded-box buildings (260 instances, single draw) rendered into the
+ * shared HDR target with a near-tuned CityUni view-projection. Procedural per-face
+ * window grids — no textures.
+ *
+ * Night-city features:
+ * - Per-floor variation (bright retail lower floors, dimmer upper, random dark units)
+ * - Soft window masks + HDR cores clamped 2.0–2.85 for cohesive bloom halos
+ * - Exponential depth fog with distant warm city bleed
+ * - Street-level sodium strips + retail spill at building bases
+ * - Rooftop equipment silhouettes on tallest decile (roofEquip flag)
+ * - Fresnel sky-gradient glass reflection on dark facades
+ * - Facade corner AO + recessed mullion depth
  */
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
@@ -78,10 +86,23 @@ fn faceNormal(faceId : f32) -> vec3f {
   }
 }
 
-fn applyCityFog(color : vec3f, distKm : f32) -> vec3f {
-  let fog = exp(-distKm * 1.65);
-  let fogColor = vec3f(0.010, 0.016, 0.030);
+fn applyCityFog(color : vec3f, distKm : f32, streetGlow : f32) -> vec3f {
+  let fog = exp(-distKm * 1.55);
+  // Cool night haze + distant warm city glow bleeding into the fog.
+  let fogColor = mix(vec3f(0.010, 0.016, 0.030), vec3f(0.04, 0.028, 0.018), streetGlow * 0.35);
   return mix(fogColor, color, clamp(fog, 0.0, 1.0));
+}
+
+fn softWindowMask(cellU : f32, cellV : f32) -> f32 {
+  let u = smoothstep(0.14, 0.20, cellU) * smoothstep(0.86, 0.80, cellU);
+  let v = smoothstep(0.18, 0.24, cellV) * smoothstep(0.82, 0.76, cellV);
+  return u * v;
+}
+
+fn facadeCornerAO(cellU : f32, cellV : f32) -> f32 {
+  let edgeU = min(cellU, 1.0 - cellU);
+  let edgeV = min(cellV, 1.0 - cellV);
+  return mix(0.72, 1.0, smoothstep(0.0, 0.12, min(edgeU, edgeV) * 4.0));
 }
 
 @vertex
@@ -119,7 +140,7 @@ fn fs(in : VOut) -> @location(0) vec4f {
 
   // Bottom face: dark foundation, no windows.
   if (in.faceId > 3.5 && in.faceId < 4.5) {
-    return vec4f(applyCityFog(vec3f(0.008, 0.010, 0.014), distKm), 1.0);
+    return vec4f(applyCityFog(vec3f(0.008, 0.010, 0.014), distKm, 0.0), 1.0);
   }
 
   // Roof face: concrete + optional HVAC silhouettes on tallest buildings.
@@ -136,7 +157,7 @@ fn fs(in : VOut) -> @location(0) vec4f {
       let rail = smoothstep(0.92, 0.98, fract(equipV)) * 0.04;
       roof += vec3f(0.02, 0.025, 0.03) * rail;
     }
-    return vec4f(applyCityFog(roof, distKm), 1.0);
+    return vec4f(applyCityFog(roof, distKm, 0.0), 1.0);
   }
 
   // ── Facade faces ────────────────────────────────────────────────────────
@@ -155,11 +176,11 @@ fn fs(in : VOut) -> @location(0) vec4f {
   let isLit = step(0.38, litRoll);
   let isDark = step(litRoll, 0.07);
   // Slow, TAA-friendly occupancy flicker — living city without per-pixel soup.
-  let flicker = 0.86 + 0.14 * sin(city.params.z * 0.55 + litRoll * 47.0 + cellIdU * 0.3);
+  let flicker = 0.88 + 0.12 * sin(city.params.z * 0.55 + litRoll * 47.0 + cellIdU * 0.3);
   let windowLit = isLit * (1.0 - isDark) * flicker;
 
-  let windowMask = step(0.16, cellU) * step(cellU, 0.84)
-                   * step(0.20, cellV) * step(cellV, 0.80);
+  let windowMask = softWindowMask(cellU, cellV);
+  let cornerAO = facadeCornerAO(cellU, cellV);
 
   // Per-building facade tint so blocks don't read as identical gray slabs.
   let bldgHue = hash21(in.instSeed * 2.7);
@@ -171,7 +192,8 @@ fn fs(in : VOut) -> @location(0) vec4f {
   let skyLow = vec3f(0.018, 0.024, 0.042);
   let skyHigh = vec3f(0.05, 0.08, 0.14);
   let skyGrad = mix(skyLow, skyHigh, clamp(viewDir.z * 0.5 + 0.5, 0.0, 1.0));
-  facadeColor = mix(facadeColor, skyGrad, fresnel * 0.55 * night);
+  facadeColor = mix(facadeColor, skyGrad, fresnel * 0.62 * night);
+  facadeColor *= cornerAO;
 
   let warmWindow = vec3f(1.0, 0.76, 0.44);
   let coolWindow = vec3f(0.58, 0.80, 1.0);
@@ -182,35 +204,38 @@ fn fs(in : VOut) -> @location(0) vec4f {
     (1.0 - heightNorm) * 0.65,
   );
 
-  // HDR window cores (> 2.0) drive cohesive bloom halos, not per-pixel soup.
-  let hdrCore = (2.15 + floorBright * 1.35) * windowBoost * night;
+  // HDR window cores (2.0–2.8) — soft masks keep bloom cohesive, not per-pixel soup.
+  let hdrCore = clamp((2.05 + floorBright * 1.15) * windowBoost * night, 2.0, 2.85);
   let windowColor = windowTint * hdrCore;
 
-  // Recessed window depth — darker mullion inset so panes read as 3D.
-  let recess = smoothstep(0.16, 0.24, cellU) * smoothstep(0.84, 0.76, cellU)
-             * smoothstep(0.20, 0.28, cellV) * smoothstep(0.80, 0.72, cellV);
-  let recessShade = mix(0.62, 1.0, recess);
+  // Recessed pane depth — darker mullion inset so units read as 3D.
+  let recessShade = mix(0.58, 1.0, windowMask);
 
   var color = mix(facadeColor, windowColor * recessShade, windowLit * windowMask);
 
+  // Soft spill halo around lit panes — widens bloom footprint without raising core HDR.
+  let spill = windowLit * windowMask * 0.14 * night;
+  color += windowTint * spill * smoothstep(0.0, 0.35, heightNorm);
+
   // Cheap inter-window ambient bounce on the dark glass between lit units.
-  color += windowTint * windowLit * windowMask * 0.06 * night;
+  color += windowTint * windowLit * windowMask * 0.05 * night;
 
   // Street-level sodium light strips along the building base.
-  let streetBand = smoothstep(0.014, 0.005, in.localUV.y) * smoothstep(0.0, 0.002, in.localUV.y);
-  let sodium = vec3f(1.0, 0.70, 0.30) * streetBand * 2.6 * night;
-  color += sodium * (1.0 - windowMask * 0.55);
+  let streetBand = smoothstep(0.018, 0.004, in.localUV.y);
+  let sodium = vec3f(1.0, 0.70, 0.30) * streetBand * 2.4 * night;
+  color += sodium * (1.0 - windowMask * 0.45);
 
   // Retail spill — warm glow bleeding up from the first two floors.
-  let retailSpill = smoothstep(0.028, 0.0, in.localUV.y) * (1.0 - heightNorm);
-  color += vec3f(1.0, 0.78, 0.42) * retailSpill * 0.35 * night * windowBoost;
+  let retailSpill = smoothstep(0.032, 0.0, in.localUV.y) * (1.0 - heightNorm);
+  color += vec3f(1.0, 0.78, 0.42) * retailSpill * 0.42 * night * windowBoost;
 
   // Mullion lines between floors for depth.
-  let mullionH = smoothstep(0.02, 0.0, abs(cellV - 0.5) - 0.38);
-  let mullionV = smoothstep(0.02, 0.0, abs(cellU - 0.5) - 0.36);
-  color *= 1.0 - (mullionH + mullionV) * 0.22;
+  let mullionH = smoothstep(0.025, 0.0, abs(cellV - 0.5) - 0.36);
+  let mullionV = smoothstep(0.025, 0.0, abs(cellU - 0.5) - 0.34);
+  color *= 1.0 - (mullionH + mullionV) * 0.26;
 
-  color = applyCityFog(color, distKm);
+  let streetGlow = smoothstep(0.04, 0.0, in.localUV.y) * (1.0 - heightNorm);
+  color = applyCityFog(color, distKm, streetGlow);
   return vec4f(color, 1.0);
 }
 `;

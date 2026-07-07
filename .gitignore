@@ -11,3 +11,4 @@ dist/
 test-results/
 playwright-report/
 blob-report/
+tests/visual/diffs/

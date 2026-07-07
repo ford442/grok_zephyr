@@ -8,6 +8,10 @@
 
 import { CULLING } from '@/types/constants.js';
 import type { ImageTuningSettings } from '@/core/ImageTuning.js';
+import {
+  ANIMATION_MASTER_INTENSITY_DEFAULT,
+  resolveEffectiveAnimationTuning,
+} from '@/core/AnimationTuning.js';
 import { SHIPPING_IMAGE_TUNING } from '@/core/ImageTuning.js';
 
 /** Bloom + satellite kernel + cull distances keyed by view_mode (0–5). */
@@ -26,6 +30,10 @@ export interface ViewTuningProfile {
   haloStrength: number;
   coreBoost: number;
   distanceCullKm: number;
+  /** Animation pattern amplitude multiplier (0.5–1.6) — blended on view transitions */
+  animationIntensity: number;
+  /** Animation contrast / gamma (>1 crushes lows, <1 lifts diastole floor) */
+  animationContrast: number;
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -65,6 +73,8 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     haloStrength: 0.18,
     coreBoost: 2.4,
     distanceCullKm: CULLING.MAX_DISTANCE,
+    animationIntensity: 1.0,
+    animationContrast: 1.0,
   },
   {
     viewModeIndex: 1,
@@ -80,6 +90,8 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     haloStrength: 0.15,
     coreBoost: 2.5,
     distanceCullKm: CULLING.MAX_DISTANCE,
+    animationIntensity: 0.80,
+    animationContrast: 1.15,
   },
   {
     viewModeIndex: 2,
@@ -96,6 +108,8 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     haloStrength: 0.10,
     coreBoost: 2.2,
     distanceCullKm: 80_000,
+    animationIntensity: 0.72,
+    animationContrast: 0.82,
   },
   {
     viewModeIndex: 3,
@@ -112,6 +126,8 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     haloStrength: 0.22,
     coreBoost: 2.3,
     distanceCullKm: 120_000,
+    animationIntensity: 1.38,
+    animationContrast: 1.08,
   },
   {
     viewModeIndex: 4,
@@ -128,6 +144,8 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     haloStrength: 0.28,
     coreBoost: 2.6,
     distanceCullKm: 500_000,
+    animationIntensity: 1.55,
+    animationContrast: 0.90,
   },
   {
     viewModeIndex: 5,
@@ -144,6 +162,8 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     haloStrength: 0.20,
     coreBoost: 2.55,
     distanceCullKm: 100_000,
+    animationIntensity: 1.12,
+    animationContrast: 1.0,
   },
 ] as const;
 
@@ -186,6 +206,8 @@ export function interpolateViewTuningProfiles(
     haloStrength: lerp(from.haloStrength, to.haloStrength, s),
     coreBoost: lerp(from.coreBoost, to.coreBoost, s),
     distanceCullKm: lerp(from.distanceCullKm, to.distanceCullKm, s),
+    animationIntensity: lerp(from.animationIntensity, to.animationIntensity, s),
+    animationContrast: lerp(from.animationContrast, to.animationContrast, s),
   };
 }
 
@@ -225,7 +247,9 @@ export interface ResolvedViewTuning {
 export function profileToImageTuning(
   profile: ViewTuningProfile,
   enforceFloors: boolean,
+  animationMasterIntensity = ANIMATION_MASTER_INTENSITY_DEFAULT,
 ): ImageTuningSettings {
+  const anim = resolveEffectiveAnimationTuning(profile, animationMasterIntensity);
   return {
     bloomThreshold: profile.bloomThreshold,
     bloomKnee: profile.bloomKnee,
@@ -235,6 +259,9 @@ export function profileToImageTuning(
     haloStrength: profile.haloStrength,
     coreBoost: profile.coreBoost,
     distanceCullKm: profile.distanceCullKm,
+    animationIntensity: anim.animationIntensity,
+    animationContrast: anim.animationContrast,
+    animationMasterIntensity,
     enforceFloors,
   };
 }
@@ -245,10 +272,11 @@ export function resolveViewTuning(
   toIndex: number,
   t: number,
   enforceFloors = SHIPPING_IMAGE_TUNING.enforceFloors,
+  animationMasterIntensity = ANIMATION_MASTER_INTENSITY_DEFAULT,
 ): ResolvedViewTuning {
   const activeProfile = blendViewTuningProfiles(fromIndex, toIndex, t);
   return {
-    settings: profileToImageTuning(activeProfile, enforceFloors),
+    settings: profileToImageTuning(activeProfile, enforceFloors, animationMasterIntensity),
     profileLabel: formatTuningProfileLabel(fromIndex, toIndex, t),
     activeProfile,
   };

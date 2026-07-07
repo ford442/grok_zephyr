@@ -1,0 +1,12 @@
+{
+  "meanLuminance": [
+    0.030033447146768706,
+    0.05577640184399902
+  ],
+  "brightRatio": [
+    0.0008756510416666666,
+    0.002043185763888889
+  ],
+  "maxDiffRatio": 0.1,
+  "description": "God View with GROK beam pattern (?pattern=1)"
+}

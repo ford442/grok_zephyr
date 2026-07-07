@@ -11,4 +11,5 @@ export { GROUND_TERRAIN as ground } from './ground.js';
 export { SKYLINE_BUILDINGS as skyline } from './skyline.js';
 export { VOLUMETRIC_BEAM_SHADER as volumetricBeam } from './volumetricBeams.js';
 export { MOON_FOREGROUND_SHADER as moonForeground } from './moonForeground.js';
+export { MOON_EARTH_DISK_SHADER as moonEarthDisk } from './moonEarthDisk.js';
 export * as postProcess from './postProcess/index.js';
