@@ -1137,6 +1137,7 @@ export class RenderPipeline {
     moonView = false,
   ): void {
     if (!this.pipelines || !this.bindGroups || !this.renderTargets) return;
+    const { pipelines, bindGroups } = this;
 
     const pass = encoder.beginRenderPass({
       colorAttachments: [{
@@ -1162,16 +1163,16 @@ export class RenderPipeline {
     pass.draw(3);
 
     const drawEarth = (): void => {
-      pass.setPipeline(this.pipelines.earth);
-      pass.setBindGroup(0, this.bindGroups.earth);
+      pass.setPipeline(pipelines.earth);
+      pass.setBindGroup(0, bindGroups.earth);
       pass.setVertexBuffer(0, earthVertexBuffer);
       pass.setIndexBuffer(earthIndexBuffer, 'uint32');
       pass.drawIndexed(earthIndexCount);
     };
 
     const drawAtmosphere = (): void => {
-      pass.setPipeline(this.pipelines.atmosphere);
-      pass.setBindGroup(0, this.bindGroups.atmosphere);
+      pass.setPipeline(pipelines.atmosphere);
+      pass.setBindGroup(0, bindGroups.atmosphere);
       pass.setVertexBuffer(0, earthVertexBuffer);
       pass.setIndexBuffer(earthIndexBuffer, 'uint32');
       pass.drawIndexed(earthIndexCount);
