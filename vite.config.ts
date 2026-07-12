@@ -11,11 +11,14 @@ function wgslPlugin() {
     name: 'vite-plugin-wgsl',
     enforce: 'pre' as const,
     
-    resolveId(id: string) {
-      if (id.endsWith('.wgsl')) {
-        return resolve(process.cwd(), id);
+    resolveId(id: string, importer?: string) {
+      if (!id.endsWith('.wgsl')) {
+        return null;
       }
-      return null;
+      if (id.startsWith('.') && importer) {
+        return resolve(importer, '..', id);
+      }
+      return resolve(process.cwd(), id);
     },
     
     load(id: string) {

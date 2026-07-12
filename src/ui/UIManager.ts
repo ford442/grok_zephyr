@@ -1,6 +1,6 @@
 /**
  * Grok Zephyr - UI Manager
- * 
+ *
  * Handles HUD updates, stats display, control buttons, and animation controls.
  */
 
@@ -11,92 +11,30 @@ import { QUALITY_PRESETS } from '@/core/QualityPresets.js';
 import type { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
 import type { ImageTuningSettings } from '@/core/ImageTuning.js';
 import { SHIPPING_IMAGE_TUNING } from '@/core/ImageTuning.js';
-
-type ExposureMode = 'auto' | 'manual';
-type TonemapMode = 0 | 1 | 2 | 3;
-
-/** UI element references */
-export interface UIElements {
-  altitude: HTMLElement;
-  fleet: HTMLElement;
-  fps: HTMLElement;
-  viewMode: HTMLElement;
-  tuningProfile: HTMLElement;
-  visible: HTMLElement;
-  quality: HTMLElement;
-  error: HTMLElement;
-  controls: HTMLElement;
-  buttons: HTMLButtonElement[];
-  demoButton: HTMLButtonElement;
-  demoAutoButton: HTMLButtonElement;
-  patternButtons: HTMLButtonElement[];
-  animationButtons: HTMLButtonElement[];
-  physicsButtons: HTMLButtonElement[];
-  qualityButtons: HTMLButtonElement[];
-  audioToggleButton?: HTMLButtonElement;
-  trailsToggleButton?: HTMLButtonElement;
-  trailsLengthSelect?: HTMLSelectElement;
-  exposureModeSelect?: HTMLSelectElement;
-  manualExposureSlider?: HTMLInputElement;
-  manualExposureValue?: HTMLElement;
-  exposureSpeedSlider?: HTMLInputElement;
-  exposureSpeedValue?: HTMLElement;
-  tonemapModeSelect?: HTMLSelectElement;
-  tuneBloomThresholdSlider?: HTMLInputElement;
-  tuneBloomThresholdValue?: HTMLElement;
-  tuneBloomKneeSlider?: HTMLInputElement;
-  tuneBloomKneeValue?: HTMLElement;
-  tuneBloomIntensitySlider?: HTMLInputElement;
-  tuneBloomIntensityValue?: HTMLElement;
-  tuneSatCoreSlider?: HTMLInputElement;
-  tuneSatCoreValue?: HTMLElement;
-  tuneSatFalloffSlider?: HTMLInputElement;
-  tuneSatFalloffValue?: HTMLElement;
-  tuneAnimIntensitySlider?: HTMLInputElement;
-  tuneAnimIntensityValue?: HTMLElement;
-  godIdleOrbitToggle?: HTMLInputElement;
-  constellationGuidesToggle?: HTMLInputElement;
-  moonRingGuideToggle?: HTMLInputElement;
-  moonScaleHudToggle?: HTMLInputElement;
-  horizonIndicator: HTMLElement;
-  horizonLimbLine: HTMLElement;
-  moonScaleAnnotation: HTMLElement;
-  fleetCockpitHud: HTMLElement;
-  fleetReticle: HTMLElement;
-  fleetHudLeft: HTMLElement;
-  fleetHudRight: HTMLElement;
-  fleetHudSpeed: HTMLElement;
-  fleetHudAltitude: HTMLElement;
-  fleetHudHeading: HTMLElement;
-  fleetHudNearby: HTMLElement;
-  angleInfo: HTMLElement;
-  resetAngleBtn: HTMLElement;
-  animationControls: HTMLElement;
-  timeControls?: HTMLElement;
-  simTimeDisplay?: HTMLElement;
-  timeScaleSlider?: HTMLInputElement;
-  timeScaleValue?: HTMLElement;
-}
-
-/** Animation control options */
-export interface AnimationUIState {
-  currentPattern: AnimationPattern;
-  speed: number;
-  isPlaying: boolean;
-  loop: boolean;
-}
-
-/** Minimal interface for PerformanceDashboard */
-interface IDashboard {
-  initialize(): void;
-  updateStats(stats: PerformanceStats): void;
-  updateQualityPreset(level: QualityLevel): void;
-  destroy(): void;
-}
+import type {
+  AnimationUIState,
+  ExposureMode,
+  IDashboard,
+  TonemapMode,
+  UIElements,
+} from '@/ui/uiTypes.js';
+export type { AnimationUIState, ExposureMode, TonemapMode, UIElements } from '@/ui/uiTypes.js';
+import {
+  createAnimationControls,
+  getElements,
+  setupEventListeners,
+  setupMobileMenu,
+  type UIManagerSetupCallbacks,
+} from '@/ui/uiManagerSetup.js';
+import {
+  createTimeScaleControl,
+  updateSimTimeDisplay,
+  type TimeScaleControlState,
+} from '@/ui/timeScaleControl.js';
 
 /**
  * UI Manager
- * 
+ *
  * Manages all UI updates and interactions including:
  * - View mode buttons
  * - Beam pattern buttons
@@ -106,30 +44,32 @@ interface IDashboard {
  */
 export class UIManager {
   private elements: UIElements;
-  private onViewChangeCallback: ((index: number) => void) | null = null;
-  private onPatternChangeCallback: ((mode: number) => void) | null = null;
-  private onAnimationChangeCallback: ((pattern: AnimationPattern) => void) | null = null;
-  private onPhysicsChangeCallback: ((mode: number) => void) | null = null;
-  private onQualityChangeCallback: ((level: QualityLevel) => void) | null = null;
-  private onSpeedChangeCallback: ((speed: number) => void) | null = null;
-  private onLoopToggleCallback: ((loop: boolean) => void) | null = null;
-  private onDemoToggleCallback: (() => void) | null = null;
-  private onDemoAutoToggleCallback: ((enabled: boolean) => void) | null = null;
-  private onAudioToggleCallback: ((muted: boolean) => void) | null = null;
-  private onTrailsToggleCallback: ((enabled: boolean) => void) | null = null;
-  private onTrailLengthChangeCallback: ((mode: 'short' | 'medium' | 'long') => void) | null = null;
-  private onExposureModeChangeCallback: ((mode: ExposureMode) => void) | null = null;
-  private onManualExposureChangeCallback: ((value: number) => void) | null = null;
-  private onExposureAdaptationSpeedChangeCallback: ((value: number) => void) | null = null;
-  private onTonemapModeChangeCallback: ((mode: TonemapMode) => void) | null = null;
-  private onImageTuningChangeCallback: ((settings: ImageTuningSettings) => void) | null = null;
-  private onGodIdleOrbitToggleCallback: ((enabled: boolean) => void) | null = null;
-  private onConstellationGuidesToggleCallback: ((enabled: boolean) => void) | null = null;
-  private onMoonRingGuideToggleCallback: ((enabled: boolean) => void) | null = null;
-  private onMoonScaleHudToggleCallback: ((enabled: boolean) => void) | null = null;
+  private callbacks: UIManagerSetupCallbacks = {
+    onViewChange: null,
+    onPatternChange: null,
+    onAnimationChange: null,
+    onPhysicsChange: null,
+    onQualityChange: null,
+    onSpeedChange: null,
+    onLoopToggle: null,
+    onDemoToggle: null,
+    onDemoAutoToggle: null,
+    onAudioToggle: null,
+    onTrailsToggle: null,
+    onTrailLengthChange: null,
+    onExposureModeChange: null,
+    onManualExposureChange: null,
+    onExposureAdaptationSpeedChange: null,
+    onTonemapModeChange: null,
+    onImageTuningChange: null,
+    onGodIdleOrbitToggle: null,
+    onConstellationGuidesToggle: null,
+    onMoonRingGuideToggle: null,
+    onMoonScaleHudToggle: null,
+  };
   private imageTuningEnforceFloors = true;
   private lastImageTuning: ImageTuningSettings = { ...SHIPPING_IMAGE_TUNING };
-  
+
   private animationState: AnimationUIState = {
     currentPattern: 'grok',
     speed: 1.0,
@@ -141,405 +81,28 @@ export class UIManager {
   private currentQualityLevel: QualityLevel = 'high';
   private demoAutoEnabled = true;
 
+  private timeScaleState: TimeScaleControlState;
+
   constructor() {
-    this.elements = this.getElements();
-    this.setupEventListeners();
-    this.createAnimationControls();
-    this.setupMobileMenu();
-  }
-
-  /**
-   * Get references to UI elements
-   */
-  private getElements(): UIElements {
-    const getEl = (id: string) => document.getElementById(id)!;
-    
-    return {
-      altitude: getEl('s-alt'),
-      fleet: getEl('s-fleet'),
-      fps: getEl('s-fps'),
-      viewMode: getEl('s-view'),
-      tuningProfile: getEl('s-tuning'),
-      visible: getEl('s-visible'),
-      quality: getEl('s-quality'),
-      error: getEl('error'),
-      controls: getEl('controls'),
-      buttons: [
-        document.getElementById('btn0') as HTMLButtonElement,
-        document.getElementById('btn1') as HTMLButtonElement,
-        document.getElementById('btn2') as HTMLButtonElement,
-        document.getElementById('btn3') as HTMLButtonElement,
-        document.getElementById('btn4') as HTMLButtonElement,
-        document.getElementById('btn5') as HTMLButtonElement,
-      ],
-      demoButton: document.getElementById('btnDemo') as HTMLButtonElement,
-      demoAutoButton: document.getElementById('btnDemoAuto') as HTMLButtonElement,
-      patternButtons: [
-        document.getElementById('pbtn0') as HTMLButtonElement,
-        document.getElementById('pbtn1') as HTMLButtonElement,
-        document.getElementById('pbtn2') as HTMLButtonElement,
-      ],
-      animationButtons: [
-        document.getElementById('anim3') as HTMLButtonElement,
-        document.getElementById('anim4') as HTMLButtonElement,
-        document.getElementById('anim5') as HTMLButtonElement,
-      ],
-      physicsButtons: [
-        document.getElementById('phys0') as HTMLButtonElement,
-        document.getElementById('phys1') as HTMLButtonElement,
-        document.getElementById('phys2') as HTMLButtonElement,
-      ],
-      qualityButtons: [
-        document.getElementById('qlow')  as HTMLButtonElement,
-        document.getElementById('qbal')  as HTMLButtonElement,
-        document.getElementById('qhigh') as HTMLButtonElement,
-        document.getElementById('qcine') as HTMLButtonElement,
-      ],
-      audioToggleButton: (document.getElementById('audioToggle') as HTMLButtonElement | null) ?? undefined,
-      trailsToggleButton: (document.getElementById('trailsToggle') as HTMLButtonElement | null) ?? undefined,
-      trailsLengthSelect: (document.getElementById('trailsLength') as HTMLSelectElement | null) ?? undefined,
-      exposureModeSelect: (document.getElementById('exposureMode') as HTMLSelectElement | null) ?? undefined,
-      manualExposureSlider: (document.getElementById('manualExposure') as HTMLInputElement | null) ?? undefined,
-      manualExposureValue: (document.getElementById('manualExposureValue') as HTMLElement | null) ?? undefined,
-      exposureSpeedSlider: (document.getElementById('exposureSpeed') as HTMLInputElement | null) ?? undefined,
-      exposureSpeedValue: (document.getElementById('exposureSpeedValue') as HTMLElement | null) ?? undefined,
-      tonemapModeSelect: (document.getElementById('tonemapMode') as HTMLSelectElement | null) ?? undefined,
-      tuneBloomThresholdSlider: (document.getElementById('tuneBloomThreshold') as HTMLInputElement | null) ?? undefined,
-      tuneBloomThresholdValue: document.getElementById('tuneBloomThresholdValue') ?? undefined,
-      tuneBloomKneeSlider: (document.getElementById('tuneBloomKnee') as HTMLInputElement | null) ?? undefined,
-      tuneBloomKneeValue: document.getElementById('tuneBloomKneeValue') ?? undefined,
-      tuneBloomIntensitySlider: (document.getElementById('tuneBloomIntensity') as HTMLInputElement | null) ?? undefined,
-      tuneBloomIntensityValue: document.getElementById('tuneBloomIntensityValue') ?? undefined,
-      tuneSatCoreSlider: (document.getElementById('tuneSatCore') as HTMLInputElement | null) ?? undefined,
-      tuneSatCoreValue: document.getElementById('tuneSatCoreValue') ?? undefined,
-      tuneSatFalloffSlider: (document.getElementById('tuneSatFalloff') as HTMLInputElement | null) ?? undefined,
-      tuneSatFalloffValue: document.getElementById('tuneSatFalloffValue') ?? undefined,
-      tuneAnimIntensitySlider: (document.getElementById('tuneAnimIntensity') as HTMLInputElement | null) ?? undefined,
-      tuneAnimIntensityValue: document.getElementById('tuneAnimIntensityValue') ?? undefined,
-      godIdleOrbitToggle: (document.getElementById('godIdleOrbitToggle') as HTMLInputElement | null) ?? undefined,
-      constellationGuidesToggle: (document.getElementById('constellationGuidesToggle') as HTMLInputElement | null) ?? undefined,
-      moonRingGuideToggle: (document.getElementById('moonRingGuideToggle') as HTMLInputElement | null) ?? undefined,
-      moonScaleHudToggle: (document.getElementById('moonScaleHudToggle') as HTMLInputElement | null) ?? undefined,
-      horizonIndicator: getEl('horizon-indicator'),
-      horizonLimbLine: getEl('horizon-limb-line'),
-      moonScaleAnnotation: getEl('moon-scale-annotation'),
-      fleetCockpitHud: getEl('fleet-cockpit-hud'),
-      fleetReticle: getEl('fleet-reticle'),
-      fleetHudLeft: getEl('fleet-hud-left'),
-      fleetHudRight: getEl('fleet-hud-right'),
-      fleetHudSpeed: getEl('fleet-hud-speed'),
-      fleetHudAltitude: getEl('fleet-hud-altitude'),
-      fleetHudHeading: getEl('fleet-hud-heading'),
-      fleetHudNearby: getEl('fleet-hud-nearby'),
-      angleInfo: getEl('angleInfo'),
-      resetAngleBtn: getEl('resetAngle'),
-      animationControls: getEl('animation-controls'),
+    this.elements = getElements();
+    this.timeScaleState = {
+      elements: this.elements,
+      currentTimeScale: 1.0,
+      onTimeScaleChange: null,
     };
+    setupEventListeners({
+      elements: this.elements,
+      animationState: this.animationState,
+      callbacks: this.callbacks,
+      actions: this,
+      getDemoAutoEnabled: () => this.demoAutoEnabled,
+      getLastImageTuning: () => this.lastImageTuning,
+      getImageTuningEnforceFloors: () => this.imageTuningEnforceFloors,
+    });
+    createAnimationControls(this.elements, this.animationState, this.callbacks);
+    setupMobileMenu(this.elements);
   }
 
-  /**
-   * Setup event listeners for controls
-   */
-  private setupEventListeners(): void {
-    // View mode buttons
-    this.elements.buttons.forEach((btn, index) => {
-      btn?.addEventListener('click', () => {
-        this.setActiveButton(index);
-        if (this.onViewChangeCallback) {
-          this.onViewChangeCallback(index);
-        }
-      });
-    });
-
-    // Pattern buttons (Chaos/Grok/X)
-    this.elements.demoButton?.addEventListener('click', () => {
-      if (this.onDemoToggleCallback) {
-        this.onDemoToggleCallback();
-      }
-    });
-
-    this.elements.demoAutoButton?.addEventListener('click', () => {
-      const enabled = !this.demoAutoEnabled;
-      this.setDemoAutoEnabled(enabled);
-      if (this.onDemoAutoToggleCallback) {
-        this.onDemoAutoToggleCallback(enabled);
-      }
-    });
-
-    // Pattern buttons (Chaos/Grok/X)
-    this.elements.patternButtons.forEach((btn) => {
-      btn?.addEventListener('click', (e) => {
-        const target = e.target as HTMLButtonElement;
-        const mode = parseInt(target.dataset.pattern || '1');
-        this.setActivePatternButton(mode);
-        if (this.onPatternChangeCallback) {
-          this.onPatternChangeCallback(mode);
-        }
-      });
-    });
-
-    // Animation buttons (Smile/Matrix/Heartbeat)
-    this.elements.animationButtons.forEach((btn) => {
-      btn?.addEventListener('click', (e) => {
-        const target = e.target as HTMLButtonElement;
-        const patternIdx = parseInt(target.dataset.pattern || '3');
-        const patternMap: Record<number, AnimationPattern> = {
-          3: 'smile',
-          4: 'rain',
-          5: 'heartbeat',
-        };
-        const pattern = patternMap[patternIdx] || 'grok';
-        
-        this.setActiveAnimationButton(patternIdx);
-        this.animationState.currentPattern = pattern;
-        this.animationState.isPlaying = true;
-        
-        if (this.onAnimationChangeCallback) {
-          this.onAnimationChangeCallback(pattern);
-        }
-      });
-    });
-
-    // Physics buttons
-    this.elements.physicsButtons.forEach((btn) => {
-      btn?.addEventListener('click', (e) => {
-        const target = e.target as HTMLButtonElement;
-        if (target.classList.contains('disabled')) return;
-        
-        const mode = parseInt(target.dataset.physics || '0');
-        this.setActivePhysicsButton(mode);
-        if (this.onPhysicsChangeCallback) {
-          this.onPhysicsChangeCallback(mode);
-        }
-      });
-    });
-
-    // Quality preset buttons
-    this.elements.qualityButtons.forEach((btn) => {
-      btn?.addEventListener('click', (e) => {
-        const target = e.target as HTMLButtonElement;
-        const level = (target.dataset.quality || 'high') as QualityLevel;
-        this.setActiveQualityButton(level);
-        if (this.onQualityChangeCallback) {
-          this.onQualityChangeCallback(level);
-        }
-      });
-    });
-
-    this.elements.audioToggleButton?.addEventListener('click', () => {
-      const nextMuted = this.elements.audioToggleButton?.classList.contains('active') ?? true;
-      this.setAudioMuted(nextMuted);
-      if (this.onAudioToggleCallback) {
-        this.onAudioToggleCallback(nextMuted);
-      }
-    });
-
-    this.elements.trailsToggleButton?.addEventListener('click', () => {
-      const nextEnabled = !(this.elements.trailsToggleButton?.classList.contains('active') ?? false);
-      this.setTrailsEnabled(nextEnabled);
-      if (this.onTrailsToggleCallback) {
-        this.onTrailsToggleCallback(nextEnabled);
-      }
-    });
-
-    this.elements.trailsLengthSelect?.addEventListener('change', () => {
-      const raw = this.elements.trailsLengthSelect?.value ?? 'medium';
-      const mode: 'short' | 'medium' | 'long' = raw === 'short' || raw === 'long' ? raw : 'medium';
-      if (this.onTrailLengthChangeCallback) {
-        this.onTrailLengthChangeCallback(mode);
-      }
-    });
-
-    this.elements.exposureModeSelect?.addEventListener('change', () => {
-      const raw = this.elements.exposureModeSelect?.value;
-      const mode: ExposureMode = raw === 'manual' ? 'manual' : 'auto';
-      const manualDisabled = mode === 'auto';
-      if (this.elements.manualExposureSlider) {
-        this.elements.manualExposureSlider.disabled = manualDisabled;
-      }
-      if (this.onExposureModeChangeCallback) {
-        this.onExposureModeChangeCallback(mode);
-      }
-    });
-
-    this.elements.manualExposureSlider?.addEventListener('input', () => {
-      const value = Number(this.elements.manualExposureSlider?.value ?? 1);
-      if (this.elements.manualExposureValue) {
-        this.elements.manualExposureValue.textContent = `${value.toFixed(2)}x`;
-      }
-      if (this.onManualExposureChangeCallback) {
-        this.onManualExposureChangeCallback(value);
-      }
-    });
-
-    this.elements.exposureSpeedSlider?.addEventListener('input', () => {
-      const value = Number(this.elements.exposureSpeedSlider?.value ?? 1.8);
-      if (this.elements.exposureSpeedValue) {
-        this.elements.exposureSpeedValue.textContent = value.toFixed(1);
-      }
-      if (this.onExposureAdaptationSpeedChangeCallback) {
-        this.onExposureAdaptationSpeedChangeCallback(value);
-      }
-    });
-
-    this.elements.tonemapModeSelect?.addEventListener('change', () => {
-      const parsed = Number(this.elements.tonemapModeSelect?.value ?? 0);
-      const mode: TonemapMode = (parsed >= 0 && parsed <= 3 ? parsed : 0) as TonemapMode;
-      if (this.onTonemapModeChangeCallback) {
-        this.onTonemapModeChangeCallback(mode);
-      }
-    });
-
-    const tuningSliders: Array<{
-      slider?: HTMLInputElement;
-      valueEl?: HTMLElement;
-      decimals: number;
-    }> = [
-      { slider: this.elements.tuneBloomThresholdSlider, valueEl: this.elements.tuneBloomThresholdValue, decimals: 2 },
-      { slider: this.elements.tuneBloomKneeSlider, valueEl: this.elements.tuneBloomKneeValue, decimals: 2 },
-      { slider: this.elements.tuneBloomIntensitySlider, valueEl: this.elements.tuneBloomIntensityValue, decimals: 2 },
-      { slider: this.elements.tuneSatCoreSlider, valueEl: this.elements.tuneSatCoreValue, decimals: 2 },
-      { slider: this.elements.tuneSatFalloffSlider, valueEl: this.elements.tuneSatFalloffValue, decimals: 2 },
-      { slider: this.elements.tuneAnimIntensitySlider, valueEl: this.elements.tuneAnimIntensityValue, decimals: 2 },
-    ];
-
-    for (const { slider, valueEl, decimals } of tuningSliders) {
-      slider?.addEventListener('input', () => {
-        const val = Number(slider.value);
-        if (valueEl) {
-          valueEl.textContent = val.toFixed(decimals);
-        }
-        this.emitImageTuningChange();
-      });
-    }
-
-    this.elements.godIdleOrbitToggle?.addEventListener('change', () => {
-      const enabled = this.elements.godIdleOrbitToggle?.checked ?? true;
-      if (this.onGodIdleOrbitToggleCallback) {
-        this.onGodIdleOrbitToggleCallback(enabled);
-      }
-    });
-
-    this.elements.constellationGuidesToggle?.addEventListener('change', () => {
-      const enabled = this.elements.constellationGuidesToggle?.checked ?? false;
-      if (this.onConstellationGuidesToggleCallback) {
-        this.onConstellationGuidesToggleCallback(enabled);
-      }
-    });
-
-    this.elements.moonRingGuideToggle?.addEventListener('change', () => {
-      const enabled = this.elements.moonRingGuideToggle?.checked ?? false;
-      if (this.onMoonRingGuideToggleCallback) {
-        this.onMoonRingGuideToggleCallback(enabled);
-      }
-    });
-
-    this.elements.moonScaleHudToggle?.addEventListener('change', () => {
-      const enabled = this.elements.moonScaleHudToggle?.checked ?? false;
-      if (this.onMoonScaleHudToggleCallback) {
-        this.onMoonScaleHudToggleCallback(enabled);
-      }
-    });
-  }
-
-  private readImageTuningFromUI(): ImageTuningSettings {
-    return {
-      bloomThreshold: Number(this.elements.tuneBloomThresholdSlider?.value ?? 1.5),
-      bloomKnee: Number(this.elements.tuneBloomKneeSlider?.value ?? 0.05),
-      bloomIntensity: Number(this.elements.tuneBloomIntensitySlider?.value ?? 2.25),
-      satCoreOuter: Number(this.elements.tuneSatCoreSlider?.value ?? 0.4),
-      satCoreInner: Number(this.elements.tuneSatFalloffSlider?.value ?? 0.1),
-      haloStrength: this.lastImageTuning.haloStrength,
-      coreBoost: this.lastImageTuning.coreBoost,
-      distanceCullKm: this.lastImageTuning.distanceCullKm,
-      animationIntensity: this.lastImageTuning.animationIntensity,
-      animationContrast: this.lastImageTuning.animationContrast,
-      animationMasterIntensity: Number(this.elements.tuneAnimIntensitySlider?.value ?? 1.0),
-      enforceFloors: this.imageTuningEnforceFloors,
-    };
-  }
-
-  private emitImageTuningChange(): void {
-    if (this.onImageTuningChangeCallback) {
-      this.onImageTuningChangeCallback(this.readImageTuningFromUI());
-    }
-  }
-
-  /**
-   * Wire up hamburger button for mobile controls panel toggle (≤767px).
-   */
-  private setupMobileMenu(): void {
-    const toggle = document.getElementById('menu-toggle');
-    const controls = this.elements.controls;
-    if (!toggle || !controls) return;
-
-    const setOpen = (open: boolean): void => {
-      controls.classList.toggle('mobile-open', open);
-      toggle.textContent = open ? '✕' : '☰';
-      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    };
-
-    toggle.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setOpen(!controls.classList.contains('mobile-open'));
-    });
-
-    // Close when tapping outside the controls panel or the toggle button
-    document.addEventListener('click', (e) => {
-      if (
-        controls.classList.contains('mobile-open') &&
-        !controls.contains(e.target as Node) &&
-        !toggle.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    });
-  }
-
-
-  private createAnimationControls(): void {
-    const container = document.createElement('div');
-    container.className = 'animation-controls-extended';
-    container.innerHTML = `
-      <div class="anim-controls-row">
-        <label>Speed:</label>
-        <input type="range" id="animSpeed" min="0.25" max="4.0" step="0.25" value="1.0">
-        <span id="animSpeedValue">1.0x</span>
-      </div>
-      <div class="anim-controls-row">
-        <label>Loop:</label>
-        <input type="checkbox" id="animLoop" checked>
-      </div>
-    `;
-    
-    this.elements.animationControls?.appendChild(container);
-    
-    // Setup controls
-    const speedSlider = document.getElementById('animSpeed') as HTMLInputElement;
-    const speedValue = document.getElementById('animSpeedValue');
-    const loopCheckbox = document.getElementById('animLoop') as HTMLInputElement;
-    
-    speedSlider?.addEventListener('input', (e) => {
-      const value = parseFloat((e.target as HTMLInputElement).value);
-      this.animationState.speed = value;
-      if (speedValue) speedValue.textContent = value.toFixed(2) + 'x';
-      if (this.onSpeedChangeCallback) {
-        this.onSpeedChangeCallback(value);
-      }
-    });
-    
-    loopCheckbox?.addEventListener('change', (e) => {
-      const checked = (e.target as HTMLInputElement).checked;
-      this.animationState.loop = checked;
-      if (this.onLoopToggleCallback) {
-        this.onLoopToggleCallback(checked);
-      }
-    });
-  }
-
-  /**
-   * Set the active view mode button
-   */
   setActiveButton(index: number): void {
     this.elements.buttons.forEach((btn, i) => {
       btn?.classList.toggle('active', i === index);
@@ -557,9 +120,6 @@ export class UIManager {
     this.elements.demoAutoButton.textContent = enabled ? 'AUTO DEMO: ON' : 'AUTO DEMO: OFF';
   }
 
-  /**
-   * Set the active pattern button
-   */
   setActivePatternButton(mode: number): void {
     this.elements.patternButtons.forEach((btn) => {
       const btnMode = parseInt(btn?.dataset.pattern || '-1');
@@ -567,9 +127,6 @@ export class UIManager {
     });
   }
 
-  /**
-   * Set the active animation button
-   */
   setActiveAnimationButton(patternIdx: number): void {
     this.elements.animationButtons.forEach((btn) => {
       const btnPattern = parseInt(btn?.dataset.pattern || '-1');
@@ -577,9 +134,6 @@ export class UIManager {
     });
   }
 
-  /**
-   * Set the active physics button
-   */
   setActivePhysicsButton(mode: number): void {
     this.elements.physicsButtons.forEach((btn) => {
       const btnMode = parseInt(btn?.dataset.physics || '-1');
@@ -587,9 +141,6 @@ export class UIManager {
     });
   }
 
-  /**
-   * Set the active quality button
-   */
   setActiveQualityButton(level: QualityLevel): void {
     this.elements.qualityButtons.forEach((btn) => {
       const btnLevel = btn?.dataset.quality as QualityLevel | undefined;
@@ -598,29 +149,21 @@ export class UIManager {
     this.setQualityDisplay(level);
   }
 
-  /**
-   * Update the quality stat display in the HUD
-   */
   setQualityDisplay(level: QualityLevel): void {
     const preset = QUALITY_PRESETS[level];
     if (this.elements.quality) {
       this.elements.quality.textContent = `Quality  : ${preset.label}`;
     }
-    
-    // Update dashboard if available
+
     this.currentQualityLevel = level;
     if (this.dashboard) {
       this.dashboard.updateQualityPreset(level);
     }
   }
 
-  /**
-   * Update view mode display
-   */
   setViewMode(modeName: string, altitude: string): void {
     this.elements.viewMode.textContent = `View     : ${modeName}`;
     this.elements.altitude.textContent = `Altitude : ${altitude} km`;
-    // Show/hide horizon indicator and update content
     if (modeName === '720km Horizon') {
       this.elements.horizonIndicator.style.display = 'block';
       this.elements.horizonLimbLine.style.display = 'block';
@@ -655,7 +198,6 @@ export class UIManager {
     }
   }
 
-  /** Dev annotation: angular scale reference for Moon View. */
   setMoonScaleAnnotation(visible: boolean): void {
     const el = this.elements.moonScaleAnnotation;
     el.style.display = visible ? 'block' : 'none';
@@ -664,10 +206,6 @@ export class UIManager {
     }
   }
 
-  /**
-   * Position the horizon limb guide line (720 km Horizon only).
-   * @param normalizedY 0 = top of screen, 1 = bottom; null hides the guide.
-   */
   setHorizonLimbGuide(normalizedY: number | null): void {
     const line = this.elements.horizonLimbLine;
     if (normalizedY === null || !Number.isFinite(normalizedY)) {
@@ -691,7 +229,6 @@ export class UIManager {
     this.elements.fleetHudNearby.textContent = String(nearbyCount);
   }
 
-  /** WASD drift feedback — reticle shift and subtle HUD jitter (px). */
   setFleetCockpitDrift(reticlePxX: number, reticlePxY: number, hudJitterPx: number): void {
     this.elements.fleetReticle.style.transform = `translate(${reticlePxX.toFixed(1)}px, ${reticlePxY.toFixed(1)}px)`;
     const jitter = `translate(${hudJitterPx.toFixed(2)}px, ${(-hudJitterPx * 0.6).toFixed(2)}px)`;
@@ -699,35 +236,22 @@ export class UIManager {
     this.elements.fleetHudRight.style.transform = jitter;
   }
 
-  /** Update active per-view tuning profile label (debug HUD). */
   setTuningProfile(label: string): void {
     this.elements.tuningProfile.textContent = `Tuning   : ${label}`;
   }
 
-  /**
-   * Update FPS display
-   */
   setFPS(fps: number): void {
     this.elements.fps.textContent = `FPS      : ${fps}`;
   }
 
-  /**
-   * Update fleet count
-   */
   setFleetCount(count: number): void {
     this.elements.fleet.textContent = `Fleet    : ${count.toLocaleString()}`;
   }
 
-  /**
-   * Update visible satellite count
-   */
   setVisibleCount(count: number): void {
     this.elements.visible.textContent = `Visible  : ${count.toLocaleString()}`;
   }
 
-  /**
-   * Display the orbital data source (procedural or TLE)
-   */
   setDataSource(label: string): void {
     let el = document.getElementById('s-datasrc');
     if (!el) {
@@ -739,57 +263,41 @@ export class UIManager {
     el.textContent = `Source   : ${label}`;
   }
 
-  /**
-   * Update animation UI state
-   */
   setAnimationState(state: Partial<AnimationUIState>): void {
     this.animationState = { ...this.animationState, ...state };
-    
-    // Update UI elements
+
     const speedSlider = document.getElementById('animSpeed') as HTMLInputElement;
     const speedValue = document.getElementById('animSpeedValue');
     const loopCheckbox = document.getElementById('animLoop') as HTMLInputElement;
-    
+
     if (speedSlider && state.speed !== undefined) {
       speedSlider.value = state.speed.toString();
       if (speedValue) speedValue.textContent = state.speed.toFixed(2) + 'x';
     }
-    
+
     if (loopCheckbox && state.loop !== undefined) {
       loopCheckbox.checked = state.loop;
     }
   }
 
-  /**
-   * Update all stats from performance data
-   */
   updateStats(stats: PerformanceStats): void {
     this.setFPS(stats.fps);
     this.setVisibleCount(stats.visibleSatellites);
-    
-    // Update dashboard if available
+
     if (this.dashboard) {
       this.dashboard.updateStats(stats);
     }
   }
 
-  /**
-   * Initialize the performance dashboard with a profiler
-   */
   async initializeDashboard(profiler: PerformanceProfiler): Promise<void> {
     if (!this.dashboard) {
       const { PerformanceDashboard } = await import('@/ui/PerformanceDashboard.js');
       this.dashboard = new PerformanceDashboard(profiler);
       this.dashboard.initialize();
-      
-      // Update dashboard with initial quality level
       this.dashboard.updateQualityPreset(this.currentQualityLevel);
     }
   }
 
-  /**
-   * Destroy the performance dashboard
-   */
   destroyDashboard(): void {
     if (this.dashboard) {
       this.dashboard.destroy();
@@ -797,124 +305,97 @@ export class UIManager {
     }
   }
 
-  /**
-   * Show error message
-   */
   showError(message: string): void {
     this.elements.error.style.display = 'block';
     this.elements.error.innerHTML = `<b>WebGPU Error</b><br>${message}`;
   }
 
-  /**
-   * Hide error message
-   */
   hideError(): void {
     this.elements.error.style.display = 'none';
   }
 
-  /**
-   * Register view change callback
-   */
   onViewModeChange(callback: (index: number) => void): void {
-    this.onViewChangeCallback = callback;
+    this.callbacks.onViewChange = callback;
   }
 
-  /**
-   * Register pattern change callback
-   */
   onPatternChange(callback: (mode: number) => void): void {
-    this.onPatternChangeCallback = callback;
+    this.callbacks.onPatternChange = callback;
   }
 
-  /**
-   * Register animation pattern change callback
-   */
   onAnimationChange(callback: (pattern: AnimationPattern) => void): void {
-    this.onAnimationChangeCallback = callback;
+    this.callbacks.onAnimationChange = callback;
   }
 
-  /**
-   * Register physics mode change callback
-   */
   onPhysicsChange(callback: (mode: number) => void): void {
-    this.onPhysicsChangeCallback = callback;
+    this.callbacks.onPhysicsChange = callback;
   }
 
-  /**
-   * Register quality preset change callback
-   */
   onQualityChange(callback: (level: QualityLevel) => void): void {
-    this.onQualityChangeCallback = callback;
+    this.callbacks.onQualityChange = callback;
   }
 
-  /**
-   * Register animation speed change callback
-   */
   onSpeedChange(callback: (speed: number) => void): void {
-    this.onSpeedChangeCallback = callback;
+    this.callbacks.onSpeedChange = callback;
   }
 
-  /**
-   * Register loop toggle callback
-   */
   onLoopToggle(callback: (loop: boolean) => void): void {
-    this.onLoopToggleCallback = callback;
+    this.callbacks.onLoopToggle = callback;
   }
 
   onDemoToggle(callback: () => void): void {
-    this.onDemoToggleCallback = callback;
+    this.callbacks.onDemoToggle = callback;
   }
 
   onDemoAutoToggle(callback: (enabled: boolean) => void): void {
-    this.onDemoAutoToggleCallback = callback;
+    this.callbacks.onDemoAutoToggle = callback;
   }
 
   onAudioToggle(callback: (muted: boolean) => void): void {
-    this.onAudioToggleCallback = callback;
+    this.callbacks.onAudioToggle = callback;
   }
 
   onTrailsToggle(callback: (enabled: boolean) => void): void {
-    this.onTrailsToggleCallback = callback;
+    this.callbacks.onTrailsToggle = callback;
   }
 
   onTrailLengthChange(callback: (mode: 'short' | 'medium' | 'long') => void): void {
-    this.onTrailLengthChangeCallback = callback;
+    this.callbacks.onTrailLengthChange = callback;
   }
 
   onExposureModeChange(callback: (mode: ExposureMode) => void): void {
-    this.onExposureModeChangeCallback = callback;
+    this.callbacks.onExposureModeChange = callback;
   }
 
   onManualExposureChange(callback: (value: number) => void): void {
-    this.onManualExposureChangeCallback = callback;
+    this.callbacks.onManualExposureChange = callback;
   }
 
   onExposureAdaptationSpeedChange(callback: (value: number) => void): void {
-    this.onExposureAdaptationSpeedChangeCallback = callback;
+    this.callbacks.onExposureAdaptationSpeedChange = callback;
   }
 
   onTonemapModeChange(callback: (mode: TonemapMode) => void): void {
-    this.onTonemapModeChangeCallback = callback;
+    this.callbacks.onTonemapModeChange = callback;
   }
 
   onImageTuningChange(callback: (settings: ImageTuningSettings) => void): void {
-    this.onImageTuningChangeCallback = callback;
+    this.callbacks.onImageTuningChange = callback;
   }
 
   onGodIdleOrbitToggle(callback: (enabled: boolean) => void): void {
-    this.onGodIdleOrbitToggleCallback = callback;
+    this.callbacks.onGodIdleOrbitToggle = callback;
   }
 
   onConstellationGuidesToggle(callback: (enabled: boolean) => void): void {
-    this.onConstellationGuidesToggleCallback = callback;
+    this.callbacks.onConstellationGuidesToggle = callback;
   }
 
   onMoonRingGuideToggle(callback: (enabled: boolean) => void): void {
-    this.onMoonRingGuideToggleCallback = callback;
+    this.callbacks.onMoonRingGuideToggle = callback;
   }
 
   onMoonScaleHudToggle(callback: (enabled: boolean) => void): void {
-    this.onMoonScaleHudToggleCallback = callback;
+    this.callbacks.onMoonScaleHudToggle = callback;
   }
 
   setGodIdleOrbitEnabled(enabled: boolean): void {
@@ -1001,190 +482,22 @@ export class UIManager {
     }
   }
 
-  // Time scale control properties
-  private onTimeScaleChangeCallback: ((scale: number) => void) | null = null;
-  private currentTimeScale: number = 1.0;
-
-  /**
-   * Create time scale control UI
-   */
   createTimeScaleControl(): void {
-    const container = document.createElement('div');
-    container.id = 'time-controls';
-    container.className = 'time-controls';
-    
-    container.innerHTML = `
-      <div class="time-label">⏱ TIME SCALE</div>
-      <div class="time-display" id="sim-time-display">Sim Time: 0h</div>
-      <div class="time-slider-row">
-        <input type="range" id="timeScaleSlider" min="0" max="4" step="0.1" value="0">
-        <span id="timeScaleValue">1x</span>
-      </div>
-      <div class="time-presets">
-        <button class="time-preset-btn active" data-scale="1">1x</button>
-        <button class="time-preset-btn" data-scale="3600">1h/s</button>
-        <button class="time-preset-btn" data-scale="86400">1d/s</button>
-        <button class="time-preset-btn" data-scale="604800">1w/s</button>
-      </div>
-    `;
-    
-    // Insert after animation controls or at the end of body
-    const animationControls = document.getElementById('animation-controls');
-    if (animationControls && animationControls.parentElement) {
-      animationControls.parentElement.insertBefore(container, animationControls.nextSibling);
-    } else {
-      document.body.appendChild(container);
-    }
-    
-    // Store references
-    this.elements.timeControls = container;
-    this.elements.simTimeDisplay = document.getElementById('sim-time-display')!;
-    this.elements.timeScaleSlider = document.getElementById('timeScaleSlider') as HTMLInputElement;
-    this.elements.timeScaleValue = document.getElementById('timeScaleValue')!;
-    
-    // Setup slider event (logarithmic scale: 0->1, 1->10, 2->100, 3->1000, 4->10000)
-    this.elements.timeScaleSlider.addEventListener('input', (e) => {
-      const sliderValue = parseFloat((e.target as HTMLInputElement).value);
-      const scale = Math.pow(10, sliderValue);
-      this.setTimeScale(scale);
-    });
-    
-    // Setup preset buttons
-    const presetButtons = container.querySelectorAll('.time-preset-btn');
-    presetButtons.forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        const target = e.target as HTMLButtonElement;
-        const scale = parseInt(target.dataset.scale || '1');
-        this.setTimeScale(scale);
-        
-        // Update active state
-        presetButtons.forEach(b => b.classList.remove('active'));
-        target.classList.add('active');
-      });
-    });
-    
-    // Keyboard shortcuts (+/- to adjust speed)
-    document.addEventListener('keydown', (e) => {
-      if (e.key === '+' || e.key === '=') {
-        e.preventDefault();
-        this.adjustTimeScale(1.5);
-      } else if (e.key === '-' || e.key === '_') {
-        e.preventDefault();
-        this.adjustTimeScale(0.67);
-      } else if (e.key === '0') {
-        e.preventDefault();
-        this.setTimeScale(1);
-      }
-    });
+    createTimeScaleControl(this.timeScaleState);
   }
 
-  /**
-   * Set time scale and update UI
-   */
-  private setTimeScale(scale: number): void {
-    // Clamp to valid range (1 to 10000)
-    this.currentTimeScale = Math.max(1, Math.min(10000, Math.round(scale)));
-    
-    // Update slider position (logarithmic)
-    if (this.elements.timeScaleSlider) {
-      const sliderValue = Math.log10(this.currentTimeScale);
-      this.elements.timeScaleSlider.value = Math.max(0, Math.min(4, sliderValue)).toString();
-    }
-    
-    // Update value display
-    if (this.elements.timeScaleValue) {
-      this.elements.timeScaleValue.textContent = this.formatTimeScale(this.currentTimeScale);
-    }
-    
-    // Update preset button active state
-    const presetButtons = document.querySelectorAll('.time-preset-btn');
-    presetButtons.forEach((btn) => {
-      const btnScale = parseInt((btn as HTMLButtonElement).dataset.scale || '0');
-      btn.classList.toggle('active', btnScale === this.currentTimeScale);
-    });
-    
-    // Notify callback
-    if (this.onTimeScaleChangeCallback) {
-      this.onTimeScaleChangeCallback(this.currentTimeScale);
-    }
-  }
-
-  /**
-   * Adjust time scale by a multiplier
-   */
-  private adjustTimeScale(multiplier: number): void {
-    const newScale = this.currentTimeScale * multiplier;
-    this.setTimeScale(newScale);
-  }
-
-  /**
-   * Format time scale for display
-   */
-  private formatTimeScale(scale: number): string {
-    if (scale >= 604800) {
-      return `${(scale / 604800).toFixed(1)}w/s`;
-    } else if (scale >= 86400) {
-      return `${(scale / 86400).toFixed(1)}d/s`;
-    } else if (scale >= 3600) {
-      return `${(scale / 3600).toFixed(1)}h/s`;
-    } else if (scale >= 60) {
-      return `${(scale / 60).toFixed(1)}m/s`;
-    } else {
-      return `${Math.round(scale)}x`;
-    }
-  }
-
-  /**
-   * Update displayed simulation time
-   */
   updateSimTime(simTime: number): void {
-    if (this.elements.simTimeDisplay) {
-      this.elements.simTimeDisplay.textContent = `Sim Time: ${this.formatSimTime(simTime)}`;
-    }
+    updateSimTimeDisplay(this.elements, simTime);
   }
 
-  /**
-   * Format simulation time to human-readable string
-   */
-  private formatSimTime(seconds: number): string {
-    const days = Math.floor(seconds / 86400);
-    const hours = Math.floor((seconds % 86400) / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    
-    if (days > 365) {
-      const years = (days / 365.25).toFixed(1);
-      return `Year ${years}`;
-    } else if (days > 30) {
-      const months = Math.floor(days / 30);
-      const remDays = days % 30;
-      return `${months}mo ${remDays}d`;
-    } else if (days > 0) {
-      return `Day ${days} ${hours}h`;
-    } else if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    } else {
-      return `${Math.floor(seconds / 60)}m`;
-    }
-  }
-
-  /**
-   * Register time scale change callback
-   */
   onTimeScaleChange(callback: (scale: number) => void): void {
-    this.onTimeScaleChangeCallback = callback;
+    this.timeScaleState.onTimeScaleChange = callback;
   }
 
-  /**
-   * Get button elements for external control
-   */
   getButtons(): HTMLButtonElement[] {
     return this.elements.buttons;
   }
 
-  /**
-   * Create UI HTML structure
-   * Call this if the HTML doesn't have the required elements
-   */
   static createUI(): string {
     return `
       <div id="ui">

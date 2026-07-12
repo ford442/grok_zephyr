@@ -4,7 +4,8 @@
  */
 
 import type WebGPUContext from '@/core/WebGPUContext.js';
-import type { RenderTargets } from './pipelines/types.js';
+import { RENDER } from '@/types/constants.js';
+import { MAX_BLOOM_LEVELS, type RenderTargets } from './pipelines/types.js';
 
 export class RenderTargetManager {
   private context: WebGPUContext;
@@ -20,7 +21,6 @@ export class RenderTargetManager {
    * Create or recreate render targets for given size
    */
   initialize(width: number, height: number): RenderTargets {
-    // Recreate if size changed
     if (this.targets && (this.width !== width || this.height !== height)) {
       this.destroy();
     }
@@ -28,59 +28,10 @@ export class RenderTargetManager {
     if (!this.targets) {
       this.width = width;
       this.height = height;
-      this.targets = this.createTargets(width, height);
+      this.targets = createRenderTargets(this.context, width, height);
     }
 
     return this.targets;
-  }
-
-  private createTargets(width: number, height: number): RenderTargets {
-    const device = this.context.getDevice();
-
-    // HDR target (16-bit float for bloom)
-    const hdr = device.createTexture({
-      size: { width, height },
-      format: 'rgba16float',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-      label: 'HDR Target'
-    });
-
-    // Depth buffer
-    const depth = device.createTexture({
-      size: { width, height },
-      format: 'depth32float',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-      label: 'Depth Buffer'
-    });
-
-    // Bloom targets (half res)
-    const bloomWidth = Math.max(1, Math.floor(width / 2));
-    const bloomHeight = Math.max(1, Math.floor(height / 2));
-
-    const bloomA = device.createTexture({
-      size: { width: bloomWidth, height: bloomHeight },
-      format: 'rgba16float',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-      label: 'Bloom A'
-    });
-
-    const bloomB = device.createTexture({
-      size: { width: bloomWidth, height: bloomHeight },
-      format: 'rgba16float',
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-      label: 'Bloom B'
-    });
-
-    return {
-      hdr,
-      depth,
-      bloomA,
-      bloomB,
-      hdrView: hdr.createView(),
-      depthView: depth.createView(),
-      bloomAView: bloomA.createView(),
-      bloomBView: bloomB.createView()
-    };
   }
 
   getTargets(): RenderTargets | null {
@@ -88,12 +39,92 @@ export class RenderTargetManager {
   }
 
   destroy(): void {
-    if (this.targets) {
-      this.targets.hdr.destroy();
-      this.targets.depth.destroy();
-      this.targets.bloomA.destroy();
-      this.targets.bloomB.destroy();
-      this.targets = null;
-    }
+    if (!this.targets) return;
+    destroyRenderTargets(this.targets);
+    this.targets = null;
   }
+}
+
+export function createRenderTargets(
+  context: WebGPUContext,
+  width: number,
+  height: number,
+): RenderTargets {
+  const device = context.getDevice();
+  const mkTex = (w: number, h: number, format: GPUTextureFormat): GPUTexture => {
+    return device.createTexture({
+      size: [w, h],
+      format,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+  };
+
+  const hdr = mkTex(width, height, RENDER.HDR_FORMAT);
+  const depth = device.createTexture({
+    size: [width, height],
+    format: RENDER.DEPTH_FORMAT,
+    usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+  });
+  const bloomA = mkTex(width, height, RENDER.HDR_FORMAT);
+  const bloomB = mkTex(width, height, RENDER.HDR_FORMAT);
+  const motionBlur = mkTex(width, height, RENDER.HDR_FORMAT);
+  const dofW = Math.max(1, Math.floor(width / 2));
+  const dofH = Math.max(1, Math.floor(height / 2));
+  const dofHalfA = mkTex(dofW, dofH, RENDER.HDR_FORMAT);
+  const dofHalfB = mkTex(dofW, dofH, RENDER.HDR_FORMAT);
+  const dofComposite = mkTex(width, height, RENDER.HDR_FORMAT);
+
+  const bloomMip: GPUTexture[] = [];
+  const bloomMipViews: GPUTextureView[] = [];
+  for (let i = 0; i < MAX_BLOOM_LEVELS; i++) {
+    const scale = 1 << (i + 1);
+    const mw = Math.max(1, Math.floor(width / scale));
+    const mh = Math.max(1, Math.floor(height / scale));
+    const mip = mkTex(mw, mh, RENDER.HDR_FORMAT);
+    bloomMip.push(mip);
+    bloomMipViews.push(mip.createView());
+  }
+
+  const surfaceFormat = context.getFormat();
+  const compositeIntermediate = device.createTexture({
+    size: [width, height],
+    format: surfaceFormat,
+    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+
+  return {
+    hdr,
+    depth,
+    bloomA,
+    bloomB,
+    motionBlur,
+    dofHalfA,
+    dofHalfB,
+    dofComposite,
+    bloomMip,
+    bloomMipViews,
+    compositeIntermediate,
+    hdrView: hdr.createView(),
+    depthView: depth.createView(),
+    bloomAView: bloomA.createView(),
+    bloomBView: bloomB.createView(),
+    motionBlurView: motionBlur.createView(),
+    dofHalfAView: dofHalfA.createView(),
+    dofHalfBView: dofHalfB.createView(),
+    dofCompositeView: dofComposite.createView(),
+    compositeIntermediateView: compositeIntermediate.createView(),
+  };
+}
+
+export function destroyRenderTargets(targets: RenderTargets): void {
+  targets.hdr.destroy();
+  targets.depth.destroy();
+  targets.bloomA.destroy();
+  targets.bloomB.destroy();
+  targets.motionBlur.destroy();
+  targets.dofHalfA.destroy();
+  targets.dofHalfB.destroy();
+  targets.dofComposite.destroy();
+  targets.bloomMip.forEach(t => t.destroy());
+  targets.compositeIntermediate.destroy();
 }
