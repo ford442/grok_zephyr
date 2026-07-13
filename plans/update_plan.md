@@ -6,24 +6,27 @@
 ✅ **6-pass HDR pipeline** with bloom  
 ✅ **4 camera modes** (Horizon, God, Fleet POV, Ground)  
 ✅ **Procedural Earth** with limb glow and night lights  
-✅ **Ground view** with horizon culling and terrain  
+✅ **Ground view** with horizon culling and terrain
 
 🔴 **Missing**: Laser beams projecting to Earth surface  
-🔴 **Issue**: Satellites invisible/tiny at god view distances  
+🔴 **Issue**: Satellites invisible/tiny at god view distances
 
 ---
 
 ## Phase 1: Quick Visibility Fix (5 minutes)
 
 ### 1.1 Fix Billboard Sizing
+
 **File**: `src/shaders/index.ts` in `SAT_SHADER`
 
 Replace:
+
 ```wgsl
 let bsize = clamp(1200.0/max(dist,50.0), 0.4, 60.0);
 ```
 
 With:
+
 ```wgsl
 // Sqrt falloff for better visibility at planetary scales
 let bsize = 800.0 / sqrt(max(dist, 80.0));
@@ -31,14 +34,17 @@ bsize = clamp(bsize, 0.6, 80.0);
 ```
 
 ### 1.2 Fix Distance Culling
+
 **File**: `src/shaders/index.ts` in `SAT_SHADER`
 
 Replace:
+
 ```wgsl
 if (dist > 14000.0) { visible = false; }
 ```
 
 With:
+
 ```wgsl
 if (dist > 120000.0) { visible = false; }  // Support extreme zoom out
 ```
@@ -50,12 +56,14 @@ if (dist > 120000.0) { visible = false; }  // Support extreme zoom out
 ### Architecture Overview
 
 **Technique**: Instanced camera-aligned ribbons (triangle strips)
+
 - No geometry shaders needed
 - 4 vertices per beam instance
 - Camera-facing perpendicular basis via cross product
 - Perfect for bloom/glow
 
 **Data Flow**:
+
 ```
 Satellite positions (storage buffer)
     ↓
@@ -69,9 +77,11 @@ Bloom composite → glowing beams
 ### Step-by-Step Implementation
 
 ### 2.1 Add Beam Storage Buffer
+
 **File**: `src/core/SatelliteGPUBuffer.ts`
 
 Add to interface and initialization:
+
 ```typescript
 export interface SatelliteBufferSet {
   // ... existing buffers ...
@@ -82,23 +92,27 @@ export interface SatelliteBufferSet {
 }
 
 // Constants
-const MAX_BEAMS = 65536;  // ~65k beams = 4MB
+const MAX_BEAMS = 65536; // ~65k beams = 4MB
 
 // In initialize():
 const beams = this.context.createBuffer(
-  MAX_BEAMS * 4 * 4 * 2,  // 2 vec4f per beam
-  GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+  MAX_BEAMS * 4 * 4 * 2, // 2 vec4f per beam
+  GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 );
 
 const beamCount = this.context.createUniformBuffer(16); // u32 count + padding
 ```
 
 ### 2.2 Create Beam Compute Shader
+
 **File**: `src/shaders/index.ts`
 
 Add new shader:
+
 ```typescript
-export const BEAM_COMPUTE_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+export const BEAM_COMPUTE_SHADER =
+  UNIFORM_STRUCT +
+  /* wgsl */ `
 struct Beam {
   start : vec4f,  // xyz = sat pos, w = intensity (0-1)
   end   : vec4f,  // xyz = target pos, w = hue (0-360)
@@ -169,10 +183,13 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
 ```
 
 ### 2.3 Create Beam Render Shader
+
 **File**: `src/shaders/index.ts`
 
 ```typescript
-export const BEAM_RENDER_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+export const BEAM_RENDER_SHADER =
+  UNIFORM_STRUCT +
+  /* wgsl */ `
 struct Beam {
   start : vec4f,
   end   : vec4f,
@@ -266,9 +283,11 @@ fn fs_main(in : VSOut) -> @location(0) vec4f {
 ```
 
 ### 2.4 Update RenderPipeline
+
 **File**: `src/render/RenderPipeline.ts`
 
 Add beam pipeline and bind groups:
+
 ```typescript
 export interface Pipelines {
   // ... existing pipelines ...
@@ -287,7 +306,11 @@ this.pipelines.beam = device.createRenderPipeline({
     bindGroupLayouts: [
       device.createBindGroupLayout({
         entries: [
-          { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+          {
+            binding: 0,
+            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+            buffer: { type: 'uniform' },
+          },
           { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         ],
       }),
@@ -302,9 +325,9 @@ this.pipelines.beam = device.createRenderPipeline({
     entryPoint: 'fs_main',
     targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
   },
-  primitive: { 
+  primitive: {
     topology: 'triangle-strip',
-    stripIndexFormat: undefined,  // Non-indexed strip
+    stripIndexFormat: undefined, // Non-indexed strip
   },
   depthStencil: {
     format: RENDER.DEPTH_FORMAT,
@@ -335,9 +358,11 @@ this.pipelines.beamCompute = device.createComputePipeline({
 ```
 
 ### 2.5 Add Beam Rendering to Scene Pass
+
 **File**: `src/render/RenderPipeline.ts`
 
 In `encodeScenePass()`, after satellites:
+
 ```typescript
 // Satellites
 pass.setPipeline(this.pipelines.satellites);
@@ -347,17 +372,19 @@ pass.draw(6, CONSTANTS.NUM_SATELLITES);
 // Laser beams (65k max, 4 verts each = 4 vertices per instance via triangle strip)
 pass.setPipeline(this.pipelines.beam);
 pass.setBindGroup(0, this.bindGroups.beam);
-pass.draw(4, MAX_BEAMS);  // 4 vertices per beam instance
+pass.draw(4, MAX_BEAMS); // 4 vertices per beam instance
 ```
 
 ### 2.6 Add Beam Compute Pass
+
 **File**: `src/render/RenderPipeline.ts`
 
 Add new method:
+
 ```typescript
 encodeBeamComputePass(encoder: GPUCommandEncoder): void {
   if (!this.pipelines || !this.bindGroups) return;
-  
+
   const pass = encoder.beginComputePass();
   pass.setPipeline(this.pipelines.beamCompute);
   pass.setBindGroup(0, this.bindGroups.beamCompute);
@@ -367,9 +394,11 @@ encodeBeamComputePass(encoder: GPUCommandEncoder): void {
 ```
 
 ### 2.7 Update Main Render Loop
+
 **File**: `src/main.ts`
 
 Add beam compute pass:
+
 ```typescript
 // Pass 1: Compute orbital positions
 this.pipeline.encodeComputePass(encoder);
@@ -386,7 +415,9 @@ this.pipeline.encodeBeamComputePass(encoder);
 ## Phase 3: Logo/Pattern Formation (After Beams Work)
 
 ### Procedural Logo Mask
+
 In the beam compute shader, add pattern logic:
+
 ```wgsl
 // Sample "Grok" text using SDF or pre-baked points
 let logoUV = sphere_to_uv(dir);  // Convert direction to Earth UV
@@ -400,6 +431,7 @@ if (logoMask > 0.0) {
 ```
 
 ### Pre-baked Logo Points
+
 Alternative: Generate ~10k points on Earth's night side forming "GROK" or "X" logo, assign each to nearest satellite.
 
 ---
@@ -407,6 +439,7 @@ Alternative: Generate ~10k points on Earth's night side forming "GROK" or "X" lo
 ## Phase 4: Ground View Sky Polish
 
 Simple rayleigh gradient in ground terrain shader or separate sky pass:
+
 ```wgsl
 let viewDir = normalize(worldPos - camera_pos);
 let horizon = dot(viewDir, vec3f(0,0,1));  // up vector
@@ -431,14 +464,17 @@ let sky = mix(vec3f(0.0, 0.05, 0.2), vec3f(0.4, 0.7, 1.0), pow(1.0 - horizon, 2.
 ## Troubleshooting Notes
 
 **Beams not visible?**
+
 - Check HDR_FORMAT supports alpha (rgba16float does)
 - Verify additiveBlend state is set
 - Check beam.start.w > 0 in compute
 - Ensure view_proj includes the beams
 
 **Beams flickering?**
+
 - May be z-fighting with Earth - disable depth write
 
 **Performance issues?**
+
 - Reduce MAX_BEAMS to 32768 or 16384
 - Only update beams every N frames (interleave)

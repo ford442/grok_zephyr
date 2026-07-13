@@ -25,11 +25,7 @@ export function buildEarthMesh(): EarthMesh {
 }
 
 export function createEarthGeometry(context: WebGPUContext): EarthGeometryBuffers {
-  const sphere = genSphere(
-    CONSTANTS.EARTH_RADIUS_KM,
-    64,
-    64,
-  );
+  const sphere = genSphere(CONSTANTS.EARTH_RADIUS_KM, 64, 64);
 
   const indexCount = sphere.indices.length;
   const vertexCount = sphere.vertices.length / 3;

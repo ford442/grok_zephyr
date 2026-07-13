@@ -42,13 +42,13 @@ function parseIntParam(raw: string | null, min: number, max: number): number | n
 }
 
 /** Parse visual-harness query params from the current (or supplied) search string. */
-export function parseVisualHarnessParams(search: string = window.location.search): VisualHarnessParams {
+export function parseVisualHarnessParams(
+  search: string = window.location.search,
+): VisualHarnessParams {
   const params = new URLSearchParams(search);
   const groundRaw = params.get('ground');
   const groundPreset =
-    groundRaw && GROUND_PRESET_IDS.has(groundRaw)
-      ? (groundRaw as GroundObserverPreset)
-      : null;
+    groundRaw && GROUND_PRESET_IDS.has(groundRaw) ? (groundRaw as GroundObserverPreset) : null;
 
   return {
     demoAuto: parseBoolParam(params.get('demo')),

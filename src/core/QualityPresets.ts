@@ -48,7 +48,8 @@ export interface VolumetricBeamQualitySettings {
   earthShadow: boolean;
 }
 
-export type DepthOfFieldFocusMode = 'auto-center' | 'satellite-track' | 'surface-distance' | 'earth-center';
+export type DepthOfFieldFocusMode =
+  'auto-center' | 'satellite-track' | 'surface-distance' | 'earth-center';
 
 /** Depth-of-field settings within a quality preset */
 export interface DepthOfFieldQualitySettings {
@@ -248,10 +249,10 @@ export const QUALITY_PRESETS: Record<QualityLevel, QualityPreset> = {
     atmosphere: {
       enabled: true,
       scatteringLUT: true,
-      cloudAlpha: 0.50,
+      cloudAlpha: 0.5,
       cloudSpeed: 0.02,
       cloudScale: 1.008,
-      hazeStrength: 0.40,
+      hazeStrength: 0.4,
     },
     volumetricBeams: {
       enabled: true,

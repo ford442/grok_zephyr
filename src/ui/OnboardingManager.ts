@@ -1,6 +1,6 @@
 /**
  * Onboarding Manager
- * 
+ *
  * Handles first-run experience including intro overlay and dismissal persistence.
  */
 

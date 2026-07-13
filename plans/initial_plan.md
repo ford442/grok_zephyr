@@ -99,7 +99,7 @@ Copy
     <div id="canvas-container">
         <canvas id="webgpu"></canvas>
     </div>
-    
+
     <div id="ui">
         <h1>Grok Zephyr v1.0</h1>
         <div class="stat">
@@ -118,13 +118,13 @@ Copy
             <span>Active Beams:</span>
             <span id="active-beams">--</span>
         </div>
-        
+
         <div class="controls">
             <div class="slider-container">
                 <label>Time Scale: <span id="time-val">1x</span></label>
                 <input type="range" id="timeScale" min="0" max="100" value="10">
             </div>
-            
+
             <div class="slider-container">
                 <label>Beam Intensity</label>
                 <input type="range" id="intensity" min="0" max="100" value="80">
@@ -137,13 +137,13 @@ Copy
                 <button class="pattern-btn" onclick="setPattern('grok')">Grok</button>
                 <button class="pattern-btn" onclick="setPattern('random')">Chaos</button>
             </div>
-            
+
             <div style="margin-top: 10px;">
                 <button onclick="toggleEarth()">Toggle Earth</button>
                 <button onclick="resetCamera()">Reset Cam</button>
             </div>
         </div>
-        
+
         <div style="margin-top: 15px; font-size: 10px; color: #444; line-height: 1.4;">
             xAI × SpaceX Project Colossus<br>
             WebGPU Compute Shaders<br>

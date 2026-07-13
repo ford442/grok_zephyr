@@ -5,11 +5,13 @@ This document describes the GitHub labels used for organizing issues and pull re
 ## Label Categories
 
 ### Core Visual/Rendering
+
 - **visual-upgrade** (🟣 Deep Purple) - Visual upgrade or enhancement to the user interface and visuals
 - **rendering** (🔵 Blue) - WebGPU rendering and graphics improvements
 - **high-impact** (🔴 Red) - High-impact changes with significant visual effect
 
 ### Areas
+
 - **camera** (🟪 Indigo) - Camera control and view modes
 - **ui** (🔹 Cyan) - User interface and UI components
 - **ux-polish** (🟩 Emerald) - UX improvements and polish
@@ -18,11 +20,13 @@ This document describes the GitHub labels used for organizing issues and pull re
 - **accessibility** (🟦 Teal) - Accessibility improvements and compliance
 
 ### Priority
+
 - **P0** (🔴 Bright Red) - Critical priority - very important
 - **P1** (🟠 Orange) - High priority
 - **P2** (🟨 Yellow) - Medium priority
 
 ### Other
+
 - **good-first-issue** (🟣 Purple) - Good for newcomers to the project
 - **meta** (⚫ Gray) - Meta discussion or project organization
 - **roadmap** (⚫ Gray) - Roadmap planning and future direction
@@ -42,6 +46,7 @@ python3 scripts/update_labels.py
 ### For Contributors
 
 When creating issues or pull requests, please use the appropriate labels to:
+
 - **Categorize the type of work** (visual-upgrade, rendering, enhancement, etc.)
 - **Indicate priority** (P0, P1, P2)
 - **Mark the area** (camera, ui, ux-polish, performance, accessibility, etc.)
@@ -58,6 +63,7 @@ When creating issues or pull requests, please use the appropriate labels to:
 ## Color Scheme
 
 The colors are carefully chosen to provide visual distinction:
+
 - **Warm colors** (Red, Orange, Yellow) for priority and impact
 - **Cool colors** (Blue, Cyan, Teal) for areas and features
 - **Purple/Violet** for visual improvements

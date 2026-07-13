@@ -11,7 +11,9 @@
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
 
-export const BEAM_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+export const BEAM_SHADER =
+  UNIFORM_STRUCT +
+  /* wgsl */ `
 @group(0) @binding(1) var<storage, read> beams : array<vec4f>;
 
 struct VOut {

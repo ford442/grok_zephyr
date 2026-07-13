@@ -1,6 +1,6 @@
 /**
  * Grok Zephyr - TLE Loader
- * 
+ *
  * Loads Two-Line Element sets from files or API.
  */
 
@@ -18,7 +18,7 @@ export interface ParsedTLELine2 {
 
 /**
  * TLE Loader
- * 
+ *
  * Fetches and parses TLE data from various sources.
  */
 export class TLELoader {
@@ -33,32 +33,32 @@ export class TLELoader {
     const text = await response.text();
     return TLELoader.parse(text);
   }
-  
+
   /**
    * Parse TLE text into structured data
    */
   static parse(text: string): TLEData[] {
     const lines = text.trim().split('\n');
     const tles: TLEData[] = [];
-    
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
-      
+
       // Skip comments and empty lines
       if (!line || line.startsWith('#')) continue;
-      
+
       // Look for satellite name
       if (!line.startsWith('1 ') && !line.startsWith('2 ')) {
         const name = line;
         const line1 = lines[++i]?.trim();
         const line2 = lines[++i]?.trim();
-        
+
         if (line1?.startsWith('1 ') && line2?.startsWith('2 ')) {
           tles.push({ name, line1, line2 });
         }
       }
     }
-    
+
     return tles;
   }
 
@@ -103,12 +103,12 @@ export class TLELoader {
   }
 
   static deriveAltitudeKmFromMeanMotion(meanMotionRevPerDay: number): number {
-    const nRadPerSec = meanMotionRevPerDay * (2 * Math.PI) / 86400;
+    const nRadPerSec = (meanMotionRevPerDay * (2 * Math.PI)) / 86400;
     const MU = 398600.4418;
     const semiMajorKm = Math.pow(MU / (nRadPerSec * nRadPerSec), 1 / 3);
     return semiMajorKm - 6371.0;
   }
-  
+
   /**
    * Fetch from CelesTrak API
    */
@@ -117,5 +117,3 @@ export class TLELoader {
     return TLELoader.fromFile(url);
   }
 }
-
-export default TLELoader;

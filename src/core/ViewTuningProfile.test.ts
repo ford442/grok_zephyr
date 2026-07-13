@@ -104,6 +104,8 @@ describe('profile interpolation', () => {
 
   it('derives skyline window emissive scale from coreBoost', () => {
     const skyline = getViewTuningProfile(5);
-    expect(skylineEmissiveScale(skyline.coreBoost)).toBeCloseTo(skyline.coreBoost / SKYLINE_EMISSIVE_CORE_REF);
+    expect(skylineEmissiveScale(skyline.coreBoost)).toBeCloseTo(
+      skyline.coreBoost / SKYLINE_EMISSIVE_CORE_REF,
+    );
   });
 });

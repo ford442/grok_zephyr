@@ -87,36 +87,54 @@ export function getElements(): UIElements {
       document.getElementById('phys2') as HTMLButtonElement,
     ],
     qualityButtons: [
-      document.getElementById('qlow')  as HTMLButtonElement,
-      document.getElementById('qbal')  as HTMLButtonElement,
+      document.getElementById('qlow') as HTMLButtonElement,
+      document.getElementById('qbal') as HTMLButtonElement,
       document.getElementById('qhigh') as HTMLButtonElement,
       document.getElementById('qcine') as HTMLButtonElement,
     ],
-    audioToggleButton: (document.getElementById('audioToggle') as HTMLButtonElement | null) ?? undefined,
-    trailsToggleButton: (document.getElementById('trailsToggle') as HTMLButtonElement | null) ?? undefined,
-    trailsLengthSelect: (document.getElementById('trailsLength') as HTMLSelectElement | null) ?? undefined,
-    exposureModeSelect: (document.getElementById('exposureMode') as HTMLSelectElement | null) ?? undefined,
-    manualExposureSlider: (document.getElementById('manualExposure') as HTMLInputElement | null) ?? undefined,
-    manualExposureValue: (document.getElementById('manualExposureValue') as HTMLElement | null) ?? undefined,
-    exposureSpeedSlider: (document.getElementById('exposureSpeed') as HTMLInputElement | null) ?? undefined,
-    exposureSpeedValue: (document.getElementById('exposureSpeedValue') as HTMLElement | null) ?? undefined,
-    tonemapModeSelect: (document.getElementById('tonemapMode') as HTMLSelectElement | null) ?? undefined,
-    tuneBloomThresholdSlider: (document.getElementById('tuneBloomThreshold') as HTMLInputElement | null) ?? undefined,
+    audioToggleButton:
+      (document.getElementById('audioToggle') as HTMLButtonElement | null) ?? undefined,
+    trailsToggleButton:
+      (document.getElementById('trailsToggle') as HTMLButtonElement | null) ?? undefined,
+    trailsLengthSelect:
+      (document.getElementById('trailsLength') as HTMLSelectElement | null) ?? undefined,
+    exposureModeSelect:
+      (document.getElementById('exposureMode') as HTMLSelectElement | null) ?? undefined,
+    manualExposureSlider:
+      (document.getElementById('manualExposure') as HTMLInputElement | null) ?? undefined,
+    manualExposureValue: document.getElementById('manualExposureValue') ?? undefined,
+    exposureSpeedSlider:
+      (document.getElementById('exposureSpeed') as HTMLInputElement | null) ?? undefined,
+    exposureSpeedValue: document.getElementById('exposureSpeedValue') ?? undefined,
+    tonemapModeSelect:
+      (document.getElementById('tonemapMode') as HTMLSelectElement | null) ?? undefined,
+    tuneBloomThresholdSlider:
+      (document.getElementById('tuneBloomThreshold') as HTMLInputElement | null) ?? undefined,
     tuneBloomThresholdValue: document.getElementById('tuneBloomThresholdValue') ?? undefined,
-    tuneBloomKneeSlider: (document.getElementById('tuneBloomKnee') as HTMLInputElement | null) ?? undefined,
+    tuneBloomKneeSlider:
+      (document.getElementById('tuneBloomKnee') as HTMLInputElement | null) ?? undefined,
     tuneBloomKneeValue: document.getElementById('tuneBloomKneeValue') ?? undefined,
-    tuneBloomIntensitySlider: (document.getElementById('tuneBloomIntensity') as HTMLInputElement | null) ?? undefined,
+    tuneBloomIntensitySlider:
+      (document.getElementById('tuneBloomIntensity') as HTMLInputElement | null) ?? undefined,
     tuneBloomIntensityValue: document.getElementById('tuneBloomIntensityValue') ?? undefined,
-    tuneSatCoreSlider: (document.getElementById('tuneSatCore') as HTMLInputElement | null) ?? undefined,
+    tuneSatCoreSlider:
+      (document.getElementById('tuneSatCore') as HTMLInputElement | null) ?? undefined,
     tuneSatCoreValue: document.getElementById('tuneSatCoreValue') ?? undefined,
-    tuneSatFalloffSlider: (document.getElementById('tuneSatFalloff') as HTMLInputElement | null) ?? undefined,
+    tuneSatFalloffSlider:
+      (document.getElementById('tuneSatFalloff') as HTMLInputElement | null) ?? undefined,
     tuneSatFalloffValue: document.getElementById('tuneSatFalloffValue') ?? undefined,
-    tuneAnimIntensitySlider: (document.getElementById('tuneAnimIntensity') as HTMLInputElement | null) ?? undefined,
+    tuneAnimIntensitySlider:
+      (document.getElementById('tuneAnimIntensity') as HTMLInputElement | null) ?? undefined,
     tuneAnimIntensityValue: document.getElementById('tuneAnimIntensityValue') ?? undefined,
-    godIdleOrbitToggle: (document.getElementById('godIdleOrbitToggle') as HTMLInputElement | null) ?? undefined,
-    constellationGuidesToggle: (document.getElementById('constellationGuidesToggle') as HTMLInputElement | null) ?? undefined,
-    moonRingGuideToggle: (document.getElementById('moonRingGuideToggle') as HTMLInputElement | null) ?? undefined,
-    moonScaleHudToggle: (document.getElementById('moonScaleHudToggle') as HTMLInputElement | null) ?? undefined,
+    godIdleOrbitToggle:
+      (document.getElementById('godIdleOrbitToggle') as HTMLInputElement | null) ?? undefined,
+    constellationGuidesToggle:
+      (document.getElementById('constellationGuidesToggle') as HTMLInputElement | null) ??
+      undefined,
+    moonRingGuideToggle:
+      (document.getElementById('moonRingGuideToggle') as HTMLInputElement | null) ?? undefined,
+    moonScaleHudToggle:
+      (document.getElementById('moonScaleHudToggle') as HTMLInputElement | null) ?? undefined,
     horizonIndicator: getEl('horizon-indicator'),
     horizonLimbLine: getEl('horizon-limb-line'),
     moonScaleAnnotation: getEl('moon-scale-annotation'),
@@ -309,12 +327,24 @@ export function setupEventListeners(ctx: UIManagerSetupContext): void {
     valueEl?: HTMLElement;
     decimals: number;
   }> = [
-    { slider: elements.tuneBloomThresholdSlider, valueEl: elements.tuneBloomThresholdValue, decimals: 2 },
+    {
+      slider: elements.tuneBloomThresholdSlider,
+      valueEl: elements.tuneBloomThresholdValue,
+      decimals: 2,
+    },
     { slider: elements.tuneBloomKneeSlider, valueEl: elements.tuneBloomKneeValue, decimals: 2 },
-    { slider: elements.tuneBloomIntensitySlider, valueEl: elements.tuneBloomIntensityValue, decimals: 2 },
+    {
+      slider: elements.tuneBloomIntensitySlider,
+      valueEl: elements.tuneBloomIntensityValue,
+      decimals: 2,
+    },
     { slider: elements.tuneSatCoreSlider, valueEl: elements.tuneSatCoreValue, decimals: 2 },
     { slider: elements.tuneSatFalloffSlider, valueEl: elements.tuneSatFalloffValue, decimals: 2 },
-    { slider: elements.tuneAnimIntensitySlider, valueEl: elements.tuneAnimIntensityValue, decimals: 2 },
+    {
+      slider: elements.tuneAnimIntensitySlider,
+      valueEl: elements.tuneAnimIntensityValue,
+      decimals: 2,
+    },
   ];
 
   for (const { slider, valueEl, decimals } of tuningSliders) {

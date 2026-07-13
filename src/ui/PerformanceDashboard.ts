@@ -1,6 +1,6 @@
 /**
  * Grok Zephyr - Performance Dashboard
- * 
+ *
  * Displays real-time GPU timing, pass breakdowns, FPS sparkline,
  * and quality preset impact information.
  */
@@ -35,7 +35,7 @@ interface DashboardElements {
 
 /**
  * Performance Dashboard
- * 
+ *
  * Shows real-time performance metrics in a collapsible panel:
  * - Per-pass GPU timings
  * - FPS history sparkline
@@ -69,7 +69,7 @@ export class PerformanceDashboard {
     const container = document.createElement('div');
     container.id = 'perf-dashboard';
     container.className = 'perf-dashboard';
-    
+
     container.innerHTML = `
       <div class="perf-dashboard-toggle">
         <button id="perf-toggle" class="perf-toggle-btn" title="Toggle Performance Dashboard">
@@ -129,9 +129,9 @@ export class PerformanceDashboard {
         </div>
       </div>
     `;
-    
+
     document.body.appendChild(container);
-    
+
     // Store element references
     this.elements = {
       container,
@@ -147,7 +147,7 @@ export class PerformanceDashboard {
       headroom: container.querySelector('#perf-headroom') as HTMLElement,
       timingSource: container.querySelector('#perf-source') as HTMLElement,
     };
-    
+
     // Update timing source indicator
     if (this.profiler.supportsTimestampQuery()) {
       this.elements.timingSource.textContent = 'GPU Timing';
@@ -163,12 +163,12 @@ export class PerformanceDashboard {
    */
   private setupEventListeners(): void {
     if (!this.elements) return;
-    
+
     // Toggle button
     this.elements.toggleBtn.addEventListener('click', () => {
       this.togglePanel();
     });
-    
+
     // Close button
     const closeBtn = this.elements.container.querySelector('.perf-close-btn') as HTMLButtonElement;
     closeBtn?.addEventListener('click', () => {
@@ -181,10 +181,10 @@ export class PerformanceDashboard {
    */
   private togglePanel(): void {
     if (!this.elements) return;
-    
+
     this.isCollapsed = !this.isCollapsed;
     this.elements.panel.style.display = this.isCollapsed ? 'none' : 'block';
-    
+
     // Update button appearance
     if (this.isCollapsed) {
       this.elements.toggleBtn.classList.remove('active');
@@ -208,22 +208,22 @@ export class PerformanceDashboard {
    */
   updateStats(stats: PerformanceStats): void {
     if (!this.elements) return;
-    
+
     const timings: DetailedTimings = this.profiler.getDetailedTimings();
-    
+
     // Update timing displays
     this.elements.computeTime.textContent = timings.compute.toFixed(2);
     this.elements.sceneTime.textContent = timings.scene.toFixed(2);
     this.elements.bloomTime.textContent = timings.bloom.toFixed(2);
     this.elements.postTime.textContent = timings.postProcess.toFixed(2);
-    
+
     // Calculate frame total (average of all recorded frame times)
     const frameTime = stats.frameTime;
     this.elements.totalTime.textContent = frameTime.toFixed(2);
-    
+
     // Update headroom indicator
     this.updateHeadroom(frameTime);
-    
+
     // Update FPS sparkline
     this.updateSparkline();
   }
@@ -233,12 +233,12 @@ export class PerformanceDashboard {
    */
   private updateHeadroom(frameTime: number): void {
     if (!this.elements) return;
-    
+
     // Calculate headroom as percentage of 60 FPS budget (16.67ms)
     const headroom = Math.max(0, ((this.maxFrameTime - frameTime) / this.maxFrameTime) * 100);
     const headroomText = headroom > 10 ? `${headroom.toFixed(0)}% headroom` : 'Low headroom';
     const color = headroom > 30 ? '#00ff88' : headroom > 15 ? '#ffff00' : '#ff6644';
-    
+
     this.elements.headroom.textContent = headroomText;
     this.elements.headroom.style.color = color;
   }
@@ -256,25 +256,25 @@ export class PerformanceDashboard {
    */
   private updateSparkline(): void {
     if (!this.elements) return;
-    
+
     const fpsHistory = this.profiler.getFPSHistory();
     if (fpsHistory.length === 0) return;
-    
+
     const svg = this.elements.fpsSparkline;
     const width = 180;
     const height = 40;
     const padding = 2;
-    
+
     // Clear previous paths
     svg.innerHTML = '';
-    
+
     // Draw background grid (optional)
     const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
     bg.setAttribute('width', width.toString());
     bg.setAttribute('height', height.toString());
     bg.setAttribute('fill', 'rgba(0, 255, 136, 0.02)');
     svg.appendChild(bg);
-    
+
     // Draw reference line at TARGET_FPS (60 FPS)
     const refLineY = this.calculateYPosition(TARGET_FPS, height, padding);
     const refLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -286,30 +286,33 @@ export class PerformanceDashboard {
     refLine.setAttribute('stroke-width', '0.5');
     refLine.setAttribute('stroke-dasharray', '2,2');
     svg.appendChild(refLine);
-    
+
     // Create sparkline path
     const pointCount = Math.min(fpsHistory.length, MAX_FPS_HISTORY_LENGTH);
     const stepX = (width - padding * 2) / Math.max(1, pointCount - 1);
-    
+
     let pathData = '';
     for (let i = 0; i < pointCount; i++) {
       const fps = fpsHistory[fpsHistory.length - pointCount + i];
       const x = padding + i * stepX;
       const y = this.calculateYPosition(fps, height, padding);
-      
+
       if (i === 0) {
         pathData += `M ${x} ${y}`;
       } else {
         pathData += ` L ${x} ${y}`;
       }
     }
-    
+
     // Draw area under sparkline with gradient effect (append first so it renders below)
     const areaPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    areaPath.setAttribute('d', `${pathData} L ${width - padding} ${height} L ${padding} ${height} Z`);
+    areaPath.setAttribute(
+      'd',
+      `${pathData} L ${width - padding} ${height} L ${padding} ${height} Z`,
+    );
     areaPath.setAttribute('fill', 'rgba(0, 255, 136, 0.1)');
     svg.appendChild(areaPath);
-    
+
     // Draw sparkline path on top
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', pathData);
@@ -326,11 +329,10 @@ export class PerformanceDashboard {
    */
   updateQualityPreset(level: QualityLevel): void {
     if (!this.elements) return;
-    
+
     const preset = QUALITY_PRESETS[level];
     this.elements.presetLabel.textContent = preset.label;
-    
-    
+
     // Add transition animation class for visual feedback
     const presetEl = this.elements.presetLabel;
     presetEl.classList.add('perf-preset-changing');
@@ -349,5 +351,3 @@ export class PerformanceDashboard {
     }
   }
 }
-
-export default PerformanceDashboard;

@@ -4,20 +4,17 @@
 
 import { createBloomThresholdBindGroup } from '../pipelines/BindGroupFactory.js';
 import { MAX_BLOOM_LEVELS, MIN_BLOOM_LEVELS } from '../pipelines/types.js';
-import type { PassContext } from './types.js';
+import type { FrameContext } from './types.js';
 
 export function encodeBloomPasses(
   encoder: GPUCommandEncoder,
-  ctx: PassContext,
+  ctx: FrameContext,
   sceneSourceView?: GPUTextureView,
 ): void {
   if (ctx.bloomKawaseBuffers.length === 0) return;
 
   const device = ctx.context.getDevice();
-  const levels = Math.min(
-    Math.max(MIN_BLOOM_LEVELS, ctx.bloomConfig.levels),
-    MAX_BLOOM_LEVELS,
-  );
+  const levels = Math.min(Math.max(MIN_BLOOM_LEVELS, ctx.bloomConfig.levels), MAX_BLOOM_LEVELS);
 
   for (let i = 0; i < levels; i++) {
     if (!ctx.renderTargets.bloomMip[i] || !ctx.bloomKawaseBuffers[i]) {
@@ -38,12 +35,14 @@ export function encodeBloomPasses(
 
   {
     const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: ctx.renderTargets.bloomAView,
-        clearValue: { r: 0, g: 0, b: 0, a: 1 },
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
+      colorAttachments: [
+        {
+          view: ctx.renderTargets.bloomAView,
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: 'clear',
+          storeOp: 'store',
+        },
+      ],
     });
     pass.setViewport(0, 0, ctx.width, ctx.height, 0, 1);
     pass.setPipeline(ctx.pipelines.bloomThreshold);
@@ -52,7 +51,10 @@ export function encodeBloomPasses(
     pass.end();
   }
 
-  const srcViews: GPUTextureView[] = [ctx.renderTargets.bloomAView, ...ctx.renderTargets.bloomMipViews];
+  const srcViews: GPUTextureView[] = [
+    ctx.renderTargets.bloomAView,
+    ...ctx.renderTargets.bloomMipViews,
+  ];
   const dstViews: GPUTextureView[] = ctx.renderTargets.bloomMipViews;
 
   for (let i = 0; i < levels; i++) {
@@ -70,12 +72,14 @@ export function encodeBloomPasses(
     });
 
     const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: dstViews[i],
-        clearValue: { r: 0, g: 0, b: 0, a: 1 },
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
+      colorAttachments: [
+        {
+          view: dstViews[i],
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: 'clear',
+          storeOp: 'store',
+        },
+      ],
     });
     pass.setViewport(0, 0, mip.width, mip.height, 0, 1);
     pass.setPipeline(ctx.pipelines.bloomDownsample);
@@ -100,11 +104,13 @@ export function encodeBloomPasses(
     });
 
     const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: ctx.renderTargets.bloomMipViews[i - 1],
-        loadOp: 'load',
-        storeOp: 'store',
-      }],
+      colorAttachments: [
+        {
+          view: ctx.renderTargets.bloomMipViews[i - 1],
+          loadOp: 'load',
+          storeOp: 'store',
+        },
+      ],
     });
     pass.setViewport(0, 0, dstMip.width, dstMip.height, 0, 1);
     pass.setPipeline(ctx.pipelines.bloomUpsample);

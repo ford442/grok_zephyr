@@ -1,11 +1,11 @@
 /**
  * Grok Zephyr - Smile V2 Pipeline
- * 
+ *
  * Compute pipeline for "Smile from the Moon v2" animation system.
  * Handles 7-phase animation cycle with visibility culling and trail effects.
  */
 
-import type WebGPUContext from '@/core/WebGPUContext.js';
+import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
 import { CONSTANTS } from '@/types/constants.js';
 import { SHADERS } from '@/shaders/index.js';
@@ -24,10 +24,10 @@ export enum SmileV2Phase {
 
 /** Smile V2 uniform data structure (matches WGSL layout) */
 export interface SmileV2Uniforms {
-  global_time: number;       // Byte 0-3: Animation time in seconds
-  transition_alpha: number;  // Byte 4-7: Blend factor (0-1)
-  target_mode: number;       // Byte 8-11: Target animation mode
-  morph_progress: number;    // Byte 12-15: Morph transition progress (0-1)
+  global_time: number; // Byte 0-3: Animation time in seconds
+  transition_alpha: number; // Byte 4-7: Blend factor (0-1)
+  target_mode: number; // Byte 8-11: Target animation mode
+  morph_progress: number; // Byte 12-15: Morph transition progress (0-1)
   // Byte 16-31: reserved (vec4f padding)
 }
 
@@ -49,7 +49,7 @@ export interface SmileV2Timing {
 
 /**
  * Smile V2 Pipeline Manager
- * 
+ *
  * Manages the compute pipeline for the Smile from the Moon v2 animation:
  * - 7-phase animation cycle (48 seconds total)
  * - Visibility buffer culling for performance
@@ -96,10 +96,10 @@ export class SmileV2Pipeline {
    */
   initialize(): void {
     console.log('[SmileV2Pipeline] Initializing pipeline...');
-    
+
     this.createPipeline();
     this.createBindGroup();
-    
+
     if (this.config.indirectDispatch) {
       this.createIndirectBuffer();
     }
@@ -117,7 +117,7 @@ export class SmileV2Pipeline {
   private createPipeline(): void {
     const device = this.context.getDevice();
 
-    // Bind group layout for smile_v2.wgsl:
+    // Bind group layout for animations/smileV2.ts:
     // Binding 0: smileV2Uniforms (uniform)
     // Binding 1: sat_positions (storage, read)
     // Binding 2: orb_elements (storage, read)
@@ -181,9 +181,10 @@ export class SmileV2Pipeline {
     }
 
     const device = this.context.getDevice();
-    const posBuffer = this.buffers.positions instanceof GPUBuffer
-      ? this.buffers.positions
-      : (this.buffers.positions as { read: GPUBuffer }).read;
+    const posBuffer =
+      this.buffers.positions instanceof GPUBuffer
+        ? this.buffers.positions
+        : (this.buffers.positions as { read: GPUBuffer }).read;
 
     this.bindGroup = device.createBindGroup({
       label: 'SmileV2BindGroup',
@@ -205,10 +206,10 @@ export class SmileV2Pipeline {
    */
   private createIndirectBuffer(): void {
     const device = this.context.getDevice();
-    
+
     // Indirect dispatch args: [x, y, z]
     const indirectData = new Uint32Array([this.workgroupCount, 1, 1]);
-    
+
     this.indirectBuffer = device.createBuffer({
       label: 'SmileV2IndirectBuffer',
       size: 12, // 3 * 4 bytes
@@ -224,10 +225,10 @@ export class SmileV2Pipeline {
    */
   private createVisibilityBuffer(): void {
     const device = this.context.getDevice();
-    
+
     // One uint32 per workgroup containing count of visible satellites
     const visibilitySize = Math.ceil(this.workgroupCount / 32) * 4;
-    
+
     this.visibilityBuffer = device.createBuffer({
       label: 'SmileV2VisibilityBuffer',
       size: visibilitySize,
@@ -247,11 +248,11 @@ export class SmileV2Pipeline {
     // [8..10] ref_nadir, [11] pad, [12..14] ref_east, [15] pad,
     // [16..18] ref_north, [19] pad, [20] morph_mode (u32), [21..23] _pad2
     const data = new Float32Array(24);
-    data[0] = uniforms.global_time;   // cycle_time (reuse global_time)
-    data[1] = uniforms.global_time;   // global_time
-    data[2] = 1.0;                    // speed_multiplier
+    data[0] = uniforms.global_time; // cycle_time (reuse global_time)
+    data[1] = uniforms.global_time; // global_time
+    data[2] = 1.0; // speed_multiplier
     data[4] = uniforms.transition_alpha;
-    data[5] = uniforms.target_mode;   // morph_target
+    data[5] = uniforms.target_mode; // morph_target
     // ref vectors and morph_mode default to 0 (already zeroed)
 
     this.context.writeBuffer(this.buffers.smileV2Uniforms, data);
@@ -287,7 +288,9 @@ export class SmileV2Pipeline {
 
     // Log performance warning if frame time exceeds 16ms target
     if (this.timing.frameTime > 16) {
-      console.warn(`[SmileV2Pipeline] Frame time ${this.timing.frameTime.toFixed(2)}ms exceeds 16ms target`);
+      console.warn(
+        `[SmileV2Pipeline] Frame time ${this.timing.frameTime.toFixed(2)}ms exceeds 16ms target`,
+      );
     }
   }
 
@@ -301,7 +304,7 @@ export class SmileV2Pipeline {
 
     const workgroups = Math.ceil(visibleCount / 256);
     const data = new Uint32Array([workgroups, 1, 1]);
-    
+
     this.context.writeBuffer(this.indirectBuffer, data);
   }
 
@@ -329,7 +332,7 @@ export class SmileV2Pipeline {
     this.config.currentPhase = phase;
     this.config.phaseStartTime = performance.now();
     this.config.enabled = phase !== SmileV2Phase.IDLE;
-    
+
     console.log(`[SmileV2Pipeline] Started phase ${SmileV2Phase[phase]}`);
   }
 
@@ -390,12 +393,12 @@ export class SmileV2Pipeline {
   destroy(): void {
     this.pipeline = null;
     this.bindGroup = null;
-    
+
     if (this.indirectBuffer) {
       this.indirectBuffer.destroy();
       this.indirectBuffer = null;
     }
-    
+
     if (this.visibilityBuffer) {
       this.visibilityBuffer.destroy();
       this.visibilityBuffer = null;
@@ -404,5 +407,3 @@ export class SmileV2Pipeline {
     console.log('[SmileV2Pipeline] Destroyed');
   }
 }
-
-export default SmileV2Pipeline;

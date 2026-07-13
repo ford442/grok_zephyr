@@ -7,7 +7,9 @@
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
 
-export const MOON_FOREGROUND_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+export const MOON_FOREGROUND_SHADER =
+  UNIFORM_STRUCT +
+  /* wgsl */ `
 const EARTH_R_KM: f32 = 6371.0;
 const MOON_DIST_KM: f32 = 384400.0;
 // Angular radius of Earth as seen from the Moon (~0.949°).

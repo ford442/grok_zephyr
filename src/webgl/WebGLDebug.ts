@@ -47,10 +47,18 @@ export class WebGLDebugOverlay {
     const panel = document.createElement('div');
     panel.id = 'webgl-debug-panel';
     panel.style.cssText = [
-      'position:fixed', 'bottom:10px', 'right:10px', 'z-index:9999',
-      'font:11px/1.5 monospace', 'color:#7fffd4', 'background:rgba(0,0,0,0.6)',
-      'padding:8px 10px', 'border:1px solid #1f6f5f', 'border-radius:6px',
-      'pointer-events:auto', 'user-select:none',
+      'position:fixed',
+      'bottom:10px',
+      'right:10px',
+      'z-index:9999',
+      'font:11px/1.5 monospace',
+      'color:#7fffd4',
+      'background:rgba(0,0,0,0.6)',
+      'padding:8px 10px',
+      'border:1px solid #1f6f5f',
+      'border-radius:6px',
+      'pointer-events:auto',
+      'user-select:none',
     ].join(';');
     this.render(panel);
     document.body.appendChild(panel);
@@ -58,7 +66,10 @@ export class WebGLDebugOverlay {
 
     const api: ZephyrGLApi = {
       renderer: this.renderer,
-      setDebug: (opts) => { this.renderer.setDebug(opts); this.refresh(); },
+      setDebug: (opts) => {
+        this.renderer.setDebug(opts);
+        this.refresh();
+      },
       getDebug: () => this.renderer.getDebug(),
       capture: () => this.canvas.toDataURL('image/png'),
     };
@@ -88,7 +99,7 @@ export class WebGLDebugOverlay {
     panel.querySelectorAll<HTMLInputElement>('input[type=checkbox]').forEach((input) => {
       input.addEventListener('change', () => {
         const key = input.dataset.key as keyof WebGLDebugOptions;
-        this.renderer.setDebug({ [key]: input.checked } as Partial<WebGLDebugOptions>);
+        this.renderer.setDebug({ [key]: input.checked });
       });
     });
   }

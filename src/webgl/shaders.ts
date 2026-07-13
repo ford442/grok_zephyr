@@ -223,7 +223,7 @@ void main() {
 }
 `;
 
-// Simplified port of earth.wgsl: diffuse day/night terrain, ocean tint, city
+// Simplified port of render/earth.ts: diffuse day/night terrain, ocean tint, city
 // lights on the night side, and an atmospheric rim. Emissive output feeds bloom.
 export const EARTH_FRAG = /* glsl */ `#version 300 es
 precision highp float;

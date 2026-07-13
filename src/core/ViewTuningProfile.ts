@@ -90,7 +90,7 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     haloStrength: 0.15,
     coreBoost: 2.5,
     distanceCullKm: CULLING.MAX_DISTANCE,
-    animationIntensity: 0.80,
+    animationIntensity: 0.8,
     animationContrast: 1.15,
   },
   {
@@ -105,7 +105,7 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     bloomIntensity: 1.85,
     satCoreOuter: 0.34,
     satCoreInner: 0.06,
-    haloStrength: 0.10,
+    haloStrength: 0.1,
     coreBoost: 2.2,
     distanceCullKm: 80_000,
     animationIntensity: 0.72,
@@ -120,7 +120,7 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
       'blowing out; slightly softer kernel separates star-like points.',
     bloomThreshold: 1.75,
     bloomKnee: 0.06,
-    bloomIntensity: 1.70,
+    bloomIntensity: 1.7,
     satCoreOuter: 0.42,
     satCoreInner: 0.12,
     haloStrength: 0.22,
@@ -145,7 +145,7 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     coreBoost: 2.6,
     distanceCullKm: 500_000,
     animationIntensity: 1.55,
-    animationContrast: 0.90,
+    animationContrast: 0.9,
   },
   {
     viewModeIndex: 5,
@@ -157,9 +157,9 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
     bloomThreshold: 1.62,
     bloomKnee: 0.055,
     bloomIntensity: 1.88,
-    satCoreOuter: 0.40,
+    satCoreOuter: 0.4,
     satCoreInner: 0.11,
-    haloStrength: 0.20,
+    haloStrength: 0.2,
     coreBoost: 2.55,
     distanceCullKm: 100_000,
     animationIntensity: 1.12,
@@ -170,16 +170,14 @@ export const VIEW_TUNING_PROFILES: readonly ViewTuningProfile[] = [
 /** Reference coreBoost used to normalize skyline window emissive scale (Horizon baseline). */
 export const SKYLINE_EMISSIVE_CORE_REF = 2.4;
 
-const PROFILE_BY_INDEX = new Map(
-  VIEW_TUNING_PROFILES.map((p) => [p.viewModeIndex, p] as const),
-);
+const PROFILE_BY_INDEX = new Map(VIEW_TUNING_PROFILES.map((p) => [p.viewModeIndex, p] as const));
 
 const MAX_VIEW_MODE_INDEX = VIEW_TUNING_PROFILES.length - 1;
 
 /** Lookup profile for a view mode index (clamped to valid range). */
 export function getViewTuningProfile(viewModeIndex: number): ViewTuningProfile {
   const clamped = Math.max(0, Math.min(MAX_VIEW_MODE_INDEX, viewModeIndex | 0));
-  return PROFILE_BY_INDEX.get(clamped) ?? VIEW_TUNING_PROFILES[0]!;
+  return PROFILE_BY_INDEX.get(clamped) ?? VIEW_TUNING_PROFILES[0];
 }
 
 /** Window emissive multiplier for the skyline city pass from active coreBoost. */
@@ -225,11 +223,7 @@ export function blendViewTuningProfiles(
 }
 
 /** HUD label during a transition. */
-export function formatTuningProfileLabel(
-  fromIndex: number,
-  toIndex: number,
-  t: number,
-): string {
+export function formatTuningProfileLabel(fromIndex: number, toIndex: number, t: number): string {
   const from = getViewTuningProfile(fromIndex);
   const to = getViewTuningProfile(toIndex);
   if (fromIndex === toIndex || t >= 0.99) return to.shortName;

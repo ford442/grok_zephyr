@@ -4,12 +4,9 @@
 
 import { CONSTANTS, RENDER } from '@/types/constants.js';
 import { MAX_BEAMS } from '../pipelines/types.js';
-import type { PassContext } from './types.js';
+import type { FrameContext } from './types.js';
 
-export function encodeComputePass(
-  encoder: GPUCommandEncoder,
-  ctx: PassContext,
-): void {
+export function encodeComputePass(encoder: GPUCommandEncoder, ctx: FrameContext): void {
   const pass = encoder.beginComputePass();
   pass.setPipeline(ctx.pipelines.compute);
   pass.setBindGroup(0, ctx.bindGroups.compute);
@@ -17,10 +14,7 @@ export function encodeComputePass(
   pass.end();
 }
 
-export function encodeBeamComputePass(
-  encoder: GPUCommandEncoder,
-  ctx: PassContext,
-): void {
+export function encodeBeamComputePass(encoder: GPUCommandEncoder, ctx: FrameContext): void {
   const pass = encoder.beginComputePass();
   pass.setPipeline(ctx.pipelines.beamCompute);
   pass.setBindGroup(0, ctx.bindGroups.beamCompute);

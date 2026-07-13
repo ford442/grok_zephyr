@@ -17,6 +17,7 @@ Grok Zephyr is a cutting-edge web application that brings large-scale satellite 
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - **Node.js** 18.0.0 or later
 - A modern browser with WebGPU support (Chrome/Edge 113+, or Firefox Nightly)
 
@@ -38,7 +39,7 @@ npm run dev
 # Development: Hot reload, source maps, full TypeScript checking
 npm run dev
 
-# Production: Optimized build with minification
+# Production: Optimized build with minification (outputs to dist/)
 npm run build
 
 # Preview: Test production build locally
@@ -50,8 +51,28 @@ npm run build:standalone
 # Type checking: Verify TypeScript correctness
 npm run type-check
 
-# Deploy: Builds and outputs instructions
-npm run deploy
+# Lint: ESLint + Knip (same checks as CI)
+npm run lint
+```
+
+### GitHub Pages (production)
+
+The live demo is published automatically by [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml):
+
+1. **Push to `main`** — after the [Test](.github/workflows/test.yml) workflow succeeds, the Deploy workflow builds `dist/` and publishes it to GitHub Pages.
+2. **Manual deploy** — in the repo on GitHub, open **Actions → Deploy → Run workflow**.
+
+**One-time repo setup** (maintainers):
+
+1. **Settings → Pages → Build and deployment** — set **Source** to **GitHub Actions**.
+2. After the first successful deploy, the site URL appears on the Pages settings screen (typically `https://<org-or-user>.github.io/<repo>/`).
+
+The Vite build uses `base: './'`, so asset paths work on GitHub Pages without extra configuration. `public/.nojekyll` disables Jekyll processing for the uploaded artifact.
+
+To verify a production build locally before merging:
+
+```bash
+npm run build && npm run preview
 ```
 
 ## 🎮 Usage & Features
@@ -106,18 +127,19 @@ Grok Zephyr is optimized for high-performance visualization:
 - **FPS Monitoring**: Built-in performance profiler with moving averages
 
 Typical performance on modern GPUs:
+
 - 1M satellites: 60+ FPS
 - Bloom post-processing: Real-time at 1080p+
 - GPU queries: Sub-millisecond per frame
 
 ## 🌐 Browser Compatibility
 
-| Browser | Status | Notes |
-|---------|--------|-------|
-| Chrome 113+ | ✅ Full Support | Best performance and stability |
-| Edge 113+ | ✅ Full Support | Chromium-based, same as Chrome |
-| Firefox Nightly | ⚠️ Experimental | WebGPU flag required |
-| Safari | ⏳ Coming Soon | WebGPU implementation in progress |
+| Browser         | Status          | Notes                             |
+| --------------- | --------------- | --------------------------------- |
+| Chrome 113+     | ✅ Full Support | Best performance and stability    |
+| Edge 113+       | ✅ Full Support | Chromium-based, same as Chrome    |
+| Firefox Nightly | ⚠️ Experimental | WebGPU flag required              |
+| Safari          | ⏳ Coming Soon  | WebGPU implementation in progress |
 
 **Important**: WebGPU requires a secure context (HTTPS or localhost). Most features require dedicated GPU hardware.
 
@@ -127,12 +149,12 @@ The app is WebGPU-first but ships a **toggleable WebGL2 fallback renderer** for
 debugging, CI, and agent/Playwright inspection (WebGPU output cannot be read back
 in headless browsers).
 
-| Goal | URL |
-|------|-----|
-| WebGL2 renderer | `?renderer=webgl` |
-| WebGPU (default) | `?renderer=webgpu` |
-| Reduce satellite count | `?renderer=webgl&sats=100000` |
-| Debug helpers | `?renderer=webgl&debug=wireframe,lod,points,nobloom` |
+| Goal                   | URL                                                  |
+| ---------------------- | ---------------------------------------------------- |
+| WebGL2 renderer        | `?renderer=webgl`                                    |
+| WebGPU (default)       | `?renderer=webgpu`                                   |
+| Reduce satellite count | `?renderer=webgl&sats=100000`                        |
+| Debug helpers          | `?renderer=webgl&debug=wireframe,lod,points,nobloom` |
 
 The choice persists in `localStorage['zephyr.renderer']`. When the WebGL path is
 active, `window.zephyrGL` exposes `setDebug()`, `getDebug()`, and `capture()` for
@@ -157,6 +179,7 @@ mapping, and WebGL→WebGPU porting notes for large-scale simulations.
 ## 📝 Data & Configuration
 
 The project includes sample Starlink TLE (Two-Line Element) data in `/public/tle/`. You can:
+
 - Replace with real TLE data from space-track.org
 - Implement custom data loaders for different formats
 - Create visualizations for any satellite constellation
@@ -164,12 +187,14 @@ The project includes sample Starlink TLE (Two-Line Element) data in `/public/tle
 ## 🎨 Customization
 
 ### Easy Wins
+
 - Modify colors in shader files (`.wgsl`)
 - Adjust camera parameters in `CameraController.ts`
 - Configure performance thresholds in `PerformanceProfiler.ts`
 - Customize UI layout in `UIManager.ts`
 
 ### Advanced Extensions
+
 - Implement additional view modes
 - Add satellite filtering and search
 - Create timeline scrubbing for historical data
@@ -198,6 +223,7 @@ This is an active project with exciting opportunities for contribution:
 ### Labels & Issue Organization
 
 We maintain a comprehensive label system for organizing issues and PRs. See [LABELS.md](./LABELS.md) for details on our label categories, colors, and usage guidelines. Labels help us track:
+
 - Visual upgrades and rendering work
 - Performance improvements
 - Accessibility enhancements

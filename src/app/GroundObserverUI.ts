@@ -23,14 +23,14 @@ export function setupTAAToggle(rt: AppRuntime): void {
   const btn = document.getElementById('taaToggle');
   if (!btn) return;
   btn.addEventListener('click', () => {
-    rt.taaEnabled = !rt.taaEnabled;
-    rt.postProcessStack?.enableTAA(rt.taaEnabled);
-    btn.textContent = rt.taaEnabled ? 'TAA ON' : 'TAA OFF';
-    btn.classList.toggle('active', rt.taaEnabled);
-    console.log(`🔲 TAA: ${rt.taaEnabled ? 'enabled' : 'disabled'}`);
+    rt.simulation.taaEnabled = !rt.simulation.taaEnabled;
+    rt.postProcessStack?.enableTAA(rt.simulation.taaEnabled);
+    btn.textContent = rt.simulation.taaEnabled ? 'TAA ON' : 'TAA OFF';
+    btn.classList.toggle('active', rt.simulation.taaEnabled);
+    console.log(`🔲 TAA: ${rt.simulation.taaEnabled ? 'enabled' : 'disabled'}`);
   });
-  btn.textContent = rt.taaEnabled ? 'TAA ON' : 'TAA OFF';
-  btn.classList.toggle('active', rt.taaEnabled);
+  btn.textContent = rt.simulation.taaEnabled ? 'TAA ON' : 'TAA OFF';
+  btn.classList.toggle('active', rt.simulation.taaEnabled);
 }
 
 export function updateGroundObserverOverlay(rt: AppRuntime): void {
@@ -40,7 +40,7 @@ export function updateGroundObserverOverlay(rt: AppRuntime): void {
   const isGround = viewMode === 'ground';
   const isSkyline = viewMode === 'skyline';
 
-  if (overlay) overlay.style.display = (isGround || isSkyline) ? 'block' : 'none';
+  if (overlay) overlay.style.display = isGround || isSkyline ? 'block' : 'none';
   if (presetSelector) presetSelector.style.display = isGround ? 'flex' : 'none';
 
   if (isGround) {
@@ -62,6 +62,6 @@ export function applyGroundOverlayClass(_rt: AppRuntime, overlayClass: string): 
 export function syncTaaToggleUi(rt: AppRuntime): void {
   const btn = document.getElementById('taaToggle');
   if (!btn) return;
-  btn.textContent = rt.taaEnabled ? 'TAA ON' : 'TAA OFF';
-  btn.classList.toggle('active', rt.taaEnabled);
+  btn.textContent = rt.simulation.taaEnabled ? 'TAA ON' : 'TAA OFF';
+  btn.classList.toggle('active', rt.simulation.taaEnabled);
 }

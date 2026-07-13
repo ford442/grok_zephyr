@@ -10,11 +10,11 @@ type AmbientProfile = {
 const AUDIO_MUTED_STORAGE_KEY = 'gz.audio.muted';
 const AMBIENT_PROFILES: Record<ViewMode, AmbientProfile> = {
   'horizon-720': { droneHz: 58, textureHz: 0.11, noiseCutoffHz: 420, textureGain: 0.18 },
-  god:           { droneHz: 54, textureHz: 0.08, noiseCutoffHz: 380, textureGain: 0.16 },
-  'sat-pov':     { droneHz: 76, textureHz: 0.22, noiseCutoffHz: 620, textureGain: 0.24 },
-  ground:        { droneHz: 66, textureHz: 0.16, noiseCutoffHz: 1100, textureGain: 0.28 },
-  moon:          { droneHz: 49, textureHz: 0.06, noiseCutoffHz: 260, textureGain: 0.14 },
-  skyline:       { droneHz: 62, textureHz: 0.14, noiseCutoffHz: 900, textureGain: 0.24 },
+  god: { droneHz: 54, textureHz: 0.08, noiseCutoffHz: 380, textureGain: 0.16 },
+  'sat-pov': { droneHz: 76, textureHz: 0.22, noiseCutoffHz: 620, textureGain: 0.24 },
+  ground: { droneHz: 66, textureHz: 0.16, noiseCutoffHz: 1100, textureGain: 0.28 },
+  moon: { droneHz: 49, textureHz: 0.06, noiseCutoffHz: 260, textureGain: 0.14 },
+  skyline: { droneHz: 62, textureHz: 0.14, noiseCutoffHz: 900, textureGain: 0.24 },
 };
 
 /**
@@ -155,13 +155,21 @@ export class AudioEngine {
 
   destroy(): void {
     for (const src of this.ambientSources) {
-      try { src.stop(); } catch {}
+      try {
+        src.stop();
+      } catch {
+        /* node may already be stopped */
+      }
       src.disconnect();
     }
     this.ambientSources = [];
 
     for (const lfo of this.textureLfoByMode.values()) {
-      try { lfo.stop(); } catch {}
+      try {
+        lfo.stop();
+      } catch {
+        /* node may already be stopped */
+      }
       lfo.disconnect();
     }
     this.textureLfoByMode.clear();
@@ -178,7 +186,9 @@ export class AudioEngine {
   }
 
   private canPlay(): boolean {
-    return !this.muted && this.unlocked && !!this.audioContext && this.audioContext.state === 'running';
+    return (
+      !this.muted && this.unlocked && !!this.audioContext && this.audioContext.state === 'running'
+    );
   }
 
   private setupGraph(ctx: AudioContext): void {
@@ -283,7 +293,12 @@ export class AudioEngine {
     this.masterGain.gain.setTargetAtTime(0.7, now, 0.12);
   }
 
-  private playTick(targetGain: GainNode | null, frequencyHz: number, duration: number, delay: number): void {
+  private playTick(
+    targetGain: GainNode | null,
+    frequencyHz: number,
+    duration: number,
+    delay: number,
+  ): void {
     if (!this.canPlay() || !targetGain || !this.audioContext) return;
     const ctx = this.audioContext;
     const now = ctx.currentTime + Math.max(0, delay);
@@ -338,5 +353,3 @@ export class AudioEngine {
     }
   }
 }
-
-export default AudioEngine;

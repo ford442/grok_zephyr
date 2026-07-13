@@ -3,12 +3,12 @@
  */
 
 import type { PostProcessConfig, TAAConfig } from '@/types/animation.js';
-import taaStackShader from '@/shaders/postProcess/taaStack.wgsl';
-import lensStackShader from '@/shaders/postProcess/lensStack.wgsl';
-import gradingStackShader from '@/shaders/postProcess/gradingStack.wgsl';
-import grainStackShader from '@/shaders/postProcess/grainStack.wgsl';
-import sharpnessStackShader from '@/shaders/postProcess/sharpnessStack.wgsl';
-import tonemapStackShader from '@/shaders/postProcess/tonemapStack.wgsl';
+import { TAA_STACK_SHADER as taaStackShader } from '@/shaders/postProcess/taaStack.js';
+import { LENS_STACK_SHADER as lensStackShader } from '@/shaders/postProcess/lensStack.js';
+import { GRADING_STACK_SHADER as gradingStackShader } from '@/shaders/postProcess/gradingStack.js';
+import { GRAIN_STACK_SHADER as grainStackShader } from '@/shaders/postProcess/grainStack.js';
+import { SHARPNESS_STACK_SHADER as sharpnessStackShader } from '@/shaders/postProcess/sharpnessStack.js';
+import { TONEMAP_STACK_SHADER as tonemapStackShader } from '@/shaders/postProcess/tonemapStack.js';
 
 /** Post-process pass types */
 export type PassType = 'taa' | 'lens' | 'grading' | 'grain' | 'sharpness' | 'tonemap';
@@ -38,7 +38,7 @@ function createFullscreenPipeline(
   shaderCode: string,
   label: string | undefined,
   target: GPUColorTargetState,
-  fragmentEntryPoint = 'fs'
+  fragmentEntryPoint = 'fs',
 ): GPURenderPipeline {
   const shader = device.createShaderModule({
     label,
@@ -53,10 +53,7 @@ function createFullscreenPipeline(
   });
 }
 
-function createTAAPipeline(
-  device: GPUDevice,
-  taaConfig: TAAConfig
-): PostProcessPass {
+function createTAAPipeline(device: GPUDevice, taaConfig: TAAConfig): PostProcessPass {
   const pipeline = createFullscreenPipeline(device, taaStackShader, 'TAA', HDR_TARGET);
 
   return {
@@ -67,10 +64,7 @@ function createTAAPipeline(
   };
 }
 
-function createLensPipeline(
-  device: GPUDevice,
-  isLensEnabled: () => boolean
-): PostProcessPass {
+function createLensPipeline(device: GPUDevice, isLensEnabled: () => boolean): PostProcessPass {
   const pipeline = createFullscreenPipeline(device, lensStackShader, 'LensEffects', HDR_TARGET);
 
   return {
@@ -92,10 +86,7 @@ function createGradingPipeline(device: GPUDevice): PostProcessPass {
   };
 }
 
-function createGrainPipeline(
-  device: GPUDevice,
-  config: PostProcessConfig
-): PostProcessPass {
+function createGrainPipeline(device: GPUDevice, config: PostProcessConfig): PostProcessPass {
   const pipeline = createFullscreenPipeline(device, grainStackShader, 'FilmGrain', HDR_TARGET);
 
   return {
@@ -106,10 +97,7 @@ function createGrainPipeline(
   };
 }
 
-function createSharpnessPipeline(
-  device: GPUDevice,
-  config: PostProcessConfig
-): PostProcessPass {
+function createSharpnessPipeline(device: GPUDevice, config: PostProcessConfig): PostProcessPass {
   const pipeline = createFullscreenPipeline(device, sharpnessStackShader, 'Sharpness', HDR_TARGET);
 
   return {
@@ -123,14 +111,14 @@ function createSharpnessPipeline(
 function createTonemapPipeline(
   device: GPUDevice,
   surfaceFormat: GPUTextureFormat,
-  skipFinalTonemap: boolean
+  skipFinalTonemap: boolean,
 ): PostProcessPass {
   const pipeline = createFullscreenPipeline(
     device,
     tonemapStackShader,
     skipFinalTonemap ? 'TonemapPassthrough' : 'TonemapACES',
     { format: surfaceFormat },
-    skipFinalTonemap ? 'fs_passthrough' : 'fs'
+    skipFinalTonemap ? 'fs_passthrough' : 'fs',
   );
 
   return {
@@ -145,7 +133,7 @@ function createTonemapPipeline(
  * Create all post-process render pipelines.
  */
 export function createPostProcessPipelines(
-  options: PostProcessPipelineOptions
+  options: PostProcessPipelineOptions,
 ): Map<PassType, PostProcessPass> {
   const { device, surfaceFormat, skipFinalTonemap, taaConfig, config, isLensEnabled } = options;
   const passes = new Map<PassType, PostProcessPass>();

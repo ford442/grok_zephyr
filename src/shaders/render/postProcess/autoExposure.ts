@@ -56,4 +56,3 @@ fn main(@builtin(local_invocation_index) lid: u32) {
   }
 }
 `;
-

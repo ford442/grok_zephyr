@@ -5,6 +5,7 @@ This document provides guidelines for AI-assisted development on the Grok Zephyr
 ## 🎯 Project Overview
 
 Grok Zephyr is a WebGPU-based orbital simulation for visualizing 1M+ satellites in real-time. The project is well-architected with:
+
 - Modular TypeScript codebase with strict type checking
 - GPU-accelerated compute shaders for orbital mechanics
 - A 6-pass rendering pipeline with bloom and post-processing
@@ -31,21 +32,25 @@ Grok Zephyr is a WebGPU-based orbital simulation for visualizing 1M+ satellites 
 ### Common Tasks
 
 #### Running the Development Server
+
 ```bash
 npm run dev  # Starts Vite dev server at http://localhost:5173
 ```
 
 #### Type Checking
+
 ```bash
 npm run type-check  # Verify TypeScript correctness before committing
 ```
 
 #### Production Build
+
 ```bash
 npm run build  # Creates optimized dist/ for deployment
 ```
 
 #### Performance Analysis
+
 Look for the `PerformanceProfiler` class in `src/utils/` - it tracks FPS and GPU metrics.
 
 ## 📁 Key File Locations
@@ -100,6 +105,7 @@ Look for the `PerformanceProfiler` class in `src/utils/` - it tracks FPS and GPU
 ## 💡 Best Practices
 
 ### Do's
+
 ✅ Read the existing code before making changes
 ✅ Keep changes minimal and focused
 ✅ Run type-check and tests locally first
@@ -108,6 +114,7 @@ Look for the `PerformanceProfiler` class in `src/utils/` - it tracks FPS and GPU
 ✅ Test in multiple browsers (Chrome/Edge preferred)
 
 ### Don'ts
+
 ❌ Don't refactor unrelated code
 ❌ Don't add "nice-to-have" features not in the spec
 ❌ Don't commit without type-checking
@@ -125,6 +132,7 @@ Look for the `PerformanceProfiler` class in `src/utils/` - it tracks FPS and GPU
 ## 📞 Questions?
 
 If you're unsure about something:
+
 1. Check the existing code for patterns
 2. Review ARCHITECTURE.md for high-level guidance
 3. Look at similar implementations in the codebase

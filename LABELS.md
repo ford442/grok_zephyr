@@ -5,13 +5,15 @@ This document describes the high-quality labels created for visual & polish work
 ## Label Categories
 
 ### Core Visual/Rendering
+
 These labels are for core visual and rendering system work.
 
 - **`visual-upgrade`** (#6A0DAD) - Core visual/rendering enhancement or upgrade
-- **`rendering`** (#0366D6) - Related to rendering engine, graphics, or visual output  
+- **`rendering`** (#0366D6) - Related to rendering engine, graphics, or visual output
 - **`high-impact`** (#D73A49) - High-impact visual or feature work
 
 ### Areas
+
 Labels that indicate the area or system affected by the issue or PR.
 
 - **`camera`** (#1F6FEB) - Related to camera control or camera systems
@@ -22,6 +24,7 @@ Labels that indicate the area or system affected by the issue or PR.
 - **`accessibility`** (#6F42C1) - Accessibility improvements or features
 
 ### Priority
+
 Labels indicating the priority of the work.
 
 - **`P0`** (#FF0000) - Critical, very important work
@@ -29,6 +32,7 @@ Labels indicating the priority of the work.
 - **`P2`** (#CCCCCC) - Nice to have improvements
 
 ### Other
+
 Additional labels for project organization.
 
 - **`good-first-issue`** (#7057FF) - Good issue for first-time contributors
@@ -47,6 +51,7 @@ GITHUB_TOKEN=your_token node scripts/manage-labels.js create
 ```
 
 The script will:
+
 - Create any missing labels
 - Update existing labels with the correct colors and descriptions
 - Report the status of each operation
@@ -73,9 +78,11 @@ You'll need a GitHub personal access token with `repo` scope to manage labels. C
 https://github.com/settings/tokens/new
 
 Select the following scopes:
+
 - `repo` (Full control of private repositories)
 
 Then set the token as an environment variable:
+
 ```bash
 export GITHUB_TOKEN=your_token_here
 ```
@@ -83,29 +90,35 @@ export GITHUB_TOKEN=your_token_here
 ## Label Usage Guidelines
 
 ### Visual & Rendering Work
+
 - Use `visual-upgrade` for visual system improvements
 - Use `rendering` when working directly with rendering logic
 - Use `high-impact` for visually impressive or high-value features
 
 ### Feature Areas
+
 - Apply the appropriate area label (`camera`, `ui`, `ux-polish`, `wow-feature`, etc.) to indicate the system being modified
 - Multiple area labels can be applied to a single issue or PR
 
 ### Performance
+
 - Use `performance` for all performance-related work
 - Can be combined with area labels
 
 ### Priority
+
 - Apply exactly one priority label (P0, P1, or P2) to indicate work importance
 - P0 = Critical (blocking other work)
 - P1 = Important (should be done soon)
 - P2 = Nice to have (can be deferred)
 
 ### Good First Issue
+
 - Use `good-first-issue` to mark issues suitable for new contributors
 - Include clear instructions and context in the issue
 
 ### Meta & Roadmap
+
 - Use `meta` for discussions about project process, labels, or structure
 - Use `roadmap` for issues related to long-term planning
 

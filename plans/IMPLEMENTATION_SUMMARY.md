@@ -6,18 +6,19 @@ I've built out the core Sky Strips system for your orbital LED billboard. Here's
 
 ### ✅ Files Created
 
-| File | Purpose | Size |
-|------|---------|------|
-| `src/shaders/sky_strips_compute.wgsl` | Per-satellite pattern compute shader | 13KB |
-| `src/patterns/PatternSequencer.ts` | Timeline-based pattern management | 13KB |
-| `src/camera/GroundObserverCamera.ts` | 5 immersive ground perspectives | 10KB |
-| `src/styles/ground-observer.css` | CSS frame overlays + animations | 13KB |
-| `demo-ground-observer.html` | Interactive demo of all 5 presets | 7.5KB |
-| `SKY_STRIPS.md` | Full integration documentation | 6KB |
+| File                                  | Purpose                              | Size  |
+| ------------------------------------- | ------------------------------------ | ----- |
+| `src/shaders/sky_strips_compute.wgsl` | Per-satellite pattern compute shader | 13KB  |
+| `src/patterns/PatternSequencer.ts`    | Timeline-based pattern management    | 13KB  |
+| `src/camera/GroundObserverCamera.ts`  | 5 immersive ground perspectives      | 10KB  |
+| `src/styles/ground-observer.css`      | CSS frame overlays + animations      | 13KB  |
+| `demo-ground-observer.html`           | Interactive demo of all 5 presets    | 7.5KB |
+| `SKY_STRIPS.md`                       | Full integration documentation       | 6KB   |
 
 ### ✅ Buffer Integration
 
 Updated `SatelliteGPUBuffer.ts` with:
+
 - **16MB Pattern Buffer** - Per-satellite data (brightness, pattern ID, phase, speed)
 - **32B Uniform Buffer** - Global controls (time, BPM, beat intensity)
 - Automatic initialization with varied pulse patterns
@@ -28,7 +29,7 @@ Updated `SatelliteGPUBuffer.ts` with:
 
 ```wgsl
 PULSE      // Sinusoidal brightness modulation
-CHASE      // Moving lights with exponential trails  
+CHASE      // Moving lights with exponential trails
 WAVE       // Sine wave propagation across orbits
 BEAT_SYNC  // Audio-reactive pulsing
 MORSE      // Binary patterns for text transmission
@@ -36,6 +37,7 @@ SPARKLE    // Random twinkle effects
 ```
 
 Each satellite gets:
+
 - `brightnessMod` (0-1): Base brightness multiplier
 - `patternId` (0-5): Which pattern to run
 - `phaseOffset` (radians): Timing offset for sync
@@ -71,6 +73,7 @@ await sequencer.connectAudio(audioElement);
 ## 🎯 Quick Start
 
 ### 1. View the Demo
+
 Open `demo-ground-observer.html` in a browser to see all 5 presets:
 
 ```bash
@@ -115,11 +118,13 @@ document.body.appendChild(overlay);
 ## 🔮 Next Steps (Your Move)
 
 ### Immediate (Optional Polish)
+
 - [ ] **Pattern Sequencer UI** - React/Vue timeline editor
 - [ ] **Video Export** - MediaRecorder for MP4 capture
 - [ ] **Real TLE Sync** - Load actual Starlink positions
 
 ### Advanced Features
+
 - [ ] **Multi-POV Split** - 2-4 simultaneous cameras
 - [ ] **Frequency Visualizer** - FFT analysis per frequency band
 - [ ] **Constellation Gallery** - Pre-made patterns (GROK marquee, heart, etc.)

@@ -2,7 +2,7 @@
  * Grok Zephyr - Shader Collection
  *
  * Single source of truth for runtime WGSL. Shader code is authored as template
- * strings in TypeScript modules (not standalone `.wgsl` files at this path).
+ * strings in TypeScript modules under compute/, render/, and animations/.
  *
  * STRUCTURE:
  * - uniforms.ts: Shared uniform struct across all shaders
@@ -66,9 +66,6 @@ export const SMILE_V2_SHADER = Animations.smileV2;
 
 /** @deprecated Use SHADERS.animations.skyStrips instead */
 export const SKY_STRIPS_SHADER = Animations.skyStrips;
-
-// Default export for convenience
-export default SHADERS;
 
 // Re-export uniform struct for direct access
 export { UNIFORM_STRUCT } from './uniforms.js';

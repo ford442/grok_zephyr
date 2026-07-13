@@ -38,7 +38,12 @@ export function acquireGL(canvas: HTMLCanvasElement): GLContext {
 }
 
 /** Compile a single shader stage, throwing with the info log on failure. */
-function compileShader(gl: WebGL2RenderingContext, type: number, source: string, label: string): WebGLShader {
+function compileShader(
+  gl: WebGL2RenderingContext,
+  type: number,
+  source: string,
+  label: string,
+): WebGLShader {
   const shader = gl.createShader(type);
   if (!shader) throw new Error(`Failed to create shader: ${label}`);
   gl.shaderSource(shader, source);
@@ -83,7 +88,10 @@ export function createProgram(
 /** Cache of uniform locations for a program, looked up lazily. */
 export class UniformCache {
   private readonly locations = new Map<string, WebGLUniformLocation | null>();
-  constructor(private readonly gl: WebGL2RenderingContext, private readonly program: WebGLProgram) {}
+  constructor(
+    private readonly gl: WebGL2RenderingContext,
+    private readonly program: WebGLProgram,
+  ) {}
 
   loc(name: string): WebGLUniformLocation | null {
     let l = this.locations.get(name);
@@ -102,7 +110,7 @@ export function createColorTexture(
   height: number,
   float: boolean,
 ): WebGLTexture {
-  const tex = gl.createTexture()!;
+  const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
   const internalFormat = float ? gl.RGBA16F : gl.RGBA8;
   const type = float ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
@@ -131,7 +139,7 @@ export function createRenderTarget(
   opts: { float: boolean; depth: boolean },
 ): RenderTarget {
   const color = createColorTexture(gl, width, height, opts.float);
-  const fbo = gl.createFramebuffer()!;
+  const fbo = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, color, 0);
 
@@ -163,8 +171,8 @@ export function destroyRenderTarget(gl: WebGL2RenderingContext, rt: RenderTarget
  * Used by every screen-space pass (bloom, composite, background).
  */
 export function createFullscreenTriangle(gl: WebGL2RenderingContext): WebGLVertexArrayObject {
-  const vao = gl.createVertexArray()!;
-  const vbo = gl.createBuffer()!;
+  const vao = gl.createVertexArray();
+  const vbo = gl.createBuffer();
   // A single oversized triangle covering the viewport in clip space.
   const verts = new Float32Array([-1, -1, 3, -1, -1, 3]);
   gl.bindVertexArray(vao);

@@ -2,15 +2,16 @@
  * Motion blur pass encoder
  */
 
-import type { PassContext } from './types.js';
+import type { FrameContext } from './types.js';
 
 export function encodeMotionBlurPass(
   encoder: GPUCommandEncoder,
-  ctx: PassContext,
+  ctx: FrameContext,
   sourceView: GPUTextureView,
 ): GPUTextureView {
   if (!ctx.motionBlurUniformBuffer) return sourceView;
-  if (!ctx.motionBlurConfig.enabled || ctx.motionBlurConfig.cameraStrength <= 0.0) return sourceView;
+  if (!ctx.motionBlurConfig.enabled || ctx.motionBlurConfig.cameraStrength <= 0.0)
+    return sourceView;
 
   const bindGroup = ctx.context.getDevice().createBindGroup({
     layout: ctx.pipelines.motionBlur.getBindGroupLayout(0),
@@ -23,12 +24,14 @@ export function encodeMotionBlurPass(
   });
 
   const pass = encoder.beginRenderPass({
-    colorAttachments: [{
-      view: ctx.renderTargets.motionBlurView,
-      clearValue: { r: 0, g: 0, b: 0, a: 1 },
-      loadOp: 'clear',
-      storeOp: 'store',
-    }],
+    colorAttachments: [
+      {
+        view: ctx.renderTargets.motionBlurView,
+        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        loadOp: 'clear',
+        storeOp: 'store',
+      },
+    ],
   });
   pass.setViewport(0, 0, ctx.width, ctx.height, 0, 1);
   pass.setPipeline(ctx.pipelines.motionBlur);

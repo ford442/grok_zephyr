@@ -5,7 +5,9 @@
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
 
-export const ORBITAL_CS = UNIFORM_STRUCT + /* wgsl */ `
+export const ORBITAL_CS =
+  UNIFORM_STRUCT +
+  /* wgsl */ `
 @group(0) @binding(1) var<storage,read>       orb_elem : array<vec4f>;
 @group(0) @binding(3) var<storage,read_write> sat_pos  : array<vec4f>;
 

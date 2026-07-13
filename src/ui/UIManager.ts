@@ -222,7 +222,12 @@ export class UIManager {
     this.elements.fleetCockpitHud.setAttribute('aria-hidden', visible ? 'false' : 'true');
   }
 
-  setFleetCockpitTelemetry(speedKms: number, altitudeKm: number, headingDeg: number, nearbyCount: number): void {
+  setFleetCockpitTelemetry(
+    speedKms: number,
+    altitudeKm: number,
+    headingDeg: number,
+    nearbyCount: number,
+  ): void {
     this.elements.fleetHudSpeed.textContent = `${speedKms.toFixed(2)} km/s`;
     this.elements.fleetHudAltitude.textContent = `${Math.round(altitudeKm)} km`;
     this.elements.fleetHudHeading.textContent = `${Math.round(headingDeg)}°`;
@@ -408,18 +413,51 @@ export class UIManager {
     if (el) el.checked = enabled;
   }
 
-  setImageTuningControls(settings: ImageTuningSettings, options?: { enforceFloors?: boolean }): void {
+  setImageTuningControls(
+    settings: ImageTuningSettings,
+    options?: { enforceFloors?: boolean },
+  ): void {
     this.lastImageTuning = { ...settings };
     if (options?.enforceFloors !== undefined) {
       this.imageTuningEnforceFloors = options.enforceFloors;
     }
     const sliders = [
-      { el: this.elements.tuneBloomThresholdSlider, val: settings.bloomThreshold, label: this.elements.tuneBloomThresholdValue, decimals: 2 },
-      { el: this.elements.tuneBloomKneeSlider, val: settings.bloomKnee, label: this.elements.tuneBloomKneeValue, decimals: 2 },
-      { el: this.elements.tuneBloomIntensitySlider, val: settings.bloomIntensity, label: this.elements.tuneBloomIntensityValue, decimals: 2 },
-      { el: this.elements.tuneSatCoreSlider, val: settings.satCoreOuter, label: this.elements.tuneSatCoreValue, decimals: 2 },
-      { el: this.elements.tuneSatFalloffSlider, val: settings.satCoreInner, label: this.elements.tuneSatFalloffValue, decimals: 2 },
-      { el: this.elements.tuneAnimIntensitySlider, val: settings.animationMasterIntensity, label: this.elements.tuneAnimIntensityValue, decimals: 2 },
+      {
+        el: this.elements.tuneBloomThresholdSlider,
+        val: settings.bloomThreshold,
+        label: this.elements.tuneBloomThresholdValue,
+        decimals: 2,
+      },
+      {
+        el: this.elements.tuneBloomKneeSlider,
+        val: settings.bloomKnee,
+        label: this.elements.tuneBloomKneeValue,
+        decimals: 2,
+      },
+      {
+        el: this.elements.tuneBloomIntensitySlider,
+        val: settings.bloomIntensity,
+        label: this.elements.tuneBloomIntensityValue,
+        decimals: 2,
+      },
+      {
+        el: this.elements.tuneSatCoreSlider,
+        val: settings.satCoreOuter,
+        label: this.elements.tuneSatCoreValue,
+        decimals: 2,
+      },
+      {
+        el: this.elements.tuneSatFalloffSlider,
+        val: settings.satCoreInner,
+        label: this.elements.tuneSatFalloffValue,
+        decimals: 2,
+      },
+      {
+        el: this.elements.tuneAnimIntensitySlider,
+        val: settings.animationMasterIntensity,
+        label: this.elements.tuneAnimIntensityValue,
+        decimals: 2,
+      },
     ] as const;
     for (const { el, val, label, decimals } of sliders) {
       if (el) el.value = String(val);
@@ -536,5 +574,3 @@ export class UIManager {
     `;
   }
 }
-
-export default UIManager;

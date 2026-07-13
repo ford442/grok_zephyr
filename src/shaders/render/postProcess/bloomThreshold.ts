@@ -9,7 +9,7 @@
  */
 
 export const BLOOM_THRESHOLD = /* wgsl */ `
-// ThresholdUni matches the buffer written by RenderPipeline.updateBloomThresholdUni():
+// ThresholdUni — CPU packer: packThresholdUni() in src/shaders/uniformLayouts.ts
 //   threshold : luminance cutoff (typically 0.65–0.85)
 //   knee      : soft-knee half-width around the threshold
 struct ThresholdUni {
@@ -67,4 +67,3 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   return vec4f(output_color, 1.0);
 }
 `;
-

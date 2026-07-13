@@ -9,11 +9,7 @@ export function smoothstep(t: number): number {
 }
 
 export function lerpVec3(a: Vec3, b: Vec3, t: number): Vec3 {
-  return [
-    a[0] + (b[0] - a[0]) * t,
-    a[1] + (b[1] - a[1]) * t,
-    a[2] + (b[2] - a[2]) * t,
-  ];
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }
 
 export function blendCameraState(a: CameraState, b: CameraState, t: number): CameraState {
@@ -30,8 +26,11 @@ export function blendCameraState(a: CameraState, b: CameraState, t: number): Cam
 /** Return the transition duration (seconds) for a given mode pair. */
 export function getTransitionDuration(from: ViewMode, to: ViewMode): number {
   if (from === 'moon' || to === 'moon') return 1.4;
-  if ((from === 'sat-pov' && to === 'ground') || (from === 'ground' && to === 'sat-pov')) return 0.7;
-  if ((from === 'god' && to === 'horizon-720') || (from === 'horizon-720' && to === 'god')) return 0.8;
-  if ((from === 'ground' && to === 'skyline') || (from === 'skyline' && to === 'ground')) return 0.5;
+  if ((from === 'sat-pov' && to === 'ground') || (from === 'ground' && to === 'sat-pov'))
+    return 0.7;
+  if ((from === 'god' && to === 'horizon-720') || (from === 'horizon-720' && to === 'god'))
+    return 0.8;
+  if ((from === 'ground' && to === 'skyline') || (from === 'skyline' && to === 'ground'))
+    return 0.5;
   return 1.0;
 }

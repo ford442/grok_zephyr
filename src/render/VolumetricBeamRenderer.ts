@@ -15,7 +15,7 @@
  * Performance target: <1.5 ms on modern discrete GPUs at 1080p.
  */
 
-import type WebGPUContext from '@/core/WebGPUContext.js';
+import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import { SHADERS } from '@/shaders/index.js';
 import { RENDER } from '@/types/constants.js';
 
@@ -144,9 +144,9 @@ export class VolumetricBeamRenderer {
    * Call when the canvas size changes.
    */
   resize(width: number, height: number): void {
-    this.fullWidth  = width;
+    this.fullWidth = width;
     this.fullHeight = height;
-    this.halfWidth  = Math.max(1, Math.floor(width  / 2));
+    this.halfWidth = Math.max(1, Math.floor(width / 2));
     this.halfHeight = Math.max(1, Math.floor(height / 2));
 
     // Destroy old texture
@@ -188,12 +188,14 @@ export class VolumetricBeamRenderer {
 
     const pass = encoder.beginRenderPass({
       label: 'Volumetric Beam Ray-March',
-      colorAttachments: [{
-        view: this.volumetricView,
-        clearValue: { r: 0, g: 0, b: 0, a: 0 },
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
+      colorAttachments: [
+        {
+          view: this.volumetricView,
+          clearValue: { r: 0, g: 0, b: 0, a: 0 },
+          loadOp: 'clear',
+          storeOp: 'store',
+        },
+      ],
     });
     pass.setViewport(0, 0, this.halfWidth, this.halfHeight, 0, 1);
     pass.setPipeline(this.raymarchPipeline);
@@ -206,19 +208,18 @@ export class VolumetricBeamRenderer {
    * Pass B — composite the volumetric result additively into the HDR texture.
    * Uses bilinear upsampling from half-res.
    */
-  encodeCompositePass(
-    encoder: GPUCommandEncoder,
-    hdrView: GPUTextureView,
-  ): void {
+  encodeCompositePass(encoder: GPUCommandEncoder, hdrView: GPUTextureView): void {
     if (!this.compositePipeline || !this.compositeBindGroup) return;
 
     const pass = encoder.beginRenderPass({
       label: 'Volumetric Beam Composite',
-      colorAttachments: [{
-        view: hdrView,
-        loadOp: 'load',   // preserve existing HDR content
-        storeOp: 'store',
-      }],
+      colorAttachments: [
+        {
+          view: hdrView,
+          loadOp: 'load', // preserve existing HDR content
+          storeOp: 'store',
+        },
+      ],
     });
     pass.setViewport(0, 0, this.fullWidth, this.fullHeight, 0, 1);
     pass.setPipeline(this.compositePipeline);
@@ -250,8 +251,16 @@ export class VolumetricBeamRenderer {
         device.createBindGroupLayout({
           label: 'VolumetricBeam Ray-March BGL',
           entries: [
-            { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-            { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+            {
+              binding: 0,
+              visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+              buffer: { type: 'uniform' },
+            },
+            {
+              binding: 1,
+              visibility: GPUShaderStage.FRAGMENT,
+              buffer: { type: 'read-only-storage' },
+            },
             { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
           ],
         }),
@@ -266,18 +275,20 @@ export class VolumetricBeamRenderer {
     this.raymarchPipeline = device.createRenderPipeline({
       label: 'Volumetric Beam Ray-March',
       layout: raymarchLayout,
-      vertex:   { module: raymarchModule, entryPoint: 'vs_main' },
+      vertex: { module: raymarchModule, entryPoint: 'vs_main' },
       fragment: {
         module: raymarchModule,
         entryPoint: 'fs_main',
-        targets: [{
-          format: RENDER.HDR_FORMAT,
-          // Premultiplied-alpha additive blend: src * 1  +  dst * 1
-          blend: {
-            color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
-            alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+        targets: [
+          {
+            format: RENDER.HDR_FORMAT,
+            // Premultiplied-alpha additive blend: src * 1  +  dst * 1
+            blend: {
+              color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+            },
           },
-        }],
+        ],
       },
       primitive: { topology: 'triangle-list' },
     });
@@ -303,19 +314,21 @@ export class VolumetricBeamRenderer {
     this.compositePipeline = device.createRenderPipeline({
       label: 'Volumetric Beam Composite',
       layout: compositeLayout,
-      vertex:   { module: compositeModule, entryPoint: 'vs_main' },
+      vertex: { module: compositeModule, entryPoint: 'vs_main' },
       fragment: {
         module: compositeModule,
         entryPoint: 'fs_main',
-        targets: [{
-          format: RENDER.HDR_FORMAT,
-          // The half-res texture stores premultiplied RGBA, so use srcFactor:'one'
-          // to avoid double-multiplying the alpha channel on composite.
-          blend: {
-            color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
-            alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+        targets: [
+          {
+            format: RENDER.HDR_FORMAT,
+            // The half-res texture stores premultiplied RGBA, so use srcFactor:'one'
+            // to avoid double-multiplying the alpha channel on composite.
+            blend: {
+              color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+            },
           },
-        }],
+        ],
       },
       primitive: { topology: 'triangle-list' },
     });
@@ -347,7 +360,7 @@ export class VolumetricBeamRenderer {
 
   /** Write the packed VolumetricBeamConfig into the GPU uniform buffer. */
   private writeConfigBuffer(): void {
-    const ab  = new ArrayBuffer(32);
+    const ab = new ArrayBuffer(32);
     const f32 = new Float32Array(ab);
     const u32 = new Uint32Array(ab);
 

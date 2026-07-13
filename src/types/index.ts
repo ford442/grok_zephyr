@@ -1,6 +1,6 @@
 /**
  * Grok Zephyr - Shared TypeScript Interfaces
- * 
+ *
  * Core type definitions for the orbital simulation system.
  */
 

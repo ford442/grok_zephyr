@@ -1,9 +1,5 @@
 import { VolumetricBeamRenderer } from '@/render/VolumetricBeamRenderer.js';
-import {
-  QUALITY_PRESETS,
-  saveQualityLevel,
-  type QualityLevel,
-} from '@/core/QualityPresets.js';
+import { QUALITY_PRESETS, saveQualityLevel, type QualityLevel } from '@/core/QualityPresets.js';
 import { mergeVolumetricBeamConfig } from '@/core/BeamPatternProfile.js';
 import { getEffectiveTrailConfig } from '@/app/FrameProfilerEstimates.js';
 import { syncTaaToggleUi } from '@/app/GroundObserverUI.js';
@@ -12,7 +8,7 @@ import type { AppRuntime } from '@/app/AppRuntime.js';
 
 export function applyQualityPreset(rt: AppRuntime, level: QualityLevel): void {
   const preset = QUALITY_PRESETS[level];
-  rt.currentQualityLevel = level;
+  rt.simulation.currentQualityLevel = level;
   const effectiveTrail = getEffectiveTrailConfig(rt, level);
 
   if (rt.trailRenderer) {
@@ -32,12 +28,12 @@ export function applyQualityPreset(rt: AppRuntime, level: QualityLevel): void {
     preset.atmosphere.scatteringLUT,
     preset.atmosphere.hazeStrength,
   );
-  rt.qualityAtmosphereHaze = preset.atmosphere.hazeStrength;
-  rt.qualityAtmosphereScatteringEnabled = preset.atmosphere.scatteringLUT;
+  rt.simulation.qualityAtmosphereHaze = preset.atmosphere.hazeStrength;
+  rt.simulation.qualityAtmosphereScatteringEnabled = preset.atmosphere.scatteringLUT;
 
   if (rt.postProcessStack) {
     const taaEnabled = preset.taaEnabled;
-    rt.taaEnabled = taaEnabled;
+    rt.simulation.taaEnabled = taaEnabled;
     rt.postProcessStack.enableTAA(taaEnabled);
     syncTaaToggleUi(rt);
   }
@@ -101,7 +97,7 @@ export function syncVolumetricBeamConfig(rt: AppRuntime): void {
   if (!rt.volumetricBeamQuality) return;
   const merged = mergeVolumetricBeamConfig(
     rt.volumetricBeamQuality,
-    rt.currentPatternMode,
+    rt.simulation.currentPatternMode,
   );
   applyVolumetricBeamPreset(rt, rt.volumetricBeamQuality.enabled, merged);
 }

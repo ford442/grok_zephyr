@@ -37,7 +37,7 @@ fn vs(@builtin(vertex_index) vid: u32) -> VSOut {
 @group(0) @binding(1) var          srcTex : texture_2d<f32>;
 @group(0) @binding(2) var          srcSamp: sampler;
 
-// Gaussian weights === 5-tap kernel (matches original bloom_blur.wgsl)
+// Gaussian weights === 5-tap kernel (canonical 5-tap bloom blur)
 const W = array<f32, 5>(0.2270, 0.1945, 0.1216, 0.0540, 0.0162);
 
 @fragment

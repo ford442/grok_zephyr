@@ -2,20 +2,20 @@
 
 ## 📊 Files Over 1000 Lines
 
-| File | Lines | Issue | Priority |
-|------|-------|-------|----------|
-| `src/shaders/index.ts` | 1,530 | All shaders inline as strings | **Critical** |
-| `src/shaders/animations/smile_v2.wgsl` | 1,114 | Large shader (acceptable) | Low |
+| File                                   | Lines | Issue                         | Priority     |
+| -------------------------------------- | ----- | ----------------------------- | ------------ |
+| `src/shaders/index.ts`                 | 1,530 | All shaders inline as strings | **Critical** |
+| `src/shaders/animations/smile_v2.wgsl` | 1,114 | Large shader (acceptable)     | Low          |
 
 ## 📁 Files Approaching 1000 Lines (800-1000)
 
-| File | Lines | Issue | Priority |
-|------|-------|-------|----------|
-| `src/animations/SmileV2Controller.ts` | 851 | Monolithic controller | High |
-| `src/physics/Propagator.ts` | 821 | Multiple propagation methods | Medium |
-| `src/render/RenderPipeline.ts` | 801 | All pipelines in one file | **Critical** |
-| `src/render/PostProcessStack.ts` | 745 | Bloom + composite together | Medium |
-| `src/core/SatelliteGPUBuffer.ts` | 695 | Growing buffer management | Medium |
+| File                                  | Lines | Issue                        | Priority     |
+| ------------------------------------- | ----- | ---------------------------- | ------------ |
+| `src/animations/SmileV2Controller.ts` | 851   | Monolithic controller        | High         |
+| `src/physics/Propagator.ts`           | 821   | Multiple propagation methods | Medium       |
+| `src/render/RenderPipeline.ts`        | 801   | All pipelines in one file    | **Critical** |
+| `src/render/PostProcessStack.ts`      | 745   | Bloom + composite together   | Medium       |
+| `src/core/SatelliteGPUBuffer.ts`      | 695   | Growing buffer management    | Medium       |
 
 ---
 
@@ -54,6 +54,7 @@ src/shaders/
 ```
 
 **Benefits:**
+
 - Shaders are maintainable as separate files
 - Easy to edit WGSL with syntax highlighting
 - Clear organization by shader type
@@ -94,6 +95,7 @@ src/render/
 ```
 
 **Benefits:**
+
 - Each pipeline is independently testable
 - Easy to add new render passes
 - Clear separation of pipeline creation vs render encoding
@@ -123,6 +125,7 @@ src/core/
 ```
 
 **Benefits:**
+
 - Buffer management separate from data generation
 - Easy to swap orbital generation strategies
 - Clear buffer configuration options
@@ -154,6 +157,7 @@ src/animations/
 ```
 
 **Benefits:**
+
 - Phase logic is independently testable
 - Trail system can be reused for other animations
 - Event system is decoupled
@@ -284,6 +288,7 @@ All refactors maintain backward compatibility through:
 4. **No breaking changes** - All imports continue to work
 
 Example compatibility layer:
+
 ```typescript
 // src/core/index.ts (backward compatible)
 export { SatelliteBufferSet } from './buffers/SatelliteBufferSet.js';
@@ -299,30 +304,35 @@ export { SatelliteBufferSet as SatelliteGPUBuffer } from './buffers/SatelliteBuf
 ## 🎯 Implementation Priority
 
 ### Phase 1: Shaders (Critical - Immediate)
+
 - Split `src/shaders/index.ts` into modular files
 - **Estimated time:** 2-3 hours
 - **Risk:** Low (pure refactoring, no logic changes)
 - **Benefit:** Immediate maintainability improvement
 
 ### Phase 2: Render Pipeline (High Priority)
+
 - Split `src/render/RenderPipeline.ts` into pipeline modules
 - **Estimated time:** 3-4 hours
 - **Risk:** Medium (needs careful testing)
 - **Benefit:** Better testability, easier to add features
 
 ### Phase 3: Core Buffers (Medium Priority)
+
 - Split `src/core/SatelliteGPUBuffer.ts`
 - **Estimated time:** 2-3 hours
 - **Risk:** Low-Medium
 - **Benefit:** Clearer separation of concerns
 
 ### Phase 4: Animation Controller (Medium Priority)
+
 - Split `src/animations/SmileV2Controller.ts`
 - **Estimated time:** 2-3 hours
 - **Risk:** Low
 - **Benefit:** Reusable phase/trail systems
 
 ### Phase 5: Cleanup (Low Priority)
+
 - Update remaining files approaching 1000 lines
 - Add linting rules to prevent future bloat
 - **Estimated time:** 2 hours
@@ -334,6 +344,7 @@ export { SatelliteBufferSet as SatelliteGPUBuffer } from './buffers/SatelliteBuf
 ## 🚀 Ready-to-Apply Refactoring Code
 
 See individual refactoring files:
+
 - `refactor/shaders/` - Modular shader structure
 - `refactor/render/` - Pipeline modules
 - `refactor/core/` - Buffer management

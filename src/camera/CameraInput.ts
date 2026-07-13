@@ -92,8 +92,8 @@ export class CameraInput {
     window.addEventListener('mousemove', (e) => {
       if (!this.mouse.down || !this.mouseMode) return;
 
-      const dx = e.movementX || (e.clientX - this.mouse.lastX);
-      const dy = e.movementY || (e.clientY - this.mouse.lastY);
+      const dx = e.movementX || e.clientX - this.mouse.lastX;
+      const dy = e.movementY || e.clientY - this.mouse.lastY;
 
       if (this.mouseMode === 'rotate') {
         this.applyRotationDelta(dx, dy, this.MOUSE_SENSITIVITY);
@@ -114,10 +114,7 @@ export class CameraInput {
       } else {
         const angles = this.delegate.getMutableCameraAngles();
         const zoomSpeed = 40;
-        angles.distance = Math.max(
-          500,
-          Math.min(180000, angles.distance + e.deltaY * zoomSpeed),
-        );
+        angles.distance = Math.max(500, Math.min(180000, angles.distance + e.deltaY * zoomSpeed));
       }
     });
 
@@ -140,95 +137,107 @@ export class CameraInput {
 
     canvas.style.touchAction = 'none';
 
-    canvas.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      this.delegate.handleUserInteraction();
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        const t = e.changedTouches.item(i);
-        if (!t) continue;
-        this.touchState.active.set(t.identifier, { x: t.clientX, y: t.clientY });
-      }
-      const count = this.touchState.active.size;
-      if (count === 1) {
-        const touch = [...this.touchState.active.values()][0];
-        this.mouse.lastX = touch.x;
-        this.mouse.lastY = touch.y;
-        this.mouseMode = 'rotate';
-        this.mouse.down = true;
-      } else if (count === 2) {
-        this.mouse.down = false;
-        this.mouseMode = null;
-        const [a, b] = this.getTouchPair();
-        this.touchState.lastPinchDist = Math.hypot(b.x - a.x, b.y - a.y);
-        this.touchState.lastAngleRad = Math.atan2(b.y - a.y, b.x - a.x);
-        this.touchState.lastCentroid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-      }
-    }, { passive: false });
-
-    canvas.addEventListener('touchmove', (e) => {
-      e.preventDefault();
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        const t = e.changedTouches.item(i);
-        if (!t) continue;
-        this.touchState.active.set(t.identifier, { x: t.clientX, y: t.clientY });
-      }
-      const count = this.touchState.active.size;
-      if (count === 1) {
-        const touch = [...this.touchState.active.values()][0];
-        const dx = touch.x - this.mouse.lastX;
-        const dy = touch.y - this.mouse.lastY;
-        this.applyRotationDelta(dx, dy, this.TOUCH_SENSITIVITY);
-        this.mouse.lastX = touch.x;
-        this.mouse.lastY = touch.y;
-      } else if (count === 2) {
-        const [a, b] = this.getTouchPair();
-        const newDist = Math.hypot(b.x - a.x, b.y - a.y);
-        const newAngleRad = Math.atan2(b.y - a.y, b.x - a.x);
-        const newCentroid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-        const ddx = newCentroid.x - this.touchState.lastCentroid.x;
-        const ddy = newCentroid.y - this.touchState.lastCentroid.y;
-
-        const minGestureSpanPx = 18;
-        const hasStableSpan = newDist >= minGestureSpanPx && this.touchState.lastPinchDist >= minGestureSpanPx;
-        const ratio = hasStableSpan && this.touchState.lastPinchDist > 0
-          ? newDist / this.touchState.lastPinchDist
-          : 1;
-        const pinchStrength = Math.abs(Math.log(Math.max(1e-6, ratio)));
-        const panStrength = Math.hypot(ddx, ddy) * 0.003;
-        const angleDeltaRaw = newAngleRad - this.touchState.lastAngleRad;
-        const angleDelta = Math.atan2(Math.sin(angleDeltaRaw), Math.cos(angleDeltaRaw));
-        const rotateStrength = Math.abs(angleDelta);
-
-        if (pinchStrength >= panStrength && pinchStrength >= rotateStrength && hasStableSpan) {
-          const zoomSteps = -Math.log(Math.max(1e-6, ratio)) / Math.log(1.08);
-          this.applyExponentialZoomSteps(zoomSteps);
-        } else if (rotateStrength > 0.03 && hasStableSpan) {
-          if (this.delegate.getCurrentMode() === 'sat-pov') {
-            const maxTouchRoll = 18 * MATH.DEG_TO_RAD;
-            const roll = this.delegate.getFleetTouchRoll();
-            this.delegate.setFleetTouchRoll(Math.max(
-              -maxTouchRoll,
-              Math.min(maxTouchRoll, roll + angleDelta * this.TOUCH_ROTATION_SENSITIVITY),
-            ));
-          } else {
-            const rotateDeg = angleDelta * MATH.RAD_TO_DEG * this.TOUCH_ROTATION_SENSITIVITY;
-            const angles = this.delegate.getMutableCameraAngles();
-            angles.yaw -= rotateDeg;
-            angles.yaw = ((angles.yaw % 360) + 360) % 360;
-            if (this.delegate.getCurrentMode() === 'god') {
-              this.delegate.syncGodViewFromAngles();
-            }
-            this.delegate.notifyAngleChange(angles.yaw, angles.pitch);
-          }
-        } else if (ddx !== 0 || ddy !== 0) {
-          this.delegate.panBy(-ddx, ddy);
+    canvas.addEventListener(
+      'touchstart',
+      (e) => {
+        e.preventDefault();
+        this.delegate.handleUserInteraction();
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const t = e.changedTouches.item(i);
+          if (!t) continue;
+          this.touchState.active.set(t.identifier, { x: t.clientX, y: t.clientY });
         }
+        const count = this.touchState.active.size;
+        if (count === 1) {
+          const touch = [...this.touchState.active.values()][0];
+          this.mouse.lastX = touch.x;
+          this.mouse.lastY = touch.y;
+          this.mouseMode = 'rotate';
+          this.mouse.down = true;
+        } else if (count === 2) {
+          this.mouse.down = false;
+          this.mouseMode = null;
+          const [a, b] = this.getTouchPair();
+          this.touchState.lastPinchDist = Math.hypot(b.x - a.x, b.y - a.y);
+          this.touchState.lastAngleRad = Math.atan2(b.y - a.y, b.x - a.x);
+          this.touchState.lastCentroid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        }
+      },
+      { passive: false },
+    );
 
-        this.touchState.lastPinchDist = newDist;
-        this.touchState.lastAngleRad = newAngleRad;
-        this.touchState.lastCentroid = newCentroid;
-      }
-    }, { passive: false });
+    canvas.addEventListener(
+      'touchmove',
+      (e) => {
+        e.preventDefault();
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const t = e.changedTouches.item(i);
+          if (!t) continue;
+          this.touchState.active.set(t.identifier, { x: t.clientX, y: t.clientY });
+        }
+        const count = this.touchState.active.size;
+        if (count === 1) {
+          const touch = [...this.touchState.active.values()][0];
+          const dx = touch.x - this.mouse.lastX;
+          const dy = touch.y - this.mouse.lastY;
+          this.applyRotationDelta(dx, dy, this.TOUCH_SENSITIVITY);
+          this.mouse.lastX = touch.x;
+          this.mouse.lastY = touch.y;
+        } else if (count === 2) {
+          const [a, b] = this.getTouchPair();
+          const newDist = Math.hypot(b.x - a.x, b.y - a.y);
+          const newAngleRad = Math.atan2(b.y - a.y, b.x - a.x);
+          const newCentroid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          const ddx = newCentroid.x - this.touchState.lastCentroid.x;
+          const ddy = newCentroid.y - this.touchState.lastCentroid.y;
+
+          const minGestureSpanPx = 18;
+          const hasStableSpan =
+            newDist >= minGestureSpanPx && this.touchState.lastPinchDist >= minGestureSpanPx;
+          const ratio =
+            hasStableSpan && this.touchState.lastPinchDist > 0
+              ? newDist / this.touchState.lastPinchDist
+              : 1;
+          const pinchStrength = Math.abs(Math.log(Math.max(1e-6, ratio)));
+          const panStrength = Math.hypot(ddx, ddy) * 0.003;
+          const angleDeltaRaw = newAngleRad - this.touchState.lastAngleRad;
+          const angleDelta = Math.atan2(Math.sin(angleDeltaRaw), Math.cos(angleDeltaRaw));
+          const rotateStrength = Math.abs(angleDelta);
+
+          if (pinchStrength >= panStrength && pinchStrength >= rotateStrength && hasStableSpan) {
+            const zoomSteps = -Math.log(Math.max(1e-6, ratio)) / Math.log(1.08);
+            this.applyExponentialZoomSteps(zoomSteps);
+          } else if (rotateStrength > 0.03 && hasStableSpan) {
+            if (this.delegate.getCurrentMode() === 'sat-pov') {
+              const maxTouchRoll = 18 * MATH.DEG_TO_RAD;
+              const roll = this.delegate.getFleetTouchRoll();
+              this.delegate.setFleetTouchRoll(
+                Math.max(
+                  -maxTouchRoll,
+                  Math.min(maxTouchRoll, roll + angleDelta * this.TOUCH_ROTATION_SENSITIVITY),
+                ),
+              );
+            } else {
+              const rotateDeg = angleDelta * MATH.RAD_TO_DEG * this.TOUCH_ROTATION_SENSITIVITY;
+              const angles = this.delegate.getMutableCameraAngles();
+              angles.yaw -= rotateDeg;
+              angles.yaw = ((angles.yaw % 360) + 360) % 360;
+              if (this.delegate.getCurrentMode() === 'god') {
+                this.delegate.syncGodViewFromAngles();
+              }
+              this.delegate.notifyAngleChange(angles.yaw, angles.pitch);
+            }
+          } else if (ddx !== 0 || ddy !== 0) {
+            this.delegate.panBy(-ddx, ddy);
+          }
+
+          this.touchState.lastPinchDist = newDist;
+          this.touchState.lastAngleRad = newAngleRad;
+          this.touchState.lastCentroid = newCentroid;
+        }
+      },
+      { passive: false },
+    );
 
     const endTouch = (e: TouchEvent): void => {
       e.preventDefault();

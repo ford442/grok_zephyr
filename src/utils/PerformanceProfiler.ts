@@ -1,6 +1,6 @@
 /**
  * Grok Zephyr - Performance Profiler
- * 
+ *
  * Tracks GPU and CPU performance metrics including:
  * - FPS with moving average
  * - Frame time
@@ -47,7 +47,7 @@ export interface PerformanceProfilerOptions {
 
 /**
  * Performance Profiler
- * 
+ *
  * Monitors simulation performance with:
  * - CPU-side FPS calculation
  * - GPU timestamp queries (if supported)
@@ -56,34 +56,34 @@ export interface PerformanceProfilerOptions {
  */
 export class PerformanceProfiler {
   private options: PerformanceProfilerOptions;
-  
+
   // FPS tracking
   private frameCount = 0;
   private lastFpsTime = 0;
   private currentFps = 0;
   private fpsHistory: number[] = [];
-  
+
   // Frame timing
   private lastFrameTime = 0;
   private frameTimeHistory: MetricHistory;
-  
+
   // GPU timing
   private device: GPUDevice | null = null;
   private supportsGPUTiming = false;
   private timingQuery: GPUTimingQuery | null = null;
   private pendingQueries = 0;
-  
+
   // Pass timing
   private computeTimeHistory: MetricHistory;
   private renderTimeHistory: MetricHistory;
   private sceneTimeHistory: MetricHistory;
   private bloomTimeHistory: MetricHistory;
   private postProcessTimeHistory: MetricHistory;
-  
+
   // Stats
   private visibleSatellites = 0;
   private gpuMemoryMB = 0;
-  
+
   // Callbacks
   private statsCallback: ((stats: PerformanceStats) => void) | null = null;
 
@@ -94,7 +94,7 @@ export class PerformanceProfiler {
       fpsUpdateInterval: UI.FPS_UPDATE_INTERVAL,
       ...options,
     };
-    
+
     this.frameTimeHistory = this.createHistory(this.options.historySize);
     this.computeTimeHistory = this.createHistory(this.options.historySize);
     this.renderTimeHistory = this.createHistory(this.options.historySize);
@@ -106,13 +106,13 @@ export class PerformanceProfiler {
   /**
    * Initialize GPU timing support
    */
-  async initialize(device: GPUDevice): Promise<void> {
+  initialize(device: GPUDevice): void {
     this.device = device;
-    
+
     // Check for timestamp query support on the device (not just adapter)
     // The feature must be enabled when creating the device
     this.supportsGPUTiming = device.features.has('timestamp-query');
-    
+
     if (this.supportsGPUTiming && this.options.enableGPUTiming) {
       try {
         this.initializeGPUTiming();
@@ -121,8 +121,10 @@ export class PerformanceProfiler {
         this.supportsGPUTiming = false;
       }
     }
-    
-    console.log(`[PerformanceProfiler] GPU timing: ${this.supportsGPUTiming ? 'enabled' : 'disabled'}`);
+
+    console.log(
+      `[PerformanceProfiler] GPU timing: ${this.supportsGPUTiming ? 'enabled' : 'disabled'}`,
+    );
   }
 
   /**
@@ -130,19 +132,19 @@ export class PerformanceProfiler {
    */
   private initializeGPUTiming(): void {
     if (!this.device) return;
-    
+
     // Create query set for 2 timestamps per frame (start/end)
     const querySet = this.device.createQuerySet({
       type: 'timestamp',
       count: 4, // 2 for compute, 2 for render
     });
-    
+
     // Create resolve buffer
     const resolveBuffer = this.device.createBuffer({
       size: 4 * 8, // 4 timestamps * 8 bytes each
       usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
     });
-    
+
     this.timingQuery = {
       querySet,
       resolveBuffer,
@@ -164,29 +166,29 @@ export class PerformanceProfiler {
    */
   endFrame(timestamp: number): PerformanceStats | null {
     const now = timestamp * 0.001; // Convert to seconds
-    const frameTimeMs = (timestamp - this.lastFrameTime);
-    
+    const frameTimeMs = timestamp - this.lastFrameTime;
+
     // Update frame time history
     this.addToHistory(this.frameTimeHistory, frameTimeMs);
-    
+
     // Update FPS
     this.frameCount++;
     const elapsed = now - this.lastFpsTime;
-    
+
     if (elapsed >= this.options.fpsUpdateInterval) {
       this.currentFps = Math.round(this.frameCount / elapsed);
       this.frameCount = 0;
       this.lastFpsTime = now;
-      
+
       // Add FPS to history (keep last entries for sparkline)
       this.fpsHistory.push(this.currentFps);
       if (this.fpsHistory.length > MAX_FPS_HISTORY_LENGTH) {
         this.fpsHistory.shift();
       }
-      
+
       // Update GPU memory if available
       this.updateGPUMemory();
-      
+
       // Create stats object
       const stats: PerformanceStats = {
         fps: this.currentFps,
@@ -196,15 +198,15 @@ export class PerformanceProfiler {
         computeTime: this.getAverage(this.computeTimeHistory),
         renderTime: this.getAverage(this.renderTimeHistory),
       };
-      
+
       // Notify callback
       if (this.statsCallback) {
         this.statsCallback(stats);
       }
-      
+
       return stats;
     }
-    
+
     return null;
   }
 
@@ -309,13 +311,12 @@ export class PerformanceProfiler {
    */
   beginGPUPass(encoder: GPUCommandEncoder, passType: 'compute' | 'render'): void {
     if (!this.timingQuery || !this.supportsGPUTiming) return;
-    
+
     const index = passType === 'compute' ? 0 : 2;
     // writeTimestamp is available when timestamp-query feature is enabled
-    (encoder as unknown as { writeTimestamp(set: GPUQuerySet, index: number): void }).writeTimestamp(
-      this.timingQuery.querySet,
-      index
-    );
+    (
+      encoder as unknown as { writeTimestamp(set: GPUQuerySet, index: number): void }
+    ).writeTimestamp(this.timingQuery.querySet, index);
   }
 
   /**
@@ -323,13 +324,12 @@ export class PerformanceProfiler {
    */
   endGPUPass(encoder: GPUCommandEncoder, passType: 'compute' | 'render'): void {
     if (!this.timingQuery || !this.supportsGPUTiming) return;
-    
+
     const index = passType === 'compute' ? 1 : 3;
     // writeTimestamp is available when timestamp-query feature is enabled
-    (encoder as unknown as { writeTimestamp(set: GPUQuerySet, index: number): void }).writeTimestamp(
-      this.timingQuery.querySet,
-      index
-    );
+    (
+      encoder as unknown as { writeTimestamp(set: GPUQuerySet, index: number): void }
+    ).writeTimestamp(this.timingQuery.querySet, index);
   }
 
   /**
@@ -337,15 +337,9 @@ export class PerformanceProfiler {
    */
   resolveTimestamps(encoder: GPUCommandEncoder): void {
     if (!this.timingQuery || !this.supportsGPUTiming) return;
-    
-    encoder.resolveQuerySet(
-      this.timingQuery.querySet,
-      0,
-      4,
-      this.timingQuery.resolveBuffer,
-      0
-    );
-    
+
+    encoder.resolveQuerySet(this.timingQuery.querySet, 0, 4, this.timingQuery.resolveBuffer, 0);
+
     // Create result buffer if needed
     if (!this.timingQuery.resultBuffer) {
       this.timingQuery.resultBuffer = this.device!.createBuffer({
@@ -353,15 +347,15 @@ export class PerformanceProfiler {
         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
       });
     }
-    
+
     encoder.copyBufferToBuffer(
       this.timingQuery.resolveBuffer,
       0,
       this.timingQuery.resultBuffer,
       0,
-      4 * 8
+      4 * 8,
     );
-    
+
     this.pendingQueries++;
   }
 
@@ -370,25 +364,25 @@ export class PerformanceProfiler {
    */
   async readbackTimestamps(): Promise<void> {
     if (!this.timingQuery?.resultBuffer || this.pendingQueries === 0) return;
-    
+
     const buffer = this.timingQuery.resultBuffer;
-    
+
     await buffer.mapAsync(GPUMapMode.READ);
     const data = new BigInt64Array(buffer.getMappedRange());
-    
+
     // Convert nanoseconds to milliseconds
     const computeTime = Number(data[1] - data[0]) / 1_000_000;
     const renderTime = Number(data[3] - data[2]) / 1_000_000;
-    
+
     buffer.unmap();
-    
+
     if (computeTime > 0 && computeTime < 1000) {
       this.addToHistory(this.computeTimeHistory, computeTime);
     }
     if (renderTime > 0 && renderTime < 1000) {
       this.addToHistory(this.renderTimeHistory, renderTime);
     }
-    
+
     this.pendingQueries--;
   }
 
@@ -400,7 +394,7 @@ export class PerformanceProfiler {
     const perf = performance as Performance & {
       memory?: { usedJSHeapSize: number; totalJSHeapSize: number };
     };
-    
+
     if (perf.memory) {
       // This is JavaScript heap, not GPU memory, but useful as reference
       const jsHeapMB = perf.memory.usedJSHeapSize / 1024 / 1024;
@@ -427,7 +421,7 @@ export class PerformanceProfiler {
     if (history.values.length >= history.maxSize) {
       history.sum -= history.values.shift()!;
     }
-    
+
     history.values.push(value);
     history.sum += value;
   }
@@ -470,52 +464,3 @@ export class PerformanceProfiler {
     this.device = null;
   }
 }
-
-/**
- * Simple FPS counter for basic usage
- */
-export class FPSCounter {
-  private frameCount = 0;
-  private lastTime = 0;
-  private currentFps = 0;
-  private callback: ((fps: number) => void) | null = null;
-  private interval: number;
-
-  constructor(interval = 0.5) {
-    this.interval = interval;
-  }
-
-  onUpdate(callback: (fps: number) => void): void {
-    this.callback = callback;
-  }
-
-  tick(timestamp: number): number {
-    const now = timestamp * 0.001;
-    this.frameCount++;
-    
-    const elapsed = now - this.lastTime;
-    if (elapsed >= this.interval) {
-      this.currentFps = Math.round(this.frameCount / elapsed);
-      this.frameCount = 0;
-      this.lastTime = now;
-      
-      if (this.callback) {
-        this.callback(this.currentFps);
-      }
-    }
-    
-    return this.currentFps;
-  }
-
-  getFPS(): number {
-    return this.currentFps;
-  }
-
-  reset(): void {
-    this.frameCount = 0;
-    this.lastTime = 0;
-    this.currentFps = 0;
-  }
-}
-
-export default PerformanceProfiler;

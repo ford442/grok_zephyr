@@ -2,7 +2,7 @@
  * Atmosphere LUT — precomputed optical depth lookup texture
  */
 
-import type WebGPUContext from '@/core/WebGPUContext.js';
+import type { WebGPUContext } from '@/core/WebGPUContext.js';
 
 export const ATMOSPHERE_LUT_WIDTH = 256;
 export const ATMOSPHERE_LUT_HEIGHT = 64;
@@ -32,7 +32,7 @@ export function createAtmosphereLUT(context: WebGPUContext): AtmosphereLUTResour
     { texture },
     lutBytes,
     { bytesPerRow: ATMOSPHERE_LUT_WIDTH * 4, rowsPerImage: ATMOSPHERE_LUT_HEIGHT },
-    { width: ATMOSPHERE_LUT_WIDTH, height: ATMOSPHERE_LUT_HEIGHT, depthOrArrayLayers: 1 }
+    { width: ATMOSPHERE_LUT_WIDTH, height: ATMOSPHERE_LUT_HEIGHT, depthOrArrayLayers: 1 },
   );
 
   return { texture, view };
@@ -42,17 +42,28 @@ function buildAtmosphereLUT(): Uint16Array {
   const data = new Uint16Array(ATMOSPHERE_LUT_WIDTH * ATMOSPHERE_LUT_HEIGHT * 2);
   let i = 0;
   for (let y = 0; y < ATMOSPHERE_LUT_HEIGHT; y++) {
-    const sunCos = (y + 0.5) / ATMOSPHERE_LUT_HEIGHT * 2.0 - 1.0;
+    const sunCos = ((y + 0.5) / ATMOSPHERE_LUT_HEIGHT) * 2.0 - 1.0;
     const sunAirMass = airMass(sunCos);
     for (let x = 0; x < ATMOSPHERE_LUT_WIDTH; x++) {
-      const viewCos = (x + 0.5) / ATMOSPHERE_LUT_WIDTH * 2.0 - 1.0;
+      const viewCos = ((x + 0.5) / ATMOSPHERE_LUT_WIDTH) * 2.0 - 1.0;
       const viewAirMass = airMass(viewCos);
       const sunWeight = 0.35 + 0.65 * Math.max(0.0, sunCos);
-      const rayleighOD = Math.min(64.0, viewAirMass * sunWeight * (ATMOSPHERE_TOP_KM - EARTH_RADIUS_KM) / RAYLEIGH_SCALE_HEIGHT_KM);
-      const mieOD = Math.min(64.0, viewAirMass * (0.45 + 0.55 * Math.max(0.0, sunCos)) * (ATMOSPHERE_TOP_KM - EARTH_RADIUS_KM) / MIE_SCALE_HEIGHT_KM * 0.075);
+      const rayleighOD = Math.min(
+        64.0,
+        (viewAirMass * sunWeight * (ATMOSPHERE_TOP_KM - EARTH_RADIUS_KM)) /
+          RAYLEIGH_SCALE_HEIGHT_KM,
+      );
+      const mieOD = Math.min(
+        64.0,
+        ((viewAirMass *
+          (0.45 + 0.55 * Math.max(0.0, sunCos)) *
+          (ATMOSPHERE_TOP_KM - EARTH_RADIUS_KM)) /
+          MIE_SCALE_HEIGHT_KM) *
+          0.075,
+      );
 
-      const rayleighWithSun = rayleighOD * (0.7 + 0.3 * Math.min(4.0, sunAirMass) / 4.0);
-      const mieWithSun = mieOD * (0.85 + 0.15 * Math.min(6.0, sunAirMass) / 6.0);
+      const rayleighWithSun = rayleighOD * (0.7 + (0.3 * Math.min(4.0, sunAirMass)) / 4.0);
+      const mieWithSun = mieOD * (0.85 + (0.15 * Math.min(6.0, sunAirMass)) / 6.0);
 
       data[i++] = toHalfFloat(rayleighWithSun);
       data[i++] = toHalfFloat(mieWithSun);
@@ -79,7 +90,7 @@ function toHalfFloat(value: number): number {
   if (abs < 6.103515625e-5) {
     return sign | Math.max(0, Math.round(abs / 5.960464477539063e-8));
   }
-  let exp = Math.floor(Math.log2(abs));
+  const exp = Math.floor(Math.log2(abs));
   const mant = abs / Math.pow(2, exp) - 1.0;
   let expBits = exp + 15;
   let mantBits = Math.round(mant * 1024);

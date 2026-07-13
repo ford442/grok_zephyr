@@ -9,7 +9,9 @@
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
 
-export const MOON_EARTH_DISK_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+export const MOON_EARTH_DISK_SHADER =
+  UNIFORM_STRUCT +
+  /* wgsl */ `
 const EARTH_ANG_RAD: f32 = 0.01655; // half-angle ~0.949° → Ø 1.9°
 
 struct VOut {

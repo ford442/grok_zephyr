@@ -28,11 +28,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: radial-gradient(
-    ellipse at center,
-    transparent 40%,
-    rgba(0, 0, 0, 0.4) 100%
-  );
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.4) 100%);
   pointer-events: none;
 }
 
@@ -42,7 +38,7 @@
 
 .frame-house {
   /* Window frame borders */
-  box-shadow: 
+  box-shadow:
     inset 0 0 0 20px rgba(60, 40, 20, 0.9),
     inset 0 0 0 22px rgba(30, 20, 10, 1),
     inset 0 0 100px rgba(255, 200, 150, 0.1);
@@ -67,12 +63,12 @@
     ),
     /* Vertical bar */
     linear-gradient(
-      to right,
-      transparent calc(50% - 10px),
-      rgba(60, 40, 20, 0.95) calc(50% - 10px),
-      rgba(60, 40, 20, 0.95) calc(50% + 10px),
-      transparent calc(50% + 10px)
-    );
+        to right,
+        transparent calc(50% - 10px),
+        rgba(60, 40, 20, 0.95) calc(50% - 10px),
+        rgba(60, 40, 20, 0.95) calc(50% + 10px),
+        transparent calc(50% + 10px)
+      );
   pointer-events: none;
 }
 
@@ -83,27 +79,16 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: 
-    radial-gradient(
-      ellipse 100px 150px at 20% 30%,
-      rgba(255, 255, 255, 0.03) 0%,
-      transparent 70%
-    ),
-    radial-gradient(
-      ellipse 80px 120px at 80% 70%,
-      rgba(255, 255, 255, 0.02) 0%,
-      transparent 70%
-    ),
-    radial-gradient(
-      ellipse 60px 100px at 60% 20%,
-      rgba(255, 255, 255, 0.025) 0%,
-      transparent 70%
-    );
+  background:
+    radial-gradient(ellipse 100px 150px at 20% 30%, rgba(255, 255, 255, 0.03) 0%, transparent 70%),
+    radial-gradient(ellipse 80px 120px at 80% 70%, rgba(255, 255, 255, 0.02) 0%, transparent 70%),
+    radial-gradient(ellipse 60px 100px at 60% 20%, rgba(255, 255, 255, 0.025) 0%, transparent 70%);
   animation: condensation-drift 20s ease-in-out infinite;
 }
 
 @keyframes condensation-drift {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.5;
     transform: translateY(0);
   }
@@ -120,18 +105,21 @@
   left: 0;
   width: 100%;
   height: 30%;
-  background: linear-gradient(
-    to top,
-    rgba(255, 200, 150, 0.15) 0%,
-    transparent 100%
-  );
+  background: linear-gradient(to top, rgba(255, 200, 150, 0.15) 0%, transparent 100%);
   animation: light-flicker 4s ease-in-out infinite;
 }
 
 @keyframes light-flicker {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.95; }
-  75% { opacity: 0.98; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.95;
+  }
+  75% {
+    opacity: 0.98;
+  }
 }
 
 /* ============================================================================
@@ -140,14 +128,13 @@
 
 .frame-car {
   /* Dashboard silhouette at bottom */
-  background: 
-    linear-gradient(
-      to top,
-      rgba(10, 10, 15, 0.95) 0%,
-      rgba(10, 10, 15, 0.95) 15%,
-      rgba(10, 10, 15, 0.8) 18%,
-      transparent 25%
-    );
+  background: linear-gradient(
+    to top,
+    rgba(10, 10, 15, 0.95) 0%,
+    rgba(10, 10, 15, 0.95) 15%,
+    rgba(10, 10, 15, 0.8) 18%,
+    transparent 25%
+  );
 }
 
 /* Dashboard glow */
@@ -160,28 +147,21 @@
   height: 20%;
   background: 
     /* Dashboard instrument glow */
-    radial-gradient(
-      ellipse 200px 50px at 30% 90%,
-      rgba(100, 150, 255, 0.3) 0%,
-      transparent 70%
-    ),
-    radial-gradient(
-      ellipse 150px 40px at 70% 85%,
-      rgba(255, 100, 100, 0.2) 0%,
-      transparent 70%
-    ),
+    radial-gradient(ellipse 200px 50px at 30% 90%, rgba(100, 150, 255, 0.3) 0%, transparent 70%),
+    radial-gradient(ellipse 150px 40px at 70% 85%, rgba(255, 100, 100, 0.2) 0%, transparent 70%),
     /* Center console glow */
-    radial-gradient(
-      ellipse 300px 60px at 50% 95%,
-      rgba(150, 200, 255, 0.15) 0%,
-      transparent 60%
-    );
+    radial-gradient(ellipse 300px 60px at 50% 95%, rgba(150, 200, 255, 0.15) 0%, transparent 60%);
   animation: dashboard-pulse 2s ease-in-out infinite;
 }
 
 @keyframes dashboard-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.9; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.9;
+  }
 }
 
 /* Speed lines for motion effect */
@@ -191,21 +171,24 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: 
-    repeating-linear-gradient(
-      90deg,
-      transparent,
-      transparent 98%,
-      rgba(255, 255, 255, 0.02) 100%
-    );
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 98%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
   background-size: 50px 100%;
   animation: speed-lines-move 0.5s linear infinite;
   opacity: 0.5;
 }
 
 @keyframes speed-lines-move {
-  0% { background-position: 0 0; }
-  100% { background-position: 50px 0; }
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 50px 0;
+  }
 }
 
 /* Steering wheel hint (bottom corners) */
@@ -219,7 +202,7 @@
   border: 15px solid rgba(30, 30, 35, 0.9);
   border-radius: 200px 200px 0 0;
   border-bottom: none;
-  box-shadow: 
+  box-shadow:
     0 -5px 20px rgba(0, 0, 0, 0.5),
     inset 0 5px 10px rgba(100, 100, 110, 0.2);
 }
@@ -230,23 +213,18 @@
 
 .frame-beach {
   /* Ocean horizon gradient */
-  background: 
-    linear-gradient(
-      to bottom,
-      transparent 0%,
-      transparent 60%,
-      rgba(0, 30, 60, 0.3) 65%,
-      rgba(0, 20, 40, 0.5) 100%
-    );
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 60%,
+    rgba(0, 30, 60, 0.3) 65%,
+    rgba(0, 20, 40, 0.5) 100%
+  );
 }
 
 /* Soft beach vignette */
 .frame-beach::before {
-  background: radial-gradient(
-    ellipse at center 40%,
-    transparent 30%,
-    rgba(0, 10, 30, 0.6) 100%
-  );
+  background: radial-gradient(ellipse at center 40%, transparent 30%, rgba(0, 10, 30, 0.6) 100%);
 }
 
 /* Star reflections on water */
@@ -256,28 +234,24 @@
   left: 0;
   width: 100%;
   height: 35%;
-  background: 
-    repeating-linear-gradient(
-      90deg,
-      transparent,
-      transparent 3px,
-      rgba(200, 220, 255, 0.03) 4px,
-      transparent 5px
-    );
-  mask-image: linear-gradient(
-    to top,
-    rgba(0, 0, 0, 0.5) 0%,
-    transparent 100%
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 3px,
+    rgba(200, 220, 255, 0.03) 4px,
+    transparent 5px
   );
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.5) 0%, transparent 100%);
   animation: water-shimmer 3s ease-in-out infinite;
 }
 
 @keyframes water-shimmer {
-  0%, 100% { 
+  0%,
+  100% {
     opacity: 0.5;
     transform: scaleY(1);
   }
-  50% { 
+  50% {
     opacity: 0.8;
     transform: scaleY(1.02);
   }
@@ -290,20 +264,23 @@
   left: 0;
   width: 100%;
   height: 20%;
-  background: 
-    repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 8px,
-      rgba(100, 150, 200, 0.05) 9px,
-      transparent 10px
-    );
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 8px,
+    rgba(100, 150, 200, 0.05) 9px,
+    transparent 10px
+  );
   animation: waves-move 4s linear infinite;
 }
 
 @keyframes waves-move {
-  0% { background-position: 0 0; }
-  100% { background-position: 0 20px; }
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 20px;
+  }
 }
 
 /* Distant beach silhouette */
@@ -313,11 +290,7 @@
   left: 0;
   width: 100%;
   height: 8%;
-  background: linear-gradient(
-    to top,
-    rgba(10, 15, 20, 0.8) 0%,
-    transparent 100%
-  );
+  background: linear-gradient(to top, rgba(10, 15, 20, 0.8) 0%, transparent 100%);
 }
 
 /* ============================================================================
@@ -326,15 +299,14 @@
 
 .frame-rooftop {
   /* City light pollution glow at horizon */
-  background: 
-    linear-gradient(
-      to bottom,
-      transparent 0%,
-      transparent 50%,
-      rgba(255, 200, 150, 0.1) 70%,
-      rgba(255, 180, 120, 0.2) 85%,
-      rgba(255, 160, 100, 0.3) 100%
-    );
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 50%,
+    rgba(255, 200, 150, 0.1) 70%,
+    rgba(255, 180, 120, 0.2) 85%,
+    rgba(255, 160, 100, 0.3) 100%
+  );
 }
 
 /* Building silhouettes */
@@ -354,12 +326,7 @@
       transparent 100%
     ),
     /* Right building */
-    linear-gradient(
-      to top,
-      rgba(25, 25, 30, 0.9) 0%,
-      rgba(25, 25, 30, 0.9) 80%,
-      transparent 100%
-    );
+    linear-gradient(to top, rgba(25, 25, 30, 0.9) 0%, rgba(25, 25, 30, 0.9) 80%, transparent 100%);
   clip-path: polygon(
     0% 100%,
     0% 30%,
@@ -407,8 +374,13 @@
 }
 
 @keyframes lights-twinkle {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.85; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.85;
+  }
 }
 
 /* Fireflies/distant aircraft */
@@ -439,7 +411,7 @@
 
 .frame-airplane {
   /* Oval window frame */
-  box-shadow: 
+  box-shadow:
     inset 0 0 0 30px rgba(40, 45, 55, 0.95),
     inset 0 0 0 32px rgba(20, 25, 35, 1),
     inset 0 0 60px rgba(100, 150, 200, 0.1);
@@ -466,16 +438,8 @@
   height: 100%;
   background: 
     /* Ice crystal pattern */
-    radial-gradient(
-      ellipse 2px 100px at 25% 50%,
-      rgba(255, 255, 255, 0.1) 0%,
-      transparent 100%
-    ),
-    radial-gradient(
-      ellipse 2px 80px at 75% 60%,
-      rgba(255, 255, 255, 0.08) 0%,
-      transparent 100%
-    );
+    radial-gradient(ellipse 2px 100px at 25% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 100%),
+    radial-gradient(ellipse 2px 80px at 75% 60%, rgba(255, 255, 255, 0.08) 0%, transparent 100%);
   border-radius: inherit;
   pointer-events: none;
 }
@@ -494,11 +458,7 @@
   left: 10%;
   width: 100px;
   height: 100%;
-  background: linear-gradient(
-    to right,
-    rgba(255, 50, 50, 0.8) 0%,
-    transparent 100%
-  );
+  background: linear-gradient(to right, rgba(255, 50, 50, 0.8) 0%, transparent 100%);
   animation: wing-blink 1s ease-in-out infinite;
 }
 
@@ -508,17 +468,18 @@
   right: 10%;
   width: 100px;
   height: 100%;
-  background: linear-gradient(
-    to left,
-    rgba(50, 255, 100, 0.6) 0%,
-    transparent 100%
-  );
+  background: linear-gradient(to left, rgba(50, 255, 100, 0.6) 0%, transparent 100%);
   animation: wing-blink 1s ease-in-out infinite 0.5s;
 }
 
 @keyframes wing-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 /* Contrail hint */
@@ -539,10 +500,20 @@
 }
 
 @keyframes contrail-drift {
-  0% { transform: rotate(-5deg) translateX(0); opacity: 0; }
-  10% { opacity: 1; }
-  90% { opacity: 0.5; }
-  100% { transform: rotate(-5deg) translateX(-100px); opacity: 0; }
+  0% {
+    transform: rotate(-5deg) translateX(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: rotate(-5deg) translateX(-100px);
+    opacity: 0;
+  }
 }
 
 /* ============================================================================
@@ -569,11 +540,7 @@
   width: 100%;
   height: 100%;
   background:
-    radial-gradient(
-      ellipse at center,
-      transparent 35%,
-      rgba(0, 0, 0, 0.5) 100%
-    ),
+    radial-gradient(ellipse at center, transparent 35%, rgba(0, 0, 0, 0.5) 100%),
     linear-gradient(
       to right,
       transparent calc(50% - 4px),
@@ -592,22 +559,23 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(
-    115deg,
-    transparent 0%,
-    transparent 38%,
-    rgba(200, 220, 255, 0.05) 46%,
-    rgba(200, 220, 255, 0.08) 50%,
-    rgba(200, 220, 255, 0.05) 54%,
-    transparent 62%,
-    transparent 100%
-  ),
-  linear-gradient(
-    to top,
-    rgba(255, 150, 60, 0.14) 0%,
-    rgba(255, 120, 40, 0.06) 12%,
-    transparent 28%
-  );
+  background:
+    linear-gradient(
+      115deg,
+      transparent 0%,
+      transparent 38%,
+      rgba(200, 220, 255, 0.05) 46%,
+      rgba(200, 220, 255, 0.08) 50%,
+      rgba(200, 220, 255, 0.05) 54%,
+      transparent 62%,
+      transparent 100%
+    ),
+    linear-gradient(
+      to top,
+      rgba(255, 150, 60, 0.14) 0%,
+      rgba(255, 120, 40, 0.06) 12%,
+      transparent 28%
+    );
   pointer-events: none;
 }
 
@@ -617,7 +585,7 @@
 
 /* Smooth crossfade between presets */
 .ground-observer-frame {
-  transition: 
+  transition:
     opacity 0.5s ease-in-out,
     box-shadow 0.5s ease-in-out;
 }
@@ -628,10 +596,19 @@
 
 /* Screen shake for car motion */
 @keyframes screen-shake {
-  0%, 100% { transform: translate(0, 0); }
-  25% { transform: translate(1px, 0.5px); }
-  50% { transform: translate(-0.5px, -1px); }
-  75% { transform: translate(-1px, 0.5px); }
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  25% {
+    transform: translate(1px, 0.5px);
+  }
+  50% {
+    transform: translate(-0.5px, -1px);
+  }
+  75% {
+    transform: translate(-1px, 0.5px);
+  }
 }
 
 .frame-car.changing {
@@ -655,7 +632,10 @@
   border: 1px solid rgba(0, 255, 170, 0.26);
   border-radius: 10px;
   backdrop-filter: blur(12px) saturate(135%);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.38), 0 0 24px rgba(0, 170, 255, 0.12), inset 0 0 26px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.38),
+    0 0 24px rgba(0, 170, 255, 0.12),
+    inset 0 0 26px rgba(0, 0, 0, 0.3);
 }
 
 .preset-label {
@@ -677,7 +657,12 @@
   border: 1px solid rgba(0, 255, 170, 0.24);
   border-radius: 7px;
   cursor: pointer;
-  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, box-shadow 0.2s ease, transform 0.15s ease;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s ease;
   text-align: left;
   white-space: nowrap;
   min-height: 32px;
@@ -687,7 +672,9 @@
   background: rgba(0, 170, 255, 0.2);
   color: #fff;
   border-color: rgba(0, 170, 255, 0.62);
-  box-shadow: 0 0 16px rgba(0, 170, 255, 0.3), inset 0 0 12px rgba(0, 170, 255, 0.14);
+  box-shadow:
+    0 0 16px rgba(0, 170, 255, 0.3),
+    inset 0 0 12px rgba(0, 170, 255, 0.14);
   transform: translateY(-1px);
 }
 
@@ -696,7 +683,9 @@
   color: #fff;
   border-color: rgba(0, 170, 255, 0.72);
   text-shadow: 0 0 8px rgba(0, 170, 255, 0.8);
-  box-shadow: 0 0 18px rgba(0, 170, 255, 0.35), inset 0 0 12px rgba(0, 170, 255, 0.2);
+  box-shadow:
+    0 0 18px rgba(0, 170, 255, 0.35),
+    inset 0 0 12px rgba(0, 170, 255, 0.2);
 }
 
 .preset-btn:focus-visible {

@@ -7,10 +7,10 @@ import type { VolumetricBeamConfig } from '@/render/VolumetricBeamRenderer.js';
 /** Beam brightness multiplier keyed by view_mode index (0–5). */
 export const BEAM_VIEW_INTENSITY: readonly number[] = [
   0.95, // Horizon
-  1.0,  // God
-  0.4,  // Fleet POV — motion clutter
-  0.6,  // Ground — sky projections, not laser pointers
-  1.3,  // Moon — distant ring emphasis
+  1.0, // God
+  0.4, // Fleet POV — motion clutter
+  0.6, // Ground — sky projections, not laser pointers
+  1.3, // Moon — distant ring emphasis
   0.75, // Skyline — city foreground competes
 ] as const;
 
@@ -22,9 +22,7 @@ export function beamViewIntensity(viewModeIndex: number): number {
 }
 
 /** Pattern-specific volumetric overrides layered on the quality preset. */
-export function volumetricPatternOverrides(
-  patternMode: number,
-): Partial<VolumetricBeamConfig> {
+export function volumetricPatternOverrides(patternMode: number): Partial<VolumetricBeamConfig> {
   switch (patternMode | 0) {
     case 0: // CHAOS — skip earth shadow for performance
       return {

@@ -3,6 +3,7 @@
 ## What Was Built
 
 ### 1. WGSL Compute Shader (`src/shaders/sky_strips_compute.wgsl`)
+
 A new compute shader that transforms satellites into addressable LED pixels:
 
 - **6 Pattern Types:**
@@ -18,6 +19,7 @@ A new compute shader that transforms satellites into addressable LED pixels:
 - **HDR Output:** Colors written to RGBA8 buffer with bloom-ready intensity
 
 ### 2. Pattern Sequencer (`src/patterns/PatternSequencer.ts`)
+
 TypeScript controller for pattern management:
 
 ```typescript
@@ -39,21 +41,23 @@ sequencer.triggerBeat();
 - **Export/Import:** Save/load pattern configurations as JSON
 
 ### 3. Ground Observer Camera (`src/camera/GroundObserverCamera.ts`)
+
 5 immersive ground perspectives:
 
-| Preset | Description | Effect |
-|--------|-------------|--------|
-| `houseWindow` | Cozy indoor view | Warm vignette, condensation |
-| `carWindshield` | Driving perspective | Dashboard glow, speed lines |
-| `beachNight` | Ocean horizon | Water reflections, soft vignette |
-| `rooftop` | Urban overlook | City glow, building silhouettes |
-| `airplaneWindow` | High altitude | Oval window, wingtip lights |
+| Preset           | Description         | Effect                           |
+| ---------------- | ------------------- | -------------------------------- |
+| `houseWindow`    | Cozy indoor view    | Warm vignette, condensation      |
+| `carWindshield`  | Driving perspective | Dashboard glow, speed lines      |
+| `beachNight`     | Ocean horizon       | Water reflections, soft vignette |
+| `rooftop`        | Urban overlook      | City glow, building silhouettes  |
+| `airplaneWindow` | High altitude       | Oval window, wingtip lights      |
 
 - **Mouse Parallax:** Configurable parallax for immersive feel
 - **Atmospheric Scattering:** Per-preset scattering multipliers
 - **Effect Parameters:** Color temperature, bloom, motion blur
 
 ### 4. CSS Frame Overlays (`src/styles/ground-observer.css`)
+
 Pure CSS frame overlays with animations:
 
 - Window frames with crossbars
@@ -63,30 +67,35 @@ Pure CSS frame overlays with animations:
 - Oval airplane windows with wing lights
 
 ### 5. Updated Buffer Management (`src/core/SatelliteGPUBuffer.ts`)
+
 Added new buffers:
+
 - `patterns` - 16MB storage buffer for per-satellite pattern data
 - `skyStripUniforms` - 32B uniform buffer for pattern parameters
 
 ## Memory Usage
 
-| Buffer | Size | Description |
-|--------|------|-------------|
-| Orbital Elements | 16 MB | Read-only satellite elements |
-| Positions | 16 MB | Double-buffered positions |
-| Colors | 4 MB | RGBA8 output from patterns |
-| **Patterns (NEW)** | **16 MB** | **Per-sat pattern data** |
-| Sky Strip Uniforms | 32 B | Global pattern uniforms |
-| **Total NEW** | **~16 MB** | Minimal overhead |
+| Buffer             | Size       | Description                  |
+| ------------------ | ---------- | ---------------------------- |
+| Orbital Elements   | 16 MB      | Read-only satellite elements |
+| Positions          | 16 MB      | Double-buffered positions    |
+| Colors             | 4 MB       | RGBA8 output from patterns   |
+| **Patterns (NEW)** | **16 MB**  | **Per-sat pattern data**     |
+| Sky Strip Uniforms | 32 B       | Global pattern uniforms      |
+| **Total NEW**      | **~16 MB** | Minimal overhead             |
 
 ## Integration Steps
 
 ### 1. Import the CSS
+
 Add to `index.html`:
+
 ```html
-<link rel="stylesheet" href="src/styles/ground-observer.css">
+<link rel="stylesheet" href="src/styles/ground-observer.css" />
 ```
 
 ### 2. Create the Pattern Sequencer
+
 ```typescript
 import { PatternSequencer, PatternType } from './src/patterns/PatternSequencer.js';
 
@@ -94,6 +103,7 @@ const sequencer = new PatternSequencer(NUM_SATELLITES, buffers);
 ```
 
 ### 3. Setup Ground Observer Camera
+
 ```typescript
 import { GroundObserverCamera, GroundObserverPreset } from './src/camera/GroundObserverCamera.js';
 
@@ -107,6 +117,7 @@ document.body.appendChild(overlay);
 ```
 
 ### 4. Create Compute Pipeline
+
 ```typescript
 // Load the compute shader
 const skyStripsShader = await loadShader('src/shaders/sky_strips_compute.wgsl');
@@ -114,22 +125,23 @@ const skyStripsShader = await loadShader('src/shaders/sky_strips_compute.wgsl');
 // Create compute pipeline
 const computePipeline = device.createComputePipeline({
   layout: device.createPipelineLayout({
-    bindGroupLayouts: [skyStripsBindGroupLayout]
+    bindGroupLayouts: [skyStripsBindGroupLayout],
   }),
   compute: {
     module: device.createShaderModule({ code: skyStripsShader }),
-    entryPoint: 'updateSkyStrips'
-  }
+    entryPoint: 'updateSkyStrips',
+  },
 });
 ```
 
 ### 5. Render Loop Integration
+
 ```typescript
 function renderLoop() {
   // Update pattern uniforms
   const uniforms = sequencer.updateUniforms(deltaTime);
   device.queue.writeBuffer(buffers.skyStripUniforms, 0, sequencer.getUniformsArray());
-  
+
   // Run Sky Strips compute
   const computeEncoder = device.createCommandEncoder();
   const computePass = computeEncoder.beginComputePass();
@@ -138,7 +150,7 @@ function renderLoop() {
   computePass.dispatchWorkgroups(Math.ceil(NUM_SATELLITES / 256));
   computePass.end();
   device.queue.submit([computeEncoder.finish()]);
-  
+
   // Continue with normal render pipeline...
 }
 ```

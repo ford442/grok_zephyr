@@ -16,11 +16,7 @@ export function calculateSunPosition(simTime: number): [number, number, number] 
   const SUN_DISTANCE_KM = 149597870.0;
   const ORBITAL_PERIOD_SEC = 31557600.0;
   const angle = (simTime / ORBITAL_PERIOD_SEC) * Math.PI * 2;
-  return [
-    Math.cos(angle) * SUN_DISTANCE_KM,
-    Math.sin(angle) * SUN_DISTANCE_KM,
-    0.0,
-  ];
+  return [Math.cos(angle) * SUN_DISTANCE_KM, Math.sin(angle) * SUN_DISTANCE_KM, 0.0];
 }
 
 export function buildConstellationStats(rt: AppRuntime): ConstellationStats {
@@ -33,11 +29,11 @@ export function buildConstellationStats(rt: AppRuntime): ConstellationStats {
   };
   return {
     viewModeName: rt.camera.getViewMode(),
-    physicsModeName: physicsNames[rt.currentPhysicsMode] ?? 'Simple',
-    timeScale: rt.timeScale,
+    physicsModeName: physicsNames[rt.simulation.currentPhysicsMode] ?? 'Simple',
+    timeScale: rt.simulation.timeScale,
     dataSource: rt.dataSourceLabel,
     visibleCount: rt.lastVisibleCount,
-    animationPattern: animNames[rt.currentAnimationPattern] ?? 'None',
+    animationPattern: animNames[rt.simulation.currentAnimationPattern] ?? 'None',
   };
 }
 
@@ -49,7 +45,7 @@ export function updateBeamParamsTime(rt: AppRuntime, time: number): void {
   const u32 = new Uint32Array(beamParamsData);
 
   f32[0] = time;
-  u32[1] = rt.currentPatternMode;
+  u32[1] = rt.simulation.currentPatternMode;
   u32[2] = 65536;
   u32[3] = 0;
 
@@ -67,11 +63,13 @@ export function writeUniforms(
   const { width, height } = rt.context.getCanvasSize();
   const aspect = width / height;
 
-  const cameraState = camera ?? rt.camera.calculateCamera(
-    (idx, t) => rt.buffers!.calculateSatellitePosition(idx, t),
-    (idx, t) => rt.buffers!.calculateSatelliteVelocity(idx, t),
-    time,
-  );
+  const cameraState =
+    camera ??
+    rt.camera.calculateCamera(
+      (idx, t) => rt.buffers!.calculateSatellitePosition(idx, t),
+      (idx, t) => rt.buffers!.calculateSatelliteVelocity(idx, t),
+      time,
+    );
 
   const { viewProjection, view } = rt.camera.buildViewProjection(cameraState, aspect);
   const inverseViewProjection = mat4inv(viewProjection);
@@ -80,15 +78,16 @@ export function writeUniforms(
 
   const cameraRadius = Math.sqrt(
     cameraState.position[0] * cameraState.position[0] +
-    cameraState.position[1] * cameraState.position[1] +
-    cameraState.position[2] * cameraState.position[2],
+      cameraState.position[1] * cameraState.position[1] +
+      cameraState.position[2] * cameraState.position[2],
   );
 
   const viewMode = rt.camera.getViewModeIndex();
   const isGroundView = cameraRadius < CONSTANTS.EARTH_RADIUS_KM + 100.0 ? 1 : 0;
-  const physicsMode = rt.currentPhysicsMode;
-  const viewFlags = (viewMode & 0xFFFF) | ((isGroundView & 0x1) << 16) | ((physicsMode & 0x7) << 17);
-  const sunPos = calculateSunPosition(rt.simTime);
+  const physicsMode = rt.simulation.currentPhysicsMode;
+  const viewFlags =
+    (viewMode & 0xffff) | ((isGroundView & 0x1) << 16) | ((physicsMode & 0x7) << 17);
+  const sunPos = calculateSunPosition(rt.simulation.simTime);
 
   const uniformData = new ArrayBuffer(BUFFER_SIZES.UNIFORM);
   const f32 = new Float32Array(uniformData);
@@ -110,7 +109,7 @@ export function writeUniforms(
   f32[28] = time;
   f32[29] = deltaTime;
   u32[30] = viewFlags;
-  f32[31] = rt.simTime;
+  f32[31] = rt.simulation.simTime;
 
   for (let p = 0; p < 6; p++) {
     f32[32 + p * 4 + 0] = frustum[p][0];
@@ -121,7 +120,7 @@ export function writeUniforms(
 
   f32[56] = width;
   f32[57] = height;
-  f32[58] = rt.timeScale;
+  f32[58] = rt.simulation.timeScale;
   u32[59] = getBackgroundModeIndex();
   f32[60] = sunPos[0];
   f32[61] = sunPos[1];
@@ -135,7 +134,10 @@ export function writeUniforms(
       : undefined;
   const fleetHostVel =
     viewMode === 2
-      ? rt.buffers.calculateSatelliteVelocity(FLEET_COCKPIT.HOST_SATELLITE_INDEX, rt.simTime)
+      ? rt.buffers.calculateSatelliteVelocity(
+          FLEET_COCKPIT.HOST_SATELLITE_INDEX,
+          rt.simulation.simTime,
+        )
       : undefined;
   rt.pipeline?.setMotionBlurFrameData(
     viewProjection,

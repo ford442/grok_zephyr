@@ -30,8 +30,7 @@ export function projectWorldToNdc(
   viewProj: Float32Array,
 ): [number, number, number] | null {
   const [x, y, z] = world;
-  const clipW =
-    viewProj[3] * x + viewProj[7] * y + viewProj[11] * z + viewProj[15];
+  const clipW = viewProj[3] * x + viewProj[7] * y + viewProj[11] * z + viewProj[15];
   if (clipW <= 1e-6) return null;
   const invW = 1 / clipW;
   return [

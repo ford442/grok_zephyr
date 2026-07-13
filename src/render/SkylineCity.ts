@@ -9,7 +9,16 @@
  */
 
 import type { Vec3 } from '@/types/index.js';
-import { v3norm, v3cross, v3sub, v3scale, v3dot, mat4lookAt, mat4persp, mat4mul } from '@/utils/math.js';
+import {
+  v3norm,
+  v3cross,
+  v3sub,
+  v3scale,
+  v3dot,
+  mat4lookAt,
+  mat4persp,
+  mat4mul,
+} from '@/utils/math.js';
 
 /** Floats per Building instance (must match the 32-byte WGSL struct). */
 const BUILDING_FLOATS = 8;
@@ -86,13 +95,19 @@ export class SkylineCity {
       const north = (rng() * 2 - 1) * half;
       const distFromObserver = Math.hypot(east, north);
 
-      const width = this.config.minFootprintKm + rng() * (this.config.maxFootprintKm - this.config.minFootprintKm);
-      const depth = this.config.minFootprintKm + rng() * (this.config.maxFootprintKm - this.config.minFootprintKm);
+      const width =
+        this.config.minFootprintKm +
+        rng() * (this.config.maxFootprintKm - this.config.minFootprintKm);
+      const depth =
+        this.config.minFootprintKm +
+        rng() * (this.config.maxFootprintKm - this.config.minFootprintKm);
       // Keep the street directly below the observer's window clear, and bias
       // toward shorter buildings so the skyline reads as a real city, not a wall.
-      const height = distFromObserver < this.config.streetClearanceKm
-        ? 0
-        : this.config.minHeightKm + Math.pow(rng(), 1.5) * (this.config.maxHeightKm - this.config.minHeightKm);
+      const height =
+        distFromObserver < this.config.streetClearanceKm
+          ? 0
+          : this.config.minHeightKm +
+            Math.pow(rng(), 1.5) * (this.config.maxHeightKm - this.config.minHeightKm);
 
       const o = i * BUILDING_FLOATS;
       this.buildingData[o + 0] = east;
@@ -108,14 +123,14 @@ export class SkylineCity {
     // Mark tallest decile for rooftop equipment silhouettes.
     const heights: number[] = [];
     for (let i = 0; i < this.buildingCount; i++) {
-      const h = this.buildingData[i * BUILDING_FLOATS + 4]!;
+      const h = this.buildingData[i * BUILDING_FLOATS + 4];
       if (h > 0) heights.push(h);
     }
     heights.sort((a, b) => a - b);
     const threshold = heights[Math.floor(heights.length * 0.9)] ?? this.config.maxHeightKm;
     for (let i = 0; i < this.buildingCount; i++) {
       const o = i * BUILDING_FLOATS;
-      const h = this.buildingData[o + 4]!;
+      const h = this.buildingData[o + 4];
       if (h >= threshold && h > 0) {
         this.buildingData[o + 7] = 1;
       }
@@ -132,9 +147,9 @@ export class SkylineCity {
     device.queue.writeBuffer(
       this.instanceBuffer,
       0,
-      this.buildingData.buffer as ArrayBuffer,
+      this.buildingData.buffer,
       this.buildingData.byteOffset,
-      this.buildingData.byteLength
+      this.buildingData.byteLength,
     );
 
     this.cityUniformBuffer = device.createBuffer({
@@ -150,7 +165,8 @@ export class SkylineCity {
   }
 
   getCityUniformBuffer(): GPUBuffer {
-    if (!this.cityUniformBuffer) throw new Error('SkylineCity.createBuffers() must be called first');
+    if (!this.cityUniformBuffer)
+      throw new Error('SkylineCity.createBuffers() must be called first');
     return this.cityUniformBuffer;
   }
 
@@ -185,7 +201,7 @@ export class SkylineCity {
     cameraTarget: Vec3,
     cameraUp: Vec3,
     aspect: number,
-    fov: number
+    fov: number,
   ): Float32Array {
     if (!this.observerSet) this.setObserver(cameraPosition);
 
@@ -242,12 +258,12 @@ export class SkylineCity {
     device.queue.writeBuffer(this.cityUniformBuffer, 0, data);
   }
 
-  destroy(): void {
-    this.instanceBuffer?.destroy();
-    this.cityUniformBuffer?.destroy();
+  destroy(deviceLost = false): void {
+    if (!deviceLost) {
+      this.instanceBuffer?.destroy();
+      this.cityUniformBuffer?.destroy();
+    }
     this.instanceBuffer = null;
     this.cityUniformBuffer = null;
   }
 }
-
-export default SkylineCity;

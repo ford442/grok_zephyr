@@ -30,10 +30,10 @@ export function fleetHeadingDeg(velocity: Vec3): number {
 
 /** Circular-orbit speed from shell mean motion and radius (km/s). */
 export function fleetOrbitalSpeedKms(orbital: OrbitalElements, hostIndex: number): number {
-  const shellData = orbital.data[hostIndex * 4 + 3]!;
+  const shellData = orbital.data[hostIndex * 4 + 3];
   const shellIndex = (shellData >> 8) & 0xff;
-  const n = SHELL_MEAN_MOTIONS[shellIndex] ?? SHELL_MEAN_MOTIONS[1]!;
-  const r = SHELL_RADII_KM[shellIndex] ?? SHELL_RADII_KM[1]!;
+  const n = SHELL_MEAN_MOTIONS[shellIndex] ?? SHELL_MEAN_MOTIONS[1];
+  const r = SHELL_RADII_KM[shellIndex] ?? SHELL_RADII_KM[1];
   return n * r;
 }
 

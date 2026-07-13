@@ -2,11 +2,11 @@
  * Auto exposure pass encoder — histogram + adaptation compute
  */
 
-import type { PassContext } from './types.js';
+import type { FrameContext } from './types.js';
 
 export function encodeAutoExposurePasses(
   encoder: GPUCommandEncoder,
-  ctx: PassContext,
+  ctx: FrameContext,
   sceneSourceView: GPUTextureView,
   deltaTime: number,
 ): void {
@@ -27,7 +27,7 @@ export function encodeAutoExposurePasses(
   device.queue.writeBuffer(
     ctx.autoExposureHistogramBuffer,
     0,
-    ctx.autoExposureHistogramClearData.buffer.slice(0) as ArrayBuffer,
+    ctx.autoExposureHistogramClearData.buffer.slice(0),
   );
 
   const histogramBG = device.createBindGroup({

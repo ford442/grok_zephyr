@@ -1,4 +1,4 @@
-import type WebGPUContext from '@/core/WebGPUContext.js';
+import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import { UNIFORM_STRUCT } from '@/shaders/uniforms.js';
 
 export interface GroundViewConfig {
@@ -9,7 +9,9 @@ export interface GroundViewConfig {
   hazeStrength: number;
 }
 
-const CLOUD_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+const CLOUD_SHADER =
+  UNIFORM_STRUCT +
+  /* wgsl */ `
 struct VIn {
   @location(0) pos: vec3f,
   @location(1) nrm: vec3f,
@@ -126,7 +128,12 @@ export class EarthAtmosphereRenderer {
     return this.config.enabled;
   }
 
-  encode(pass: GPURenderPassEncoder, earthVertexBuffer: GPUBuffer, earthIndexBuffer: GPUBuffer, earthIndexCount: number): void {
+  encode(
+    pass: GPURenderPassEncoder,
+    earthVertexBuffer: GPUBuffer,
+    earthIndexBuffer: GPUBuffer,
+    earthIndexCount: number,
+  ): void {
     if (!this.config.enabled || !this.pipeline || !this.bindGroup) return;
 
     pass.setPipeline(this.pipeline);
@@ -173,13 +180,15 @@ export class EarthAtmosphereRenderer {
       fragment: {
         module: shaderModule,
         entryPoint: 'fs',
-        targets: [{
-          format: 'rgba16float',
-          blend: {
-            color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-            alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+        targets: [
+          {
+            format: 'rgba16float',
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+            },
           },
-        }],
+        ],
       },
       primitive: {
         topology: 'triangle-list',
@@ -200,5 +209,11 @@ export class EarthAtmosphereRenderer {
       layout: this.pipeline.getBindGroupLayout(0),
       entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
     });
+  }
+
+  destroy(): void {
+    this.pipeline = null;
+    this.bindGroup = null;
+    this.uniformBuffer = null;
   }
 }

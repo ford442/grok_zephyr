@@ -1,6 +1,6 @@
 /**
  * Ground Observer Camera System
- * 
+ *
  * Provides immersive ground-based perspectives for viewing Sky Strips.
  * Each preset simulates a different real-world viewing scenario with
  * appropriate camera positioning and visual effects.
@@ -41,7 +41,7 @@ export interface GroundObserverConfig {
     motionBlur?: number;
     vignette?: number;
     bloomIntensity?: number;
-    colorTemperature?: number;  // Kelvin
+    colorTemperature?: number; // Kelvin
   };
   /** Parallax settings for mouse movement */
   parallax: {
@@ -205,7 +205,9 @@ export class GroundObserverCamera {
   private blendT = 1;
 
   constructor() {
-    const initial = extractGroundPresetEffects(GROUND_OBSERVER_PRESETS[GroundObserverPreset.HOUSE_WINDOW]);
+    const initial = extractGroundPresetEffects(
+      GROUND_OBSERVER_PRESETS[GroundObserverPreset.HOUSE_WINDOW],
+    );
     this.blendFrom = initial;
     this.blendTo = initial;
     this.setPreset(GroundObserverPreset.HOUSE_WINDOW);
@@ -271,8 +273,10 @@ export class GroundObserverCamera {
 
     // Smooth mouse position
     const smoothing = 0.1;
-    this.smoothedMousePosition.x += (this.mousePosition.x - this.smoothedMousePosition.x) * smoothing;
-    this.smoothedMousePosition.y += (this.mousePosition.y - this.smoothedMousePosition.y) * smoothing;
+    this.smoothedMousePosition.x +=
+      (this.mousePosition.x - this.smoothedMousePosition.x) * smoothing;
+    this.smoothedMousePosition.y +=
+      (this.mousePosition.y - this.smoothedMousePosition.y) * smoothing;
 
     if (parallax.enabled) {
       const offsetX = (this.smoothedMousePosition.x - 0.5) * parallax.strength * 1000;
@@ -382,5 +386,3 @@ export class GroundObserverCamera {
     }
   }
 }
-
-export default GroundObserverCamera;

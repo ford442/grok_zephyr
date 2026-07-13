@@ -6,7 +6,9 @@
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
 
-export const SATELLITE_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+export const SATELLITE_SHADER =
+  UNIFORM_STRUCT +
+  /* wgsl */ `
 @group(0) @binding(1) var<storage, read> sat_pos : array<vec4f>;
 
 // Pattern parameters (updated from CPU when animation buttons are clicked)

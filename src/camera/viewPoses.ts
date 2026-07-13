@@ -17,11 +17,7 @@ export function calculateHorizonView(
   const cosP = Math.cos(pitch);
   const sinP = Math.sin(pitch);
 
-  const position: Vec3 = [
-    baseRadius * cosY,
-    baseRadius * sinY,
-    0,
-  ];
+  const position: Vec3 = [baseRadius * cosY, baseRadius * sinY, 0];
 
   const tangential = HORIZON_FRAMING.TANGENTIAL_LOOK_KM;
   const upward = HORIZON_FRAMING.BASE_UPWARD_LOOK_KM;
@@ -35,9 +31,7 @@ export function calculateHorizonView(
   const forward = v3norm(v3sub(target, position));
   const right = v3norm(v3cross(forward, radial));
   const roll = HORIZON_FRAMING.ROLL_DEG * MATH.DEG_TO_RAD;
-  const up = v3norm(
-    v3add(v3scale(radial, Math.cos(roll)), v3scale(right, Math.sin(roll))),
-  );
+  const up = v3norm(v3add(v3scale(radial, Math.cos(roll)), v3scale(right, Math.sin(roll))));
 
   return {
     position,
@@ -49,10 +43,7 @@ export function calculateHorizonView(
   };
 }
 
-export function calculateGodView(
-  cameraAngles: CameraAngles,
-  godIdleYawDeg: number,
-): CameraState {
+export function calculateGodView(cameraAngles: CameraAngles, godIdleYawDeg: number): CameraState {
   const yaw = (cameraAngles.yaw + godIdleYawDeg) * MATH.DEG_TO_RAD;
   const pitch = cameraAngles.pitch * MATH.DEG_TO_RAD;
   const distance = cameraAngles.distance;
@@ -62,11 +53,7 @@ export function calculateGodView(
   const cosY = Math.cos(yaw);
   const sinY = Math.sin(yaw);
 
-  const position: Vec3 = [
-    cosP * cosY * distance,
-    cosP * sinY * distance,
-    sinP * distance,
-  ];
+  const position: Vec3 = [cosP * cosY * distance, cosP * sinY * distance, sinP * distance];
 
   let up: Vec3 = [0, 0, 1];
   if (Math.abs(pitch) > 1.35) {
@@ -110,7 +97,15 @@ export function calculateFleetPOV(
   if (keys['shift']) moveSpeed *= options.fastMultiplier;
   if (keys['control']) moveSpeed *= options.slowMultiplier;
 
-  const isMoving = keys['w'] || keys['s'] || keys['a'] || keys['q'] || keys['d'] || keys['e'] || keys[' '] || keys['x'];
+  const isMoving =
+    keys['w'] ||
+    keys['s'] ||
+    keys['a'] ||
+    keys['q'] ||
+    keys['d'] ||
+    keys['e'] ||
+    keys[' '] ||
+    keys['x'];
 
   let fleetOffset = state.fleetOffset;
   if (keys['w']) fleetOffset = v3add(fleetOffset, v3scale(forward, moveSpeed));
@@ -131,15 +126,21 @@ export function calculateFleetPOV(
   const targetRoll = Math.max(-8, Math.min(8, -yawDelta * 1.5)) * MATH.DEG_TO_RAD;
   let fleetRoll = state.fleetRoll + (targetRoll - state.fleetRoll) * 0.08;
   fleetRoll *= 0.95;
-  let fleetTouchRoll = state.fleetTouchRoll * 0.985;
+  const fleetTouchRoll = state.fleetTouchRoll * 0.985;
 
   const cosY = Math.cos(yaw);
   const sinY = Math.sin(yaw);
 
   let lookDir: Vec3 = [
-    forward[0] * cosY + v3cross(localUp, forward)[0] * sinY + localUp[0] * v3dot(localUp, forward) * (1 - cosY),
-    forward[1] * cosY + v3cross(localUp, forward)[1] * sinY + localUp[1] * v3dot(localUp, forward) * (1 - cosY),
-    forward[2] * cosY + v3cross(localUp, forward)[2] * sinY + localUp[2] * v3dot(localUp, forward) * (1 - cosY),
+    forward[0] * cosY +
+      v3cross(localUp, forward)[0] * sinY +
+      localUp[0] * v3dot(localUp, forward) * (1 - cosY),
+    forward[1] * cosY +
+      v3cross(localUp, forward)[1] * sinY +
+      localUp[1] * v3dot(localUp, forward) * (1 - cosY),
+    forward[2] * cosY +
+      v3cross(localUp, forward)[2] * sinY +
+      localUp[2] * v3dot(localUp, forward) * (1 - cosY),
   ];
   lookDir = v3norm(lookDir);
 
@@ -148,9 +149,15 @@ export function calculateFleetPOV(
   const cosP = Math.cos(pitch);
   const sinP = Math.sin(-pitch);
   lookDir = [
-    lookDir[0] * cosP + v3cross(lookRight, lookDir)[0] * sinP + lookRight[0] * v3dot(lookRight, lookDir) * (1 - cosP),
-    lookDir[1] * cosP + v3cross(lookRight, lookDir)[1] * sinP + lookRight[1] * v3dot(lookRight, lookDir) * (1 - cosP),
-    lookDir[2] * cosP + v3cross(lookRight, lookDir)[2] * sinP + lookRight[2] * v3dot(lookRight, lookDir) * (1 - cosP),
+    lookDir[0] * cosP +
+      v3cross(lookRight, lookDir)[0] * sinP +
+      lookRight[0] * v3dot(lookRight, lookDir) * (1 - cosP),
+    lookDir[1] * cosP +
+      v3cross(lookRight, lookDir)[1] * sinP +
+      lookRight[1] * v3dot(lookRight, lookDir) * (1 - cosP),
+    lookDir[2] * cosP +
+      v3cross(lookRight, lookDir)[2] * sinP +
+      lookRight[2] * v3dot(lookRight, lookDir) * (1 - cosP),
   ];
   lookDir = v3norm(lookDir);
 
@@ -229,11 +236,7 @@ export function calculateFocusedView(
   const cosY = Math.cos(yaw);
   const sinY = Math.sin(yaw);
 
-  const orbitOffset: Vec3 = [
-    cosP * cosY * distance,
-    cosP * sinY * distance,
-    sinP * distance,
-  ];
+  const orbitOffset: Vec3 = [cosP * cosY * distance, cosP * sinY * distance, sinP * distance];
 
   const position = v3add(satPos, orbitOffset);
   const viewDir = v3norm(v3sub(satPos, position));
@@ -264,11 +267,7 @@ export function calculateMoonView(cameraAngles: CameraAngles): CameraState {
 
   const moonRadius = CONSTANTS.MOON_DISTANCE_KM;
 
-  const position: Vec3 = [
-    moonRadius * Math.cos(yaw),
-    moonRadius * Math.sin(yaw),
-    0,
-  ];
+  const position: Vec3 = [moonRadius * Math.cos(yaw), moonRadius * Math.sin(yaw), 0];
 
   const toEarth = v3norm(v3scale(position, -1));
   const lookPitch = pitch * 0.5;
@@ -300,11 +299,7 @@ export function calculateGroundView(cameraAngles: CameraAngles): CameraState {
 
   const surfaceRadius = CONSTANTS.EARTH_RADIUS_KM + 0.1;
 
-  const position: Vec3 = [
-    surfaceRadius * Math.cos(yaw),
-    surfaceRadius * Math.sin(yaw),
-    0,
-  ];
+  const position: Vec3 = [surfaceRadius * Math.cos(yaw), surfaceRadius * Math.sin(yaw), 0];
 
   const lookPitch = -pitch;
   const cosP = Math.cos(lookPitch);
@@ -333,11 +328,7 @@ export function calculateSkylineView(cameraAngles: CameraAngles): CameraState {
   const liftKm = 0.18;
   const surfaceRadius = CONSTANTS.EARTH_RADIUS_KM + liftKm;
 
-  const position: Vec3 = [
-    surfaceRadius * Math.cos(yaw),
-    surfaceRadius * Math.sin(yaw),
-    0,
-  ];
+  const position: Vec3 = [surfaceRadius * Math.cos(yaw), surfaceRadius * Math.sin(yaw), 0];
 
   const downwardBiasRad = 8 * MATH.DEG_TO_RAD;
   const lookPitch = -(pitch + downwardBiasRad);

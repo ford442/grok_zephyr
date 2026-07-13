@@ -47,7 +47,9 @@ export function kelvinToRgb(kelvin: number): [number, number, number] {
 }
 
 /** Map color temperature (Kelvin) to lift/gamma/gain for PostProcessStack grading. */
-export function kelvinToColorGrading(kelvin: number): Pick<ColorGrading, 'lift' | 'gamma' | 'gain'> {
+export function kelvinToColorGrading(
+  kelvin: number,
+): Pick<ColorGrading, 'lift' | 'gamma' | 'gain'> {
   const neutral = kelvinToRgb(5500);
   const target = kelvinToRgb(kelvin);
   const gain: [number, number, number] = [
@@ -72,7 +74,9 @@ export function kelvinToColorGrading(kelvin: number): Pick<ColorGrading, 'lift' 
 }
 
 /** Extract runtime effect fields from a preset config. */
-export function extractGroundPresetEffects(config: GroundObserverConfig): GroundPresetRuntimeEffects {
+export function extractGroundPresetEffects(
+  config: GroundObserverConfig,
+): GroundPresetRuntimeEffects {
   return {
     colorTemperature: config.effects.colorTemperature ?? 5500,
     vignette: config.effects.vignette ?? 0,
@@ -101,7 +105,9 @@ export function blendGroundPresetEffects(
 }
 
 /** Motion-blur view weight override for presets that request directional blur. */
-export function groundPresetMotionBlurWeight(effects: GroundPresetRuntimeEffects): number | undefined {
+export function groundPresetMotionBlurWeight(
+  effects: GroundPresetRuntimeEffects,
+): number | undefined {
   if (effects.motionBlur <= 0) return undefined;
   return effects.motionBlur * (1 + effects.parallaxStrength * 4);
 }

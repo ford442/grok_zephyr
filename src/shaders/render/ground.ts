@@ -23,7 +23,10 @@
 import { UNIFORM_STRUCT } from '../uniforms.js';
 import { TERRAIN_COMMON } from './terrainCommon.js';
 
-export const GROUND_TERRAIN = UNIFORM_STRUCT + TERRAIN_COMMON + /* wgsl */ `
+export const GROUND_TERRAIN =
+  UNIFORM_STRUCT +
+  TERRAIN_COMMON +
+  /* wgsl */ `
 struct AtmosphereSettings {
   scatteringEnabled: u32,
   _pad0: u32,

@@ -21,12 +21,10 @@ export const TIMING_ESTIMATES = {
   POST_DISABLED: 0.5,
 };
 
-export function getEffectiveTrailConfig(
-  rt: AppRuntime,
-  level: QualityLevel,
-): TrailConfig {
+export function getEffectiveTrailConfig(rt: AppRuntime, level: QualityLevel): TrailConfig {
   const base = QUALITY_PRESETS[level].trail;
-  const lengthScale = rt.trailLengthMode === 'short' ? 0.55 : rt.trailLengthMode === 'long' ? 1.65 : 1.0;
+  const lengthScale =
+    rt.trailLengthMode === 'short' ? 0.55 : rt.trailLengthMode === 'long' ? 1.65 : 1.0;
   const enabled = rt.trailToggleOverride ?? base.enabled;
   return {
     enabled,
@@ -38,8 +36,8 @@ export function getEffectiveTrailConfig(
 }
 
 export function recordPassTimings(rt: AppRuntime): void {
-  const preset = QUALITY_PRESETS[rt.currentQualityLevel];
-  const effectiveTrail = getEffectiveTrailConfig(rt, rt.currentQualityLevel);
+  const preset = QUALITY_PRESETS[rt.simulation.currentQualityLevel];
+  const effectiveTrail = getEffectiveTrailConfig(rt, rt.simulation.currentQualityLevel);
 
   const computeMultiplier = effectiveTrail.enabled
     ? TIMING_ESTIMATES.COMPUTE_TRAIL_MULT

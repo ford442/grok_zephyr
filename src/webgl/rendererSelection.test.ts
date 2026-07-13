@@ -1,5 +1,9 @@
-import { describe, it, expect } from 'vitest';
-import { resolveRendererBackend, resolveSatelliteCount } from './rendererSelection.js';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  resolveRendererBackend,
+  resolveSatelliteCount,
+  setRendererBackend,
+} from './rendererSelection.js';
 import { parseDebugFlags } from './WebGLDebug.js';
 import { CONSTANTS } from '@/types/constants.js';
 
@@ -23,6 +27,30 @@ describe('rendererSelection', () => {
     expect(resolveSatelliteCount('?sats=99999999')).toBe(CONSTANTS.NUM_SATELLITES);
     expect(resolveSatelliteCount('?sats=0')).toBe(CONSTANTS.NUM_SATELLITES);
     expect(resolveSatelliteCount('?sats=abc')).toBe(CONSTANTS.NUM_SATELLITES);
+  });
+
+  describe('setRendererBackend', () => {
+    const storage = new Map<string, string>();
+
+    beforeEach(() => {
+      storage.clear();
+      vi.stubGlobal('localStorage', {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          storage.set(key, value);
+        },
+      });
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('persists backend choice to localStorage', () => {
+      setRendererBackend('webgl');
+      expect(storage.get('zephyr.renderer')).toBe('webgl');
+      expect(resolveRendererBackend('')).toBe('webgl');
+    });
   });
 });
 

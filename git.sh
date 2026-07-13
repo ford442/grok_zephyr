@@ -1,4 +1,4 @@
 git pull
 git add .
-git commit -m "codespace"
+git commit -m "push fix"
 git push

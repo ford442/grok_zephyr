@@ -86,7 +86,7 @@ export function createTimeScaleControl(state: TimeScaleControlState): void {
       const scale = parseInt(target.dataset.scale || '1');
       applyTimeScale(state, scale);
 
-      presetButtons.forEach(b => b.classList.remove('active'));
+      presetButtons.forEach((b) => b.classList.remove('active'));
       target.classList.add('active');
     });
   });

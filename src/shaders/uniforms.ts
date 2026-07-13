@@ -1,5 +1,6 @@
 /**
- * Shared Uniform Struct for all shaders
+ * Shared Uniform Struct for all shaders.
+ * CPU packers for render-side uniform buffers live in uniformLayouts.ts.
  */
 
 export const UNIFORM_STRUCT = /* wgsl */ `
@@ -20,3 +21,5 @@ struct Uni {
 };
 @group(0) @binding(0) var<uniform> uni : Uni;
 `;
+
+export * from './uniformLayouts.js';

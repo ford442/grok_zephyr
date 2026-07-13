@@ -265,9 +265,10 @@ export class FocusManager {
     const pz = position[2].toFixed(1);
 
     const stats = this.constellationStats;
-    const timeScaleLabel = stats.timeScale >= TIME_SCALE_K_THRESHOLD
-      ? `${(stats.timeScale / TIME_SCALE_K_THRESHOLD).toFixed(1)}k×`
-      : `${stats.timeScale.toFixed(0)}×`;
+    const timeScaleLabel =
+      stats.timeScale >= TIME_SCALE_K_THRESHOLD
+        ? `${(stats.timeScale / TIME_SCALE_K_THRESHOLD).toFixed(1)}k×`
+        : `${stats.timeScale.toFixed(0)}×`;
 
     this.focusOverlay.innerHTML = `
       <div class="inspector-header">

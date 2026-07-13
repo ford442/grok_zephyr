@@ -12,7 +12,7 @@ import {
   setupAnimationPatternButtons,
   setupPhysicsButtons,
 } from '@/app/PatternController.js';
-import { applyViewTuning } from '@/app/ImageTuningController.js';
+import { applyViewTuning } from '@/app/ViewModeCoordinator.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 
 function shouldPlayButtonTick(button: HTMLButtonElement): boolean {
@@ -62,7 +62,7 @@ export function setupCallbacks(rt: AppRuntime): void {
   });
 
   rt.ui.onDemoAutoToggle((enabled) => {
-    rt.demoAutoEnabled = enabled;
+    rt.simulation.demoAutoEnabled = enabled;
     rt.registerUserActivity(false);
   });
   rt.ui.onAudioToggle((muted) => {
@@ -71,11 +71,11 @@ export function setupCallbacks(rt: AppRuntime): void {
   rt.ui.setAudioMuted(rt.audio.isMuted());
   rt.ui.onTrailsToggle((enabled) => {
     rt.trailToggleOverride = enabled;
-    rt.applyQualityPreset(rt.currentQualityLevel);
+    rt.applyQualityPreset(rt.simulation.currentQualityLevel);
   });
   rt.ui.onTrailLengthChange((mode) => {
     rt.trailLengthMode = mode;
-    rt.applyQualityPreset(rt.currentQualityLevel);
+    rt.applyQualityPreset(rt.simulation.currentQualityLevel);
   });
   rt.ui.onExposureModeChange((mode) => {
     rt.exposureSettings.mode = mode;
@@ -94,11 +94,11 @@ export function setupCallbacks(rt: AppRuntime): void {
     rt.applyExposureSettings();
   });
   rt.ui.onImageTuningChange((settings) => {
-    rt.imageTuning = settings;
-    rt.animationMasterIntensity = settings.animationMasterIntensity;
-    rt.imageTuningManualOverride = true;
+    rt.view.imageTuning = settings;
+    rt.view.animationMasterIntensity = settings.animationMasterIntensity;
+    rt.view.imageTuningManualOverride = true;
     applyViewTuning(rt, performance.now() * 0.001);
-    saveImageTuning(rt.imageTuning);
+    saveImageTuning(rt.view.imageTuning);
   });
   rt.ui.onGodIdleOrbitToggle((enabled) => {
     rt.camera.setGodIdleOrbitEnabled(enabled);
@@ -111,13 +111,11 @@ export function setupCallbacks(rt: AppRuntime): void {
   });
   rt.ui.onMoonScaleHudToggle((enabled) => {
     rt.moonScaleHudEnabled = enabled;
-    rt.ui.setMoonScaleAnnotation(
-      enabled && rt.camera.getViewMode() === 'moon',
-    );
+    rt.ui.setMoonScaleAnnotation(enabled && rt.camera.getViewMode() === 'moon');
   });
 
   rt.ui.setDemoActive(false);
-  rt.ui.setDemoAutoEnabled(rt.demoAutoEnabled);
+  rt.ui.setDemoAutoEnabled(rt.simulation.demoAutoEnabled);
   rt.ui.setExposureControls(rt.exposureSettings);
 
   rt.profiler.onStatsUpdate((stats) => {
@@ -132,8 +130,8 @@ export function setupCallbacks(rt: AppRuntime): void {
 
   rt.ui.createTimeScaleControl();
   rt.ui.onTimeScaleChange((scale) => {
-    rt.timeScale = Math.max(1, Math.min(100000, scale));
-    console.log(`⏱️ Time scale: ${rt.timeScale}x`);
+    rt.simulation.timeScale = Math.max(1, Math.min(100000, scale));
+    console.log(`⏱️ Time scale: ${rt.simulation.timeScale}x`);
   });
 
   rt.captureManager = new CaptureManager(rt);
@@ -183,7 +181,7 @@ export function setupCallbacks(rt: AppRuntime): void {
 }
 
 export function registerUserActivity(rt: AppRuntime, interruptCinematic: boolean): void {
-  rt.lastUserActivityTime = performance.now() * 0.001;
+  rt.simulation.lastUserActivityTime = performance.now() * 0.001;
   void rt.audio.unlock();
   if (interruptCinematic && rt.camera.isCinematicActive()) {
     rt.camera.stopCinematic();

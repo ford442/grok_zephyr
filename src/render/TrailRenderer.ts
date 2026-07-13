@@ -5,14 +5,20 @@
  * Trails are sampled from many satellites, then rendered as additive ribbons.
  */
 
-import type WebGPUContext from '@/core/WebGPUContext.js';
+import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import type { TrailConfig } from '@/types/animation.js';
 
 /** Shell colors matching satellite visual families */
 const SHELL_COLORS: Float32Array = new Float32Array([
-  1.0, 0.62, 0.24, // warm amber
-  1.0, 1.0, 1.0,   // white
-  0.42, 0.84, 1.0, // cool cyan
+  1.0,
+  0.62,
+  0.24, // warm amber
+  1.0,
+  1.0,
+  1.0, // white
+  0.42,
+  0.84,
+  1.0, // cool cyan
 ]);
 
 const VERTEX_STRIDE_FLOATS = 6; // x,y,z,intensity,age,shell
@@ -36,7 +42,7 @@ export class TrailRenderer {
   private slotCounts: Uint16Array | null = null;
   private slotShell: Uint8Array | null = null;
   private ringPositions: Float32Array | null = null; // [slot][frame][xyz]
-  private ringTimes: Float32Array | null = null;     // [slot][frame]
+  private ringTimes: Float32Array | null = null; // [slot][frame]
 
   private maxTrackedSatellites = 12000;
   private historyFrames = 12;
@@ -83,7 +89,11 @@ export class TrailRenderer {
     }
 
     this.ensureEnabledResources();
-    if (!wasEnabled || prevTracked !== this.maxTrackedSatellites || prevFrames !== this.historyFrames) {
+    if (
+      !wasEnabled ||
+      prevTracked !== this.maxTrackedSatellites ||
+      prevFrames !== this.historyFrames
+    ) {
       this.resetHistory();
     }
   }
@@ -97,12 +107,28 @@ export class TrailRenderer {
    */
   getSamplingBudget(): number {
     if (!this.config.enabled) return 0;
-    return Math.min(this.maxTrackedSatellites, Math.max(2000, Math.floor(this.maxTrackedSatellites * 0.65)));
+    return Math.min(
+      this.maxTrackedSatellites,
+      Math.max(2000, Math.floor(this.maxTrackedSatellites * 0.65)),
+    );
   }
 
-  recordPosition(satelliteIndex: number, position: Float32Array, timestamp: number, shellIndex: number): void {
+  recordPosition(
+    satelliteIndex: number,
+    position: Float32Array,
+    timestamp: number,
+    shellIndex: number,
+  ): void {
     if (!this.config.enabled) return;
-    if (!this.ringPositions || !this.ringTimes || !this.slotHeads || !this.slotCounts || !this.slotLastSeen || !this.slotShell || !this.satelliteForSlot) {
+    if (
+      !this.ringPositions ||
+      !this.ringTimes ||
+      !this.slotHeads ||
+      !this.slotCounts ||
+      !this.slotLastSeen ||
+      !this.slotShell ||
+      !this.satelliteForSlot
+    ) {
       return;
     }
 
@@ -130,8 +156,21 @@ export class TrailRenderer {
     this.ringTimes[slot * this.historyFrames + nextHead] = timestamp;
   }
 
-  updateGeometry(currentTime: number, cameraPosition: Float32Array, cameraForward: Float32Array): void {
-    if (!this.config.enabled || !this.ringPositions || !this.ringTimes || !this.slotHeads || !this.slotCounts || !this.slotLastSeen || !this.slotShell || !this.satelliteForSlot) {
+  updateGeometry(
+    currentTime: number,
+    cameraPosition: Float32Array,
+    cameraForward: Float32Array,
+  ): void {
+    if (
+      !this.config.enabled ||
+      !this.ringPositions ||
+      !this.ringTimes ||
+      !this.slotHeads ||
+      !this.slotCounts ||
+      !this.slotLastSeen ||
+      !this.slotShell ||
+      !this.satelliteForSlot
+    ) {
       this.vertexCount = 0;
       this.indexCount = 0;
       this.activeTrails = 0;
@@ -175,7 +214,9 @@ export class TrailRenderer {
       if (dist > MAX_DISTANCE_KM) continue;
 
       const invLen = dist > 1e-3 ? 1.0 / dist : 0.0;
-      const facing = (toCamX * cameraForward[0] + toCamY * cameraForward[1] + toCamZ * cameraForward[2]) * invLen;
+      const facing =
+        (toCamX * cameraForward[0] + toCamY * cameraForward[1] + toCamZ * cameraForward[2]) *
+        invLen;
       if (facing < -0.2) continue;
 
       const lodStep = dist > 70000 ? 4 : dist > 35000 ? 2 : 1;
@@ -239,7 +280,14 @@ export class TrailRenderer {
         const intensity0 = Math.max(0, 1.0 - age0 / Math.max(1, this.config.fadeOut));
         const intensity1 = Math.max(0, 1.0 - age1 / Math.max(1, this.config.fadeOut));
 
-        const pushVertex = (x: number, y: number, z: number, intensity: number, age: number, shellIdx: number): void => {
+        const pushVertex = (
+          x: number,
+          y: number,
+          z: number,
+          intensity: number,
+          age: number,
+          shellIdx: number,
+        ): void => {
           if (vCursor + VERTEX_STRIDE_FLOATS > this.vertexStaging.length) return;
           this.vertexStaging[vCursor++] = x;
           this.vertexStaging[vCursor++] = y;
@@ -249,10 +297,38 @@ export class TrailRenderer {
           this.vertexStaging[vCursor++] = shellIdx;
         };
 
-        pushVertex(x0 - rightX * width, y0 - rightY * width, z0 - rightZ * width, intensity0, age0, shell);
-        pushVertex(x0 + rightX * width, y0 + rightY * width, z0 + rightZ * width, intensity0, age0, shell);
-        pushVertex(x1 - rightX * width, y1 - rightY * width, z1 - rightZ * width, intensity1, age1, shell);
-        pushVertex(x1 + rightX * width, y1 + rightY * width, z1 + rightZ * width, intensity1, age1, shell);
+        pushVertex(
+          x0 - rightX * width,
+          y0 - rightY * width,
+          z0 - rightZ * width,
+          intensity0,
+          age0,
+          shell,
+        );
+        pushVertex(
+          x0 + rightX * width,
+          y0 + rightY * width,
+          z0 + rightZ * width,
+          intensity0,
+          age0,
+          shell,
+        );
+        pushVertex(
+          x1 - rightX * width,
+          y1 - rightY * width,
+          z1 - rightZ * width,
+          intensity1,
+          age1,
+          shell,
+        );
+        pushVertex(
+          x1 + rightX * width,
+          y1 + rightY * width,
+          z1 + rightZ * width,
+          intensity1,
+          age1,
+          shell,
+        );
 
         if (iCursor + 6 <= this.indexStaging.length) {
           this.indexStaging[iCursor++] = baseVertex;
@@ -281,19 +357,26 @@ export class TrailRenderer {
       0,
       this.vertexStaging.buffer,
       this.vertexStaging.byteOffset,
-      vCursor * Float32Array.BYTES_PER_ELEMENT
+      vCursor * Float32Array.BYTES_PER_ELEMENT,
     );
     device.queue.writeBuffer(
       this.indexBuffer!,
       0,
       this.indexStaging.buffer,
       this.indexStaging.byteOffset,
-      iCursor * Uint32Array.BYTES_PER_ELEMENT
+      iCursor * Uint32Array.BYTES_PER_ELEMENT,
     );
   }
 
   encodeRenderPass(pass: GPURenderPassEncoder, uniformBuffer: GPUBuffer): void {
-    if (!this.config.enabled || this.vertexCount === 0 || this.indexCount === 0 || !this.pipeline || !this.vertexBuffer || !this.indexBuffer) {
+    if (
+      !this.config.enabled ||
+      this.vertexCount === 0 ||
+      this.indexCount === 0 ||
+      !this.pipeline ||
+      !this.vertexBuffer ||
+      !this.indexBuffer
+    ) {
       return;
     }
     const bindGroup = this.context.getDevice().createBindGroup({
@@ -338,7 +421,15 @@ export class TrailRenderer {
     if (!this.pipeline) {
       this.pipeline = this.createPipeline();
     }
-    if (!this.ringPositions || !this.ringTimes || !this.slotHeads || !this.slotCounts || !this.slotLastSeen || !this.slotShell || !this.satelliteForSlot) {
+    if (
+      !this.ringPositions ||
+      !this.ringTimes ||
+      !this.slotHeads ||
+      !this.slotCounts ||
+      !this.slotLastSeen ||
+      !this.slotShell ||
+      !this.satelliteForSlot
+    ) {
       this.resetHistory();
     }
     if (!this.vertexBuffer || !this.indexBuffer) {
@@ -449,7 +540,13 @@ export class TrailRenderer {
     const layout = device.createPipelineLayout({
       bindGroupLayouts: [
         device.createBindGroupLayout({
-          entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }],
+          entries: [
+            {
+              binding: 0,
+              visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+              buffer: { type: 'uniform' },
+            },
+          ],
         }),
       ],
     });
@@ -458,26 +555,30 @@ export class TrailRenderer {
       vertex: {
         module,
         entryPoint: 'vs_main',
-        buffers: [{
-          arrayStride: VERTEX_STRIDE_FLOATS * FLOAT_SIZE,
-          attributes: [
-            { shaderLocation: 0, offset: 0, format: 'float32x3' },
-            { shaderLocation: 1, offset: 3 * FLOAT_SIZE, format: 'float32' },
-            { shaderLocation: 2, offset: 4 * FLOAT_SIZE, format: 'float32' },
-            { shaderLocation: 3, offset: 5 * FLOAT_SIZE, format: 'float32' },
-          ],
-        }],
+        buffers: [
+          {
+            arrayStride: VERTEX_STRIDE_FLOATS * FLOAT_SIZE,
+            attributes: [
+              { shaderLocation: 0, offset: 0, format: 'float32x3' },
+              { shaderLocation: 1, offset: 3 * FLOAT_SIZE, format: 'float32' },
+              { shaderLocation: 2, offset: 4 * FLOAT_SIZE, format: 'float32' },
+              { shaderLocation: 3, offset: 5 * FLOAT_SIZE, format: 'float32' },
+            ],
+          },
+        ],
       },
       fragment: {
         module,
         entryPoint: 'fs_main',
-        targets: [{
-          format: 'rgba16float',
-          blend: {
-            color: { srcFactor: 'src-alpha', dstFactor: 'one', operation: 'add' },
-            alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+        targets: [
+          {
+            format: 'rgba16float',
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+            },
           },
-        }],
+        ],
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: undefined,
@@ -561,5 +662,3 @@ export class TrailRenderer {
     this.slotLastSeen[slot] = 0;
   }
 }
-
-export default TrailRenderer;

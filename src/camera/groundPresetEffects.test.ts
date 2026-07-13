@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  GROUND_OBSERVER_PRESETS,
-  GroundObserverPreset,
-} from '@/camera/GroundObserverCamera.js';
+import { GROUND_OBSERVER_PRESETS, GroundObserverPreset } from '@/camera/GroundObserverCamera.js';
 import {
   blendGroundPresetEffects,
   extractGroundPresetEffects,
@@ -21,23 +18,36 @@ describe('groundPresetEffects', () => {
   });
 
   it('maps beach vs airplane scatter correctly', () => {
-    const beach = extractGroundPresetEffects(GROUND_OBSERVER_PRESETS[GroundObserverPreset.BEACH_NIGHT]);
-    const plane = extractGroundPresetEffects(GROUND_OBSERVER_PRESETS[GroundObserverPreset.AIRPLANE_WINDOW]);
+    const beach = extractGroundPresetEffects(
+      GROUND_OBSERVER_PRESETS[GroundObserverPreset.BEACH_NIGHT],
+    );
+    const plane = extractGroundPresetEffects(
+      GROUND_OBSERVER_PRESETS[GroundObserverPreset.AIRPLANE_WINDOW],
+    );
     expect(beach.atmosphericScatter).toBeGreaterThan(plane.atmosphericScatter);
     expect(beach.colorTemperature).toBeLessThan(plane.colorTemperature);
   });
 
   it('blends preset fields over 200ms cross-fade', () => {
-    const from = extractGroundPresetEffects(GROUND_OBSERVER_PRESETS[GroundObserverPreset.HOUSE_WINDOW]);
-    const to = extractGroundPresetEffects(GROUND_OBSERVER_PRESETS[GroundObserverPreset.BEACH_NIGHT]);
+    const from = extractGroundPresetEffects(
+      GROUND_OBSERVER_PRESETS[GroundObserverPreset.HOUSE_WINDOW],
+    );
+    const to = extractGroundPresetEffects(
+      GROUND_OBSERVER_PRESETS[GroundObserverPreset.BEACH_NIGHT],
+    );
     const mid = blendGroundPresetEffects(from, to, 0.5);
     expect(mid.colorTemperature).toBeLessThan(from.colorTemperature);
     expect(mid.colorTemperature).toBeGreaterThan(to.colorTemperature);
-    expect(mid.atmosphericScatter).toBeCloseTo((from.atmosphericScatter + to.atmosphericScatter) / 2, 5);
+    expect(mid.atmosphericScatter).toBeCloseTo(
+      (from.atmosphericScatter + to.atmosphericScatter) / 2,
+      5,
+    );
   });
 
   it('enables car motion blur weight from parallax strength', () => {
-    const car = extractGroundPresetEffects(GROUND_OBSERVER_PRESETS[GroundObserverPreset.CAR_WINDSHIELD]);
+    const car = extractGroundPresetEffects(
+      GROUND_OBSERVER_PRESETS[GroundObserverPreset.CAR_WINDSHIELD],
+    );
     const weight = groundPresetMotionBlurWeight(car);
     expect(weight).toBeDefined();
     expect(weight!).toBeGreaterThan(0.2);

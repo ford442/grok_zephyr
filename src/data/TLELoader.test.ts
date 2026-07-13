@@ -84,7 +84,7 @@ describe('TLELoader network loaders', () => {
   it('fromFile fetches and parses TLE text', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      text: async () => makeTLE(),
+      text: () => Promise.resolve(makeTLE()),
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -101,19 +101,20 @@ describe('TLELoader network loaders', () => {
         ok: false,
         status: 404,
         statusText: 'Not Found',
-        text: async () => '',
-      })
+        text: () => Promise.resolve(''),
+      }),
     );
 
-    await expect(TLELoader.fromFile('https://example.com/missing.tle')).rejects.toThrow('Failed to fetch TLE data');
+    await expect(TLELoader.fromFile('https://example.com/missing.tle')).rejects.toThrow(
+      'Failed to fetch TLE data',
+    );
   });
 
   it('fromCelesTrak builds CelesTrak URL and delegates to fromFile', async () => {
     const spy = vi.spyOn(TLELoader, 'fromFile').mockResolvedValue([]);
     await TLELoader.fromCelesTrak('starlink');
     expect(spy).toHaveBeenCalledWith(
-      'https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle'
+      'https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink&FORMAT=tle',
     );
   });
 });
-

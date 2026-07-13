@@ -11,28 +11,28 @@ Commit both `*.png` golden frames and `*.json` metric sidecars.
 
 ## View / preset cases (`webgl-views.spec.ts`)
 
-| Baseline | Query | Rebaseline when |
-|----------|-------|-----------------|
-| `god-view` | `mode=1` | God cinematography, shell LOD, zoom bloom |
-| `fleet-pov` | `mode=2` | Fleet POV clarity, motion stretch, cockpit HUD |
-| `horizon-720km` | `mode=0` | Horizon limb framing, warm grade, anamorphic bloom |
-| `ground-house` | `mode=3&ground=houseWindow` | Ground observer overlay / preset effects |
-| `ground-beach` | `mode=3&ground=beachNight` | Beach night preset, scatter, bloom |
-| `ground-car` | `mode=3&ground=carWindshield` | Car windshield preset |
-| `ground-rooftop` | `mode=3&ground=rooftop` | Rooftop urban glow, window emissives |
-| `ground-airplane` | `mode=3&ground=airplaneWindow` | Airplane window preset |
-| `moon-view` | `mode=4` | Moon ring scale, earthshine, regolith foreground |
-| `skyline` | `mode=5` | Night-city skyline, HDR window cores |
+| Baseline          | Query                          | Rebaseline when                                    |
+| ----------------- | ------------------------------ | -------------------------------------------------- |
+| `god-view`        | `mode=1`                       | God cinematography, shell LOD, zoom bloom          |
+| `fleet-pov`       | `mode=2`                       | Fleet POV clarity, motion stretch, cockpit HUD     |
+| `horizon-720km`   | `mode=0`                       | Horizon limb framing, warm grade, anamorphic bloom |
+| `ground-house`    | `mode=3&ground=houseWindow`    | Ground observer overlay / preset effects           |
+| `ground-beach`    | `mode=3&ground=beachNight`     | Beach night preset, scatter, bloom                 |
+| `ground-car`      | `mode=3&ground=carWindshield`  | Car windshield preset                              |
+| `ground-rooftop`  | `mode=3&ground=rooftop`        | Rooftop urban glow, window emissives               |
+| `ground-airplane` | `mode=3&ground=airplaneWindow` | Airplane window preset                             |
+| `moon-view`       | `mode=4`                       | Moon ring scale, earthshine, regolith foreground   |
+| `skyline`         | `mode=5`                       | Night-city skyline, HDR window cores               |
 
 ## Pattern harness cases (`webgl-patterns.spec.ts`, tag `@pattern`)
 
-| Baseline | Query | Notes |
-|----------|-------|-------|
-| `god-chaos-beams` | `mode=1&pattern=0` | CHAOS beam pattern URL wiring |
-| `god-grok-beams` | `mode=1&pattern=1` | GROK beam pattern URL wiring |
-| `god-x-beams` | `mode=1&pattern=2` | 𝕏 LOGO beam pattern URL wiring |
-| `ground-grok-beams` | `mode=3&ground=houseWindow&pattern=1` | Ground View + GROK pattern |
-| `horizon-smile` | `mode=0&animation=3` | SMILE animation URL wiring |
+| Baseline            | Query                                 | Notes                          |
+| ------------------- | ------------------------------------- | ------------------------------ |
+| `god-chaos-beams`   | `mode=1&pattern=0`                    | CHAOS beam pattern URL wiring  |
+| `god-grok-beams`    | `mode=1&pattern=1`                    | GROK beam pattern URL wiring   |
+| `god-x-beams`       | `mode=1&pattern=2`                    | 𝕏 LOGO beam pattern URL wiring |
+| `ground-grok-beams` | `mode=3&ground=houseWindow&pattern=1` | Ground View + GROK pattern     |
+| `horizon-smile`     | `mode=0&animation=3`                  | SMILE animation URL wiring     |
 
 ### Side-by-side beam pattern capture (WebGPU)
 

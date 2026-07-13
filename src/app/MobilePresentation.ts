@@ -24,9 +24,10 @@ export function detectMobileDefaultQuality(): QualityLevel {
 
   const lowMemory = deviceMemory > 0 && deviceMemory <= 4;
   const lowCoreCount = cores > 0 && cores <= 4;
-  const constrainedAndroid = isAndroid && ((deviceMemory > 0 && deviceMemory <= 6) || (cores > 0 && cores <= 6));
+  const constrainedAndroid =
+    isAndroid && ((deviceMemory > 0 && deviceMemory <= 6) || (cores > 0 && cores <= 6));
 
-  return (lowMemory || lowCoreCount || constrainedAndroid) ? 'low' : 'balanced';
+  return lowMemory || lowCoreCount || constrainedAndroid ? 'low' : 'balanced';
 }
 
 export function getDrawableSize(rt: AppRuntime): { width: number; height: number } | null {
@@ -66,7 +67,17 @@ export function tryLockLandscapeOrientation(rt: AppRuntime): void {
 
   if (!('orientation' in screen)) return;
   const orientation = screen.orientation as ScreenOrientation & {
-    lock?: (orientation: 'any' | 'natural' | 'landscape' | 'portrait' | 'portrait-primary' | 'portrait-secondary' | 'landscape-primary' | 'landscape-secondary') => Promise<void>;
+    lock?: (
+      orientation:
+        | 'any'
+        | 'natural'
+        | 'landscape'
+        | 'portrait'
+        | 'portrait-primary'
+        | 'portrait-secondary'
+        | 'landscape-primary'
+        | 'landscape-secondary',
+    ) => Promise<void>;
   };
   if (typeof orientation.lock !== 'function') return;
 

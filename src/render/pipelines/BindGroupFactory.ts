@@ -2,7 +2,7 @@
  * Bind Group Factory — static and dynamic bind group creation
  */
 
-import type WebGPUContext from '@/core/WebGPUContext.js';
+import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
 import type { PipelineBindGroups, Pipelines, RenderTargets } from './types.js';
 
@@ -42,9 +42,10 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
   } = resources;
 
   const device = context.getDevice();
-  const posBuffer = buffers.positions instanceof GPUBuffer
-    ? buffers.positions
-    : (buffers.positions as { read: GPUBuffer }).read;
+  const posBuffer =
+    buffers.positions instanceof GPUBuffer
+      ? buffers.positions
+      : (buffers.positions as { read: GPUBuffer }).read;
 
   const bloomResultView = renderTargets.bloomMipViews[0];
 

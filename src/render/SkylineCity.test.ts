@@ -15,8 +15,8 @@ describe('SkylineCity', () => {
     let equipCount = 0;
     let tallCount = 0;
     for (let i = 0; i < 100; i++) {
-      const h = data[i * 8 + 4]!;
-      const equip = data[i * 8 + 7]!;
+      const h = data[i * 8 + 4];
+      const equip = data[i * 8 + 7];
       if (h > 0) tallCount++;
       if (equip > 0.5) equipCount++;
     }
@@ -34,9 +34,9 @@ describe('SkylineCity', () => {
     });
     const data = (city as unknown as { buildingData: Float32Array }).buildingData;
     for (let i = 0; i < 80; i++) {
-      const east = data[i * 8 + 0]!;
-      const north = data[i * 8 + 1]!;
-      const height = data[i * 8 + 4]!;
+      const east = data[i * 8 + 0];
+      const north = data[i * 8 + 1];
+      const height = data[i * 8 + 4];
       if (Math.hypot(east, north) < 0.05) {
         expect(height).toBe(0);
       }

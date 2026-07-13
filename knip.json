@@ -1,0 +1,9 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["src/main.ts!", "scripts/build-standalone.ts"],
+  "project": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"],
+  "ignore": ["src/shaders/**/*.ts"],
+  "ignoreDependencies": ["@webgpu/types", "@types/pixelmatch", "satellite.js"],
+  "ignoreExportsUsedInFile": true,
+  "exclude": ["types", "duplicates", "dependencies", "enumMembers"]
+}

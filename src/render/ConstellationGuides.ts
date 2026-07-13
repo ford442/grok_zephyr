@@ -2,7 +2,7 @@
  * Faint great-circle shell guides for God View (dev toggle, off by default).
  */
 
-import type WebGPUContext from '@/core/WebGPUContext.js';
+import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import { CONSTANTS, INCLINATION_SHELLS } from '@/types/constants.js';
 
 const SEGMENTS_PER_RING = 128;
@@ -61,7 +61,7 @@ export class ConstellationGuides {
     device.queue.writeBuffer(
       this.vertexBuffer,
       0,
-      vertices.buffer as ArrayBuffer,
+      vertices.buffer,
       vertices.byteOffset,
       vertices.byteLength,
     );
@@ -121,11 +121,13 @@ export class ConstellationGuides {
     const layout = device.createPipelineLayout({
       bindGroupLayouts: [
         device.createBindGroupLayout({
-          entries: [{
-            binding: 0,
-            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-            buffer: { type: 'uniform' },
-          }],
+          entries: [
+            {
+              binding: 0,
+              visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+              buffer: { type: 'uniform' },
+            },
+          ],
         }),
       ],
     });
@@ -136,24 +138,28 @@ export class ConstellationGuides {
       vertex: {
         module: shader,
         entryPoint: 'vs',
-        buffers: [{
-          arrayStride: 16,
-          attributes: [
-            { shaderLocation: 0, offset: 0, format: 'float32x3' },
-            { shaderLocation: 1, offset: 12, format: 'float32' },
-          ],
-        }],
+        buffers: [
+          {
+            arrayStride: 16,
+            attributes: [
+              { shaderLocation: 0, offset: 0, format: 'float32x3' },
+              { shaderLocation: 1, offset: 12, format: 'float32' },
+            ],
+          },
+        ],
       },
       fragment: {
         module: shader,
         entryPoint: 'fs',
-        targets: [{
-          format: 'rgba16float',
-          blend: {
-            color: { srcFactor: 'src-alpha', dstFactor: 'one', operation: 'add' },
-            alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+        targets: [
+          {
+            format: 'rgba16float',
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+            },
           },
-        }],
+        ],
       },
       primitive: { topology: 'line-list' },
     });
@@ -178,8 +184,8 @@ export class ConstellationGuides {
       }
 
       for (let i = 0; i < SEGMENTS_PER_RING; i++) {
-        const a = pts[i]!;
-        const b = pts[i + 1]!;
+        const a = pts[i];
+        const b = pts[i + 1];
         verts.push(a[0], a[1], a[2], ring, b[0], b[1], b[2], ring);
       }
     }

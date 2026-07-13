@@ -2,7 +2,7 @@
  * Pipeline Types and Interfaces
  */
 
-import type WebGPUContext from '@/core/WebGPUContext.js';
+import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
 import type { DepthOfFieldFocusMode, DepthOfFieldQualitySettings } from '@/core/QualityPresets.js';
 
@@ -90,7 +90,11 @@ export interface PipelineContext {
 /** Base pipeline interface (legacy stub modules) */
 export interface Pipeline {
   create(context: PipelineContext): GPUComputePipeline | GPURenderPipeline;
-  createBindGroup?(context: PipelineContext, pipeline: GPUPipelineBase, ...args: unknown[]): GPUBindGroup;
+  createBindGroup?(
+    context: PipelineContext,
+    pipeline: GPUPipelineBase,
+    ...args: unknown[]
+  ): GPUBindGroup;
 }
 
 export const MAX_BLOOM_LEVELS = 5;

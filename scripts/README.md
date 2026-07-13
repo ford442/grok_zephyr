@@ -43,6 +43,7 @@ For detailed descriptions and color values, see [docs/LABELS.md](../docs/LABELS.
 ## Configuration
 
 To modify labels, edit `label-config.json` with the desired label name, color (hex), and description. Then either:
+
 1. Push changes (GitHub Actions will auto-update)
 2. Run the update script manually
 

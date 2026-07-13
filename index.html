@@ -1,272 +1,541 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Grok Zephyr - WebGPU Orbital Simulation</title>
-  <meta name="description" content="WebGPU-powered orbital simulation featuring 1,048,576 simulated satellites">
-  <link rel="stylesheet" href="/src/styles/ground-observer.css">
-  <link rel="stylesheet" href="/src/styles/fleet-cockpit.css">
-</head>
-<body>
-  <canvas id="gpu-canvas"></canvas>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grok Zephyr - WebGPU Orbital Simulation</title>
+    <meta
+      name="description"
+      content="WebGPU-powered orbital simulation featuring 1,048,576 simulated satellites"
+    />
+    <link rel="stylesheet" href="/src/styles/ground-observer.css" />
+    <link rel="stylesheet" href="/src/styles/fleet-cockpit.css" />
+  </head>
+  <body>
+    <canvas id="gpu-canvas"></canvas>
 
-  <!-- Fleet POV cockpit HUD (shown only in Fleet POV mode) -->
-  <div id="fleet-cockpit-hud" aria-hidden="true">
-    <div id="fleet-reticle" aria-hidden="true"></div>
-    <div class="fleet-hud-panel tl" id="fleet-hud-left">
-      <div class="fleet-hud-label">FLEET POV</div>
-      <div class="fleet-hud-row"><span>SPD</span><span class="fleet-hud-value" id="fleet-hud-speed">— km/s</span></div>
-      <div class="fleet-hud-row"><span>ALT</span><span class="fleet-hud-value" id="fleet-hud-altitude">— km</span></div>
-    </div>
-    <div class="fleet-hud-panel br" id="fleet-hud-right">
-      <div class="fleet-hud-row"><span>HDG</span><span class="fleet-hud-value" id="fleet-hud-heading">—°</span></div>
-      <div class="fleet-hud-row"><span>NEAR</span><span class="fleet-hud-value" id="fleet-hud-nearby">—</span></div>
-    </div>
-  </div>
-
-  <!-- Ground observer frame overlay (shown only in Ground View mode) -->
-  <div id="ground-observer-overlay" class="ground-observer-frame" style="display:none;">
-    <div class="condensation"></div>
-    <div class="light-leak"></div>
-    <div class="speed-lines"></div>
-    <div class="steering-wheel"></div>
-    <div class="water-reflection"></div>
-    <div class="waves"></div>
-    <div class="beach-silhouette"></div>
-    <div class="city-lights"></div>
-    <div class="aircraft"></div>
-    <div class="wing-lights"></div>
-    <div class="contrail"></div>
-  </div>
-
-  <!-- Ground observer preset selector (shown only in Ground View mode) -->
-  <div id="ground-preset-selector" style="display:none;">
-    <div class="preset-label">GROUND PRESET</div>
-    <button class="preset-btn active" data-preset="houseWindow">🏠 HOUSE</button>
-    <button class="preset-btn" data-preset="carWindshield">🚗 CAR</button>
-    <button class="preset-btn" data-preset="beachNight">🏖️ BEACH</button>
-    <button class="preset-btn" data-preset="rooftop">🏢 ROOFTOP</button>
-    <button class="preset-btn" data-preset="airplaneWindow">✈️ AIRPLANE</button>
-  </div>
-  
-  <div id="ui" role="status" aria-live="polite" aria-label="Simulation Status">
-    <div class="title" aria-label="Application Title">◈ GROK ZEPHYR</div>
-    <div class="stat" id="s-alt" aria-label="Altitude">Altitude : 720 km</div>
-    <div class="stat" id="s-fleet" aria-label="Satellite Fleet Count">Fleet    : 1,048,576</div>
-    <div class="stat" id="s-fps" aria-label="Frames Per Second">FPS      : --</div>
-    <div class="stat" id="s-view" aria-label="Current View Mode">View     : 720km Horizon</div>
-    <div class="stat" id="s-tuning" aria-label="Active View Tuning Profile">Tuning   : Horizon</div>
-    <div class="stat" id="s-visible" aria-label="Visible Satellites">Visible  : --</div>
-    <div class="stat" id="s-quality" aria-label="Rendering Quality">Quality  : HIGH</div>
-    
-    <div id="camera-controls">
-      <div class="angle-display">
-        <span id="angleInfo" aria-label="Camera Rotation Angles">Yaw: 0° Pitch: 0°</span>
-        <button id="resetAngle" title="Reset camera angle to default" aria-label="Reset Camera Angle">↺</button>
-      </div>
-      <div class="hint" aria-label="Camera Controls Help">Drag/touch to rotate • Scroll/pinch to zoom • Double-click/tap to focus • Fleet POV: WASD to drift</div>
-    </div>
-  </div>
-  
-  <div id="controls" role="navigation" aria-label="Simulation Controls">
-    <section class="control-group control-group-view" aria-label="View Modes">
-      <div class="group-label">VIEW MODES</div>
-      <div class="view-btn-grid">
-       <button class="vbtn active" id="btn0" aria-label="Switch to 720km Horizon view" title="720km Horizon - Standard orbital view">720km HORIZON</button>
-       <button class="vbtn" id="btn1" aria-label="Switch to God View" title="God View - View from above">GOD VIEW</button>
-       <button class="vbtn" id="btn2" aria-label="Switch to Fleet POV" title="Fleet POV - Satellite perspective with WASD controls">FLEET POV</button>
-       <button class="vbtn" id="btn3" aria-label="Switch to Ground View" title="Ground View - Preset ground observer frames">GROUND VIEW</button>
-       <button class="vbtn" id="btn4" aria-label="Switch to Moon View" title="Moon View - View from lunar orbit">MOON VIEW</button>
-       <button class="vbtn" id="btn5" aria-label="Switch to Skyline view" title="Skyline - Observer in a high-rise overlooking the city">SKYLINE</button>
-      </div>
-      <div class="view-extra-row">
-       <button class="vbtn" id="btnDemo" data-no-interrupt-demo="true" aria-label="Start cinematic demo" title="Cinematic Demo - Automatically zoom and rotate">CINEMATIC DEMO</button>
-       <button class="vbtn active" id="btnDemoAuto" aria-label="Toggle auto demo on idle" title="Auto Demo - Automatic cinematic when idle">AUTO DEMO: ON</button>
-      </div>
-    </section>
-    
-    <section id="pattern-controls" class="control-group" aria-label="Beam Patterns">
-      <div class="pattern-label">BEAM PATTERN</div>
-      <div class="pattern-title" id="patternName">GROK • Big Dipper</div>
-     <button class="pbtn" id="pbtn0" data-pattern="0" aria-label="Switch to chaos beam pattern">CHAOS</button>
-     <button class="pbtn active" id="pbtn1" data-pattern="1" aria-label="Switch to GROK beam pattern">GROK</button>
-     <button class="pbtn" id="pbtn2" data-pattern="2" aria-label="Switch to X logo beam pattern">𝕏 LOGO</button>
-    </section>
-    
-    <section id="animation-controls" class="control-group" aria-label="Constellation Animations">
-      <div class="anim-label">CONSTELLATION PATTERNS</div>
-      <button class="anim-btn" id="anim3" data-pattern="3" aria-label="Activate smile animation pattern">😊 SMILE</button>
-      <button class="anim-btn" id="anim4" data-pattern="4" aria-label="Activate digital rain animation pattern">💧 MATRIX</button>
-      <button class="anim-btn" id="anim5" data-pattern="5" aria-label="Activate heartbeat animation pattern">💓 HEARTBEAT</button>
-    </section>
-    
-    <section id="physics-controls" class="control-group" aria-label="Physics Mode">
-      <div class="physics-label">PHYSICS MODE</div>
-      <button class="physics-btn active" id="phys0" data-physics="0" aria-label="Use simple physics mode">SIMPLE</button>
-      <button class="physics-btn" id="phys1" data-physics="1" aria-label="Use Keplerian physics mode">KEPLERIAN</button>
-      <button class="physics-btn disabled" id="phys2" data-physics="2" disabled aria-disabled="true" aria-describedby="j2-note" aria-label="J2 perturbations physics mode">J2</button>
-      <span id="j2-note" class="sr-only">Not yet implemented</span>
-    </section>
-
-    <section id="quality-controls" class="control-group" aria-label="Rendering Quality">
-      <div class="quality-label">QUALITY</div>
-      <button class="quality-btn" id="qlow"  data-quality="low"       title="Minimal effects — best for low-end devices" aria-label="Set quality to low for better performance">LOW</button>
-      <button class="quality-btn" id="qbal"  data-quality="balanced"  title="Good performance/quality trade-off" aria-label="Set quality to balanced">BALANCED</button>
-      <button class="quality-btn active" id="qhigh" data-quality="high" title="Full quality for modern GPUs" aria-label="Set quality to high">HIGH</button>
-      <button class="quality-btn" id="qcine" data-quality="cinematic" title="Maximum fidelity — demos and screenshots" aria-label="Set quality to cinematic">CINEMATIC</button>
-      <button class="quality-btn active" id="taaToggle" title="Toggle Temporal Anti-Aliasing (TAA) — smooths edges using frame history" aria-label="Toggle temporal anti-aliasing">TAA ON</button>
-    </section>
-
-    <section id="capture-controls" class="control-group" aria-label="Capture">
-      <div class="capture-label">CAPTURE</div>
-      <button class="capture-btn" id="capStill1x">PNG 1x</button>
-      <button class="capture-btn" id="capStill2x">PNG 2x</button>
-      <div class="capture-video-row">
-        <select id="capVideoLength" aria-label="Video length">
-          <option value="5">5s</option>
-          <option value="10">10s</option>
-          <option value="15">15s</option>
-        </select>
-        <button class="capture-btn" id="capVideoStart">REC</button>
-      </div>
-      <label class="capture-toggle">
-        <input type="checkbox" id="capOverlayToggle" checked>
-        Overlay
-      </label>
-      <label class="capture-toggle">
-        <input type="checkbox" id="capHideUIToggle">
-        Hide UI
-      </label>
-      <div id="captureStatus">Ready</div>
-    </section>
-
-    <section id="audio-controls" class="control-group" aria-label="Audio">
-      <div class="capture-label">AUDIO</div>
-      <button class="capture-btn" id="audioToggle" aria-pressed="false" title="Enable audio">AUDIO OFF</button>
-    </section>
-
-    <section id="trail-controls" class="control-group" aria-label="Orbital Trails">
-      <div class="capture-label">TRAILS</div>
-      <button class="capture-btn" id="trailsToggle" aria-pressed="false" title="Toggle orbital trails">TRAILS OFF</button>
-      <select id="trailsLength" aria-label="Trail length">
-        <option value="short">SHORT</option>
-        <option value="medium" selected>MEDIUM</option>
-        <option value="long">LONG</option>
-      </select>
-    </section>
-
-    <section id="image-tuning-controls" class="control-group" aria-label="Image tuning">
-      <details class="image-tuning-details">
-        <summary class="group-label">IMAGE TUNING</summary>
-        <div class="tuning-body">
-          <label class="tuning-row" for="tuneBloomThreshold">
-            <span>Bloom threshold</span>
-            <span id="tuneBloomThresholdValue">1.50</span>
-          </label>
-          <input id="tuneBloomThreshold" type="range" min="0.5" max="3" step="0.05" value="1.5" aria-label="Bloom threshold">
-
-          <label class="tuning-row" for="tuneBloomKnee">
-            <span>Bloom knee</span>
-            <span id="tuneBloomKneeValue">0.05</span>
-          </label>
-          <input id="tuneBloomKnee" type="range" min="0.01" max="0.3" step="0.01" value="0.05" aria-label="Bloom knee">
-
-          <label class="tuning-row" for="tuneBloomIntensity">
-            <span>Bloom intensity</span>
-            <span id="tuneBloomIntensityValue">2.25</span>
-          </label>
-          <input id="tuneBloomIntensity" type="range" min="0" max="3" step="0.05" value="2.25" aria-label="Bloom intensity">
-
-          <label class="tuning-row" for="tuneSatCore">
-            <span>Sat core radius</span>
-            <span id="tuneSatCoreValue">0.40</span>
-          </label>
-          <input id="tuneSatCore" type="range" min="0.2" max="0.55" step="0.01" value="0.4" aria-label="Satellite core radius">
-
-          <label class="tuning-row" for="tuneSatFalloff">
-            <span>Sat core falloff</span>
-            <span id="tuneSatFalloffValue">0.10</span>
-          </label>
-          <input id="tuneSatFalloff" type="range" min="0.02" max="0.3" step="0.01" value="0.1" aria-label="Satellite core falloff inner edge">
-
-          <label class="tuning-row" for="tuneAnimIntensity">
-            <span>Animation intensity</span>
-            <span id="tuneAnimIntensityValue">1.00</span>
-          </label>
-          <input id="tuneAnimIntensity" type="range" min="0.25" max="2" step="0.05" value="1.0" aria-label="Animation master intensity">
-
-          <label class="tuning-row tuning-check" for="godIdleOrbitToggle">
-            <span>God idle orbit</span>
-            <input id="godIdleOrbitToggle" type="checkbox" checked aria-label="God View idle orbit animation">
-          </label>
-
-          <label class="tuning-row tuning-check" for="constellationGuidesToggle">
-            <span>Shell wireframe guides</span>
-            <input id="constellationGuidesToggle" type="checkbox" aria-label="Constellation shell wireframe guides">
-          </label>
-
-          <label class="tuning-row tuning-check" for="moonRingGuideToggle">
-            <span>Moon ring guide</span>
-            <input id="moonRingGuideToggle" type="checkbox" aria-label="Moon View constellation ring guide">
-          </label>
-
-          <label class="tuning-row tuning-check" for="moonScaleHudToggle">
-            <span>Moon scale HUD</span>
-            <input id="moonScaleHudToggle" type="checkbox" aria-label="Moon View angular scale annotation">
-          </label>
+    <!-- Fleet POV cockpit HUD (shown only in Fleet POV mode) -->
+    <div id="fleet-cockpit-hud" aria-hidden="true">
+      <div id="fleet-reticle" aria-hidden="true"></div>
+      <div class="fleet-hud-panel tl" id="fleet-hud-left">
+        <div class="fleet-hud-label">FLEET POV</div>
+        <div class="fleet-hud-row">
+          <span>SPD</span><span class="fleet-hud-value" id="fleet-hud-speed">— km/s</span>
         </div>
-      </details>
-    </section>
+        <div class="fleet-hud-row">
+          <span>ALT</span><span class="fleet-hud-value" id="fleet-hud-altitude">— km</span>
+        </div>
+      </div>
+      <div class="fleet-hud-panel br" id="fleet-hud-right">
+        <div class="fleet-hud-row">
+          <span>HDG</span><span class="fleet-hud-value" id="fleet-hud-heading">—°</span>
+        </div>
+        <div class="fleet-hud-row">
+          <span>NEAR</span><span class="fleet-hud-value" id="fleet-hud-nearby">—</span>
+        </div>
+      </div>
+    </div>
 
-    <section id="exposure-controls" class="control-group" aria-label="Exposure and Tonemapping">
-      <div class="capture-label">EXPOSURE</div>
-      <select id="exposureMode" aria-label="Exposure mode">
-        <option value="auto" selected>AUTO</option>
-        <option value="manual">MANUAL</option>
-      </select>
-      <label class="exposure-row" for="manualExposure">
-        <span>Exposure</span>
-        <span id="manualExposureValue">1.00x</span>
-      </label>
-      <input id="manualExposure" type="range" min="0.1" max="10" step="0.1" value="1.0" aria-label="Manual exposure">
-      <label class="exposure-row" for="exposureSpeed">
-        <span>Adapt</span>
-        <span id="exposureSpeedValue">1.8</span>
-      </label>
-      <input id="exposureSpeed" type="range" min="0.1" max="5" step="0.1" value="1.8" aria-label="Exposure adaptation speed">
-      <select id="tonemapMode" aria-label="Tonemapping mode">
-        <option value="0" selected>ACES</option>
-        <option value="1">AgX</option>
-        <option value="2">REINHARD</option>
-        <option value="3">UNCHARTED 2</option>
-      </select>
-    </section>
-  </div>
+    <!-- Ground observer frame overlay (shown only in Ground View mode) -->
+    <div id="ground-observer-overlay" class="ground-observer-frame" style="display: none">
+      <div class="condensation"></div>
+      <div class="light-leak"></div>
+      <div class="speed-lines"></div>
+      <div class="steering-wheel"></div>
+      <div class="water-reflection"></div>
+      <div class="waves"></div>
+      <div class="beach-silhouette"></div>
+      <div class="city-lights"></div>
+      <div class="aircraft"></div>
+      <div class="wing-lights"></div>
+      <div class="contrail"></div>
+    </div>
 
-  <div id="capture-gallery" aria-live="polite"></div>
-  
-  <div id="horizon-limb-line" aria-hidden="true"></div>
+    <!-- Ground observer preset selector (shown only in Ground View mode) -->
+    <div id="ground-preset-selector" style="display: none">
+      <div class="preset-label">GROUND PRESET</div>
+      <button class="preset-btn active" data-preset="houseWindow">🏠 HOUSE</button>
+      <button class="preset-btn" data-preset="carWindshield">🚗 CAR</button>
+      <button class="preset-btn" data-preset="beachNight">🏖️ BEACH</button>
+      <button class="preset-btn" data-preset="rooftop">🏢 ROOFTOP</button>
+      <button class="preset-btn" data-preset="airplaneWindow">✈️ AIRPLANE</button>
+    </div>
 
-  <div id="horizon-indicator">
-    <div>Earth Radius: 6,371 km</div>
-    <div>Orbit Altitude: 550 km</div>
-    <div>Camera Altitude: 720 km</div>
-    <div>Horizon Distance: ~2,970 km</div>
-  </div>
+    <div id="ui" role="status" aria-live="polite" aria-label="Simulation Status">
+      <div class="title" aria-label="Application Title">◈ GROK ZEPHYR</div>
+      <div class="stat" id="s-alt" aria-label="Altitude">Altitude : 720 km</div>
+      <div class="stat" id="s-fleet" aria-label="Satellite Fleet Count">Fleet : 1,048,576</div>
+      <div class="stat" id="s-fps" aria-label="Frames Per Second">FPS : --</div>
+      <div class="stat" id="s-view" aria-label="Current View Mode">View : 720km Horizon</div>
+      <div class="stat" id="s-tuning" aria-label="Active View Tuning Profile">Tuning : Horizon</div>
+      <div class="stat" id="s-visible" aria-label="Visible Satellites">Visible : --</div>
+      <div class="stat" id="s-quality" aria-label="Rendering Quality">Quality : HIGH</div>
 
-  <div id="moon-scale-annotation" aria-hidden="true"></div>
-  
-  <div id="error"></div>
+      <div id="camera-controls">
+        <div class="angle-display">
+          <span id="angleInfo" aria-label="Camera Rotation Angles">Yaw: 0° Pitch: 0°</span>
+          <button
+            id="resetAngle"
+            title="Reset camera angle to default"
+            aria-label="Reset Camera Angle"
+          >
+            ↺
+          </button>
+        </div>
+        <div class="hint" aria-label="Camera Controls Help">
+          Drag/touch to rotate • Scroll/pinch to zoom • Double-click/tap to focus • Fleet POV: WASD
+          to drift
+        </div>
+      </div>
+    </div>
 
-  <!-- Mobile hamburger toggle for controls panel -->
-  <button id="menu-toggle" aria-label="Toggle controls menu" aria-expanded="false" aria-controls="controls">☰</button>
+    <div id="controls" role="navigation" aria-label="Simulation Controls">
+      <section class="control-group control-group-view" aria-label="View Modes">
+        <div class="group-label">VIEW MODES</div>
+        <div class="view-btn-grid">
+          <button
+            class="vbtn active"
+            id="btn0"
+            aria-label="Switch to 720km Horizon view"
+            title="720km Horizon - Standard orbital view"
+          >
+            720km HORIZON
+          </button>
+          <button
+            class="vbtn"
+            id="btn1"
+            aria-label="Switch to God View"
+            title="God View - View from above"
+          >
+            GOD VIEW
+          </button>
+          <button
+            class="vbtn"
+            id="btn2"
+            aria-label="Switch to Fleet POV"
+            title="Fleet POV - Satellite perspective with WASD controls"
+          >
+            FLEET POV
+          </button>
+          <button
+            class="vbtn"
+            id="btn3"
+            aria-label="Switch to Ground View"
+            title="Ground View - Preset ground observer frames"
+          >
+            GROUND VIEW
+          </button>
+          <button
+            class="vbtn"
+            id="btn4"
+            aria-label="Switch to Moon View"
+            title="Moon View - View from lunar orbit"
+          >
+            MOON VIEW
+          </button>
+          <button
+            class="vbtn"
+            id="btn5"
+            aria-label="Switch to Skyline view"
+            title="Skyline - Observer in a high-rise overlooking the city"
+          >
+            SKYLINE
+          </button>
+        </div>
+        <div class="view-extra-row">
+          <button
+            class="vbtn"
+            id="btnDemo"
+            data-no-interrupt-demo="true"
+            aria-label="Start cinematic demo"
+            title="Cinematic Demo - Automatically zoom and rotate"
+          >
+            CINEMATIC DEMO
+          </button>
+          <button
+            class="vbtn active"
+            id="btnDemoAuto"
+            aria-label="Toggle auto demo on idle"
+            title="Auto Demo - Automatic cinematic when idle"
+          >
+            AUTO DEMO: ON
+          </button>
+        </div>
+      </section>
 
-  <!-- Portrait-mode rotation hint (mobile only) -->
-  <div id="orientation-hint" aria-hidden="true">
-    <span>↻</span> Rotate device for best experience
-  </div>
-  
-  <script type="module" src="/src/main.ts"></script>
-</body>
+      <section id="pattern-controls" class="control-group" aria-label="Beam Patterns">
+        <div class="pattern-label">BEAM PATTERN</div>
+        <div class="pattern-title" id="patternName">GROK • Big Dipper</div>
+        <button class="pbtn" id="pbtn0" data-pattern="0" aria-label="Switch to chaos beam pattern">
+          CHAOS
+        </button>
+        <button
+          class="pbtn active"
+          id="pbtn1"
+          data-pattern="1"
+          aria-label="Switch to GROK beam pattern"
+        >
+          GROK
+        </button>
+        <button class="pbtn" id="pbtn2" data-pattern="2" aria-label="Switch to X logo beam pattern">
+          𝕏 LOGO
+        </button>
+      </section>
+
+      <section id="animation-controls" class="control-group" aria-label="Constellation Animations">
+        <div class="anim-label">CONSTELLATION PATTERNS</div>
+        <button
+          class="anim-btn"
+          id="anim3"
+          data-pattern="3"
+          aria-label="Activate smile animation pattern"
+        >
+          😊 SMILE
+        </button>
+        <button
+          class="anim-btn"
+          id="anim4"
+          data-pattern="4"
+          aria-label="Activate digital rain animation pattern"
+        >
+          💧 MATRIX
+        </button>
+        <button
+          class="anim-btn"
+          id="anim5"
+          data-pattern="5"
+          aria-label="Activate heartbeat animation pattern"
+        >
+          💓 HEARTBEAT
+        </button>
+      </section>
+
+      <section id="physics-controls" class="control-group" aria-label="Physics Mode">
+        <div class="physics-label">PHYSICS MODE</div>
+        <button
+          class="physics-btn active"
+          id="phys0"
+          data-physics="0"
+          aria-label="Use simple physics mode"
+        >
+          SIMPLE
+        </button>
+        <button
+          class="physics-btn"
+          id="phys1"
+          data-physics="1"
+          aria-label="Use Keplerian physics mode"
+        >
+          KEPLERIAN
+        </button>
+        <button
+          class="physics-btn disabled"
+          id="phys2"
+          data-physics="2"
+          disabled
+          aria-disabled="true"
+          aria-describedby="j2-note"
+          aria-label="J2 perturbations physics mode"
+        >
+          J2
+        </button>
+        <span id="j2-note" class="sr-only">Not yet implemented</span>
+      </section>
+
+      <section id="quality-controls" class="control-group" aria-label="Rendering Quality">
+        <div class="quality-label">QUALITY</div>
+        <button
+          class="quality-btn"
+          id="qlow"
+          data-quality="low"
+          title="Minimal effects — best for low-end devices"
+          aria-label="Set quality to low for better performance"
+        >
+          LOW
+        </button>
+        <button
+          class="quality-btn"
+          id="qbal"
+          data-quality="balanced"
+          title="Good performance/quality trade-off"
+          aria-label="Set quality to balanced"
+        >
+          BALANCED
+        </button>
+        <button
+          class="quality-btn active"
+          id="qhigh"
+          data-quality="high"
+          title="Full quality for modern GPUs"
+          aria-label="Set quality to high"
+        >
+          HIGH
+        </button>
+        <button
+          class="quality-btn"
+          id="qcine"
+          data-quality="cinematic"
+          title="Maximum fidelity — demos and screenshots"
+          aria-label="Set quality to cinematic"
+        >
+          CINEMATIC
+        </button>
+        <button
+          class="quality-btn active"
+          id="taaToggle"
+          title="Toggle Temporal Anti-Aliasing (TAA) — smooths edges using frame history"
+          aria-label="Toggle temporal anti-aliasing"
+        >
+          TAA ON
+        </button>
+      </section>
+
+      <section id="capture-controls" class="control-group" aria-label="Capture">
+        <div class="capture-label">CAPTURE</div>
+        <button class="capture-btn" id="capStill1x">PNG 1x</button>
+        <button class="capture-btn" id="capStill2x">PNG 2x</button>
+        <div class="capture-video-row">
+          <select id="capVideoLength" aria-label="Video length">
+            <option value="5">5s</option>
+            <option value="10">10s</option>
+            <option value="15">15s</option>
+          </select>
+          <button class="capture-btn" id="capVideoStart">REC</button>
+        </div>
+        <label class="capture-toggle">
+          <input type="checkbox" id="capOverlayToggle" checked />
+          Overlay
+        </label>
+        <label class="capture-toggle">
+          <input type="checkbox" id="capHideUIToggle" />
+          Hide UI
+        </label>
+        <div id="captureStatus">Ready</div>
+      </section>
+
+      <section id="audio-controls" class="control-group" aria-label="Audio">
+        <div class="capture-label">AUDIO</div>
+        <button class="capture-btn" id="audioToggle" aria-pressed="false" title="Enable audio">
+          AUDIO OFF
+        </button>
+      </section>
+
+      <section id="trail-controls" class="control-group" aria-label="Orbital Trails">
+        <div class="capture-label">TRAILS</div>
+        <button
+          class="capture-btn"
+          id="trailsToggle"
+          aria-pressed="false"
+          title="Toggle orbital trails"
+        >
+          TRAILS OFF
+        </button>
+        <select id="trailsLength" aria-label="Trail length">
+          <option value="short">SHORT</option>
+          <option value="medium" selected>MEDIUM</option>
+          <option value="long">LONG</option>
+        </select>
+      </section>
+
+      <section id="image-tuning-controls" class="control-group" aria-label="Image tuning">
+        <details class="image-tuning-details">
+          <summary class="group-label">IMAGE TUNING</summary>
+          <div class="tuning-body">
+            <label class="tuning-row" for="tuneBloomThreshold">
+              <span>Bloom threshold</span>
+              <span id="tuneBloomThresholdValue">1.50</span>
+            </label>
+            <input
+              id="tuneBloomThreshold"
+              type="range"
+              min="0.5"
+              max="3"
+              step="0.05"
+              value="1.5"
+              aria-label="Bloom threshold"
+            />
+
+            <label class="tuning-row" for="tuneBloomKnee">
+              <span>Bloom knee</span>
+              <span id="tuneBloomKneeValue">0.05</span>
+            </label>
+            <input
+              id="tuneBloomKnee"
+              type="range"
+              min="0.01"
+              max="0.3"
+              step="0.01"
+              value="0.05"
+              aria-label="Bloom knee"
+            />
+
+            <label class="tuning-row" for="tuneBloomIntensity">
+              <span>Bloom intensity</span>
+              <span id="tuneBloomIntensityValue">2.25</span>
+            </label>
+            <input
+              id="tuneBloomIntensity"
+              type="range"
+              min="0"
+              max="3"
+              step="0.05"
+              value="2.25"
+              aria-label="Bloom intensity"
+            />
+
+            <label class="tuning-row" for="tuneSatCore">
+              <span>Sat core radius</span>
+              <span id="tuneSatCoreValue">0.40</span>
+            </label>
+            <input
+              id="tuneSatCore"
+              type="range"
+              min="0.2"
+              max="0.55"
+              step="0.01"
+              value="0.4"
+              aria-label="Satellite core radius"
+            />
+
+            <label class="tuning-row" for="tuneSatFalloff">
+              <span>Sat core falloff</span>
+              <span id="tuneSatFalloffValue">0.10</span>
+            </label>
+            <input
+              id="tuneSatFalloff"
+              type="range"
+              min="0.02"
+              max="0.3"
+              step="0.01"
+              value="0.1"
+              aria-label="Satellite core falloff inner edge"
+            />
+
+            <label class="tuning-row" for="tuneAnimIntensity">
+              <span>Animation intensity</span>
+              <span id="tuneAnimIntensityValue">1.00</span>
+            </label>
+            <input
+              id="tuneAnimIntensity"
+              type="range"
+              min="0.25"
+              max="2"
+              step="0.05"
+              value="1.0"
+              aria-label="Animation master intensity"
+            />
+
+            <label class="tuning-row tuning-check" for="godIdleOrbitToggle">
+              <span>God idle orbit</span>
+              <input
+                id="godIdleOrbitToggle"
+                type="checkbox"
+                checked
+                aria-label="God View idle orbit animation"
+              />
+            </label>
+
+            <label class="tuning-row tuning-check" for="constellationGuidesToggle">
+              <span>Shell wireframe guides</span>
+              <input
+                id="constellationGuidesToggle"
+                type="checkbox"
+                aria-label="Constellation shell wireframe guides"
+              />
+            </label>
+
+            <label class="tuning-row tuning-check" for="moonRingGuideToggle">
+              <span>Moon ring guide</span>
+              <input
+                id="moonRingGuideToggle"
+                type="checkbox"
+                aria-label="Moon View constellation ring guide"
+              />
+            </label>
+
+            <label class="tuning-row tuning-check" for="moonScaleHudToggle">
+              <span>Moon scale HUD</span>
+              <input
+                id="moonScaleHudToggle"
+                type="checkbox"
+                aria-label="Moon View angular scale annotation"
+              />
+            </label>
+          </div>
+        </details>
+      </section>
+
+      <section id="exposure-controls" class="control-group" aria-label="Exposure and Tonemapping">
+        <div class="capture-label">EXPOSURE</div>
+        <select id="exposureMode" aria-label="Exposure mode">
+          <option value="auto" selected>AUTO</option>
+          <option value="manual">MANUAL</option>
+        </select>
+        <label class="exposure-row" for="manualExposure">
+          <span>Exposure</span>
+          <span id="manualExposureValue">1.00x</span>
+        </label>
+        <input
+          id="manualExposure"
+          type="range"
+          min="0.1"
+          max="10"
+          step="0.1"
+          value="1.0"
+          aria-label="Manual exposure"
+        />
+        <label class="exposure-row" for="exposureSpeed">
+          <span>Adapt</span>
+          <span id="exposureSpeedValue">1.8</span>
+        </label>
+        <input
+          id="exposureSpeed"
+          type="range"
+          min="0.1"
+          max="5"
+          step="0.1"
+          value="1.8"
+          aria-label="Exposure adaptation speed"
+        />
+        <select id="tonemapMode" aria-label="Tonemapping mode">
+          <option value="0" selected>ACES</option>
+          <option value="1">AgX</option>
+          <option value="2">REINHARD</option>
+          <option value="3">UNCHARTED 2</option>
+        </select>
+      </section>
+    </div>
+
+    <div id="capture-gallery" aria-live="polite"></div>
+
+    <div id="horizon-limb-line" aria-hidden="true"></div>
+
+    <div id="horizon-indicator">
+      <div>Earth Radius: 6,371 km</div>
+      <div>Orbit Altitude: 550 km</div>
+      <div>Camera Altitude: 720 km</div>
+      <div>Horizon Distance: ~2,970 km</div>
+    </div>
+
+    <div id="moon-scale-annotation" aria-hidden="true"></div>
+
+    <div id="error"></div>
+
+    <!-- Mobile hamburger toggle for controls panel -->
+    <button
+      id="menu-toggle"
+      aria-label="Toggle controls menu"
+      aria-expanded="false"
+      aria-controls="controls"
+    >
+      ☰
+    </button>
+
+    <!-- Portrait-mode rotation hint (mobile only) -->
+    <div id="orientation-hint" aria-hidden="true">
+      <span>↻</span> Rotate device for best experience
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

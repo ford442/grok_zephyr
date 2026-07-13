@@ -57,6 +57,7 @@ Key formats:
 The following systems were implemented as part of the 2026 visual fidelity audit:
 
 ### Earth rendering (`src/shaders/render/earth.ts`)
+
 - FBM terrain with height-based biome colouring (beach → grass → forest → rock → snow)
 - PBR ocean: Schlick Fresnel reflectance + Blinn-Phong sun glint + Gerstner wave normals animated with `uni.time`
 - Animated day/night terminator driven by `uni.sun_pos`
@@ -65,6 +66,7 @@ The following systems were implemented as part of the 2026 visual fidelity audit
 - Subtle surface rotation offset for a living-Earth feel
 
 ### Cinematic starfield (`src/shaders/render/stars.ts`)
+
 - Camera-direction sky-ray reconstruction (stars correctly follow camera rotation)
 - Magnitude-based HDR brightness distribution (bright foreground stars + faint background layer)
 - Realistic colour temperature variation (O/B/A/F/G/K/M spectral classes)
@@ -73,6 +75,7 @@ The following systems were implemented as part of the 2026 visual fidelity audit
 - Magnitude-capped HDR output: only the brightest stars pierce bloom threshold 1.5; ground view attenuates star energy further
 
 ### Bloom pipeline (`src/render/RenderPipeline.ts`, `src/shaders/render/postProcess/`)
+
 - Configurable soft-knee threshold pass
 - **Source-aware bloom separation** (single pass, no extra buffers): star HDR is magnitude-capped in `stars.ts`, the threshold pass attenuates mid-band star/limb energy via `sourceBloomWeight()`, and the composite pass layers tight satellite bloom on hot scene peaks vs softer star bloom elsewhere (`compositeBloom(bloom, scene, …)`)
 - Kawase dual-filter downsample pyramid (2–5 levels, driven by quality preset)
@@ -84,21 +87,23 @@ The following systems were implemented as part of the 2026 visual fidelity audit
 
 Dual bloom buffers were rejected to stay within the ~118 MB Pascal budget. Instead, three single-pass stages cooperate:
 
-| Stage | File | Role |
-|-------|------|------|
-| Star HDR cap | `stars.ts` | `starHdrLuminance()` keeps mag > 2 stars sub-threshold; Milky Way luminance-capped; ground view ×0.62 |
-| Threshold weighting | `bloomThreshold.ts` | `sourceBloomWeight()` — 36 % extraction for 1.5–4.0 HDR (stars/limb), full above 4.0 (sat cores) |
-| Composite layering | `composite.ts` | `compositeBloom(bloom, scene)` — tight gain on scene peaks ≥ 4.2, soft star bloom on moderate scene energy |
+| Stage               | File                | Role                                                                                                       |
+| ------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Star HDR cap        | `stars.ts`          | `starHdrLuminance()` keeps mag > 2 stars sub-threshold; Milky Way luminance-capped; ground view ×0.62      |
+| Threshold weighting | `bloomThreshold.ts` | `sourceBloomWeight()` — 36 % extraction for 1.5–4.0 HDR (stars/limb), full above 4.0 (sat cores)           |
+| Composite layering  | `composite.ts`      | `compositeBloom(bloom, scene)` — tight gain on scene peaks ≥ 4.2, soft star bloom on moderate scene energy |
 
 WebGL mirrors the threshold and composite curves in `src/webgl/shaders.ts`. No extra render targets or presets required.
 
 ### Camera feel (`src/camera/CameraController.ts`)
+
 - God View: velocity + exponential damping (`GOD_INERTIA_DAMPING = 0.88`) for buttery drag momentum
 - Smooth blended transitions between all view modes (lerp over 0.6–1.4 s)
 - Three cinematic attract/demo paths (horizon drift, god-view spiral, fleet-fly) — any input interrupts immediately
 - Optional auto-start after a configurable inactivity timeout
 
 ### Lens effects (`src/shaders/lens_effects.wgsl`, `src/render/PostProcessStack.ts`)
+
 - Chromatic aberration (radial RGB split, edge-weighted)
 - Anamorphic lens flares with ghost reflections from the sun
 - 6-point starburst diffraction
@@ -106,6 +111,7 @@ WebGL mirrors the threshold and composite curves in `src/webgl/shaders.ts`. No e
 - All effects individually toggleable via `LensEffectsConfig`; enabled by default on High/Cinematic presets
 
 ### HUD / UI (`src/ui/`, `src/styles/`)
+
 - Glassmorphism panels with layered backdrop-filter, neon borders, and inner glows
 - Clear sectioning: View Modes | Beam Patterns | Animations | Physics | Quality
 - Micro-animations on active states (glow, scale, colour shift)
@@ -114,39 +120,42 @@ WebGL mirrors the threshold and composite curves in `src/webgl/shaders.ts`. No e
 - Cinematic/Demo mode button in the toolbar
 
 ### Performance dashboard (`src/ui/PerformanceDashboard.ts`)
+
 - Collapsible perf panel showing per-pass GPU timings (Compute / Scene / Bloom / Post / Total)
 - FPS sparkline history
 - Quality preset impact hints
 - Graceful fallback to CPU timing when `timestamp-query` is unavailable
 
 ### First-run experience (`src/ui/`)
+
 - Dismissible intro overlay with premise, scale, and core controls (persisted via `localStorage`)
 - Full-screen branded compatibility message for non-WebGPU browsers with actionable next steps
 - Basic ARIA labels and visible focus styles on all major interactive elements
 
 ### Capture (`src/ui/`)
+
 - One-click PNG screenshot at native and 2× resolution with branded overlay
 - Short WebM video clip export via WebCodecs (5 / 10 / 15 s, configurable)
 - UI visibility toggle before capture
 
 ## Camera modes
 
-| Mode | Description |
-|------|-------------|
-| Horizon 720 | ~720 km altitude looking down on the constellation |
-| God View | Free-orbit spherical camera with inertia and zoom |
-| Fleet POV | First-person view from within the satellite swarm (WASD movement) |
-| Ground View | Surface-level observer with full EarthAtmosphereRenderer |
-| Moon View | Wide-angle view from ~380,000 km |
+| Mode        | Description                                                       |
+| ----------- | ----------------------------------------------------------------- |
+| Horizon 720 | ~720 km altitude looking down on the constellation                |
+| God View    | Free-orbit spherical camera with inertia and zoom                 |
+| Fleet POV   | First-person view from within the satellite swarm (WASD movement) |
+| Ground View | Surface-level observer with full EarthAtmosphereRenderer          |
+| Moon View   | Wide-angle view from ~380,000 km                                  |
 
 ## Quality presets
 
-| Preset | Bloom levels | Lens effects | Anamorphic | TAA |
-|--------|-------------|--------------|------------|-----|
-| Low | 2 | off | off | off |
-| Balanced | 3 | vignette only | off | on |
-| High | 4 | CA + vignette | off | on |
-| Cinematic | 5 | all | on | on |
+| Preset    | Bloom levels | Lens effects  | Anamorphic | TAA |
+| --------- | ------------ | ------------- | ---------- | --- |
+| Low       | 2            | off           | off        | off |
+| Balanced  | 3            | vignette only | off        | on  |
+| High      | 4            | CA + vignette | off        | on  |
+| Cinematic | 5            | all           | on         | on  |
 
 ## WebGPU requirements
 

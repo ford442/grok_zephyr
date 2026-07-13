@@ -3,11 +3,11 @@
  */
 
 import { createCompositeBindGroup } from '../pipelines/BindGroupFactory.js';
-import type { PassContext } from './types.js';
+import type { FrameContext } from './types.js';
 
 export function encodeCompositePass(
   encoder: GPUCommandEncoder,
-  ctx: PassContext,
+  ctx: FrameContext,
   outputView: GPUTextureView,
   outputWidth?: number,
   outputHeight?: number,
@@ -28,12 +28,14 @@ export function encodeCompositePass(
     : ctx.bindGroups.composite;
 
   const pass = encoder.beginRenderPass({
-    colorAttachments: [{
-      view: outputView,
-      clearValue: { r: 0, g: 0, b: 0, a: 1 },
-      loadOp: 'clear',
-      storeOp: 'store',
-    }],
+    colorAttachments: [
+      {
+        view: outputView,
+        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        loadOp: 'clear',
+        storeOp: 'store',
+      },
+    ],
   });
 
   const width = outputWidth || ctx.width;

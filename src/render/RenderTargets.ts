@@ -3,7 +3,7 @@
  * Creates and manages HDR render targets
  */
 
-import type WebGPUContext from '@/core/WebGPUContext.js';
+import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import { RENDER } from '@/types/constants.js';
 import { MAX_BLOOM_LEVELS, type RenderTargets } from './pipelines/types.js';
 
@@ -125,6 +125,6 @@ export function destroyRenderTargets(targets: RenderTargets): void {
   targets.dofHalfA.destroy();
   targets.dofHalfB.destroy();
   targets.dofComposite.destroy();
-  targets.bloomMip.forEach(t => t.destroy());
+  targets.bloomMip.forEach((t) => t.destroy());
   targets.compositeIntermediate.destroy();
 }

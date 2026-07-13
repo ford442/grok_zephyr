@@ -26,15 +26,23 @@ import {
   type RenderTarget,
 } from './glUtils.js';
 import {
-  SAT_VERT, SAT_FRAG,
-  EARTH_VERT, EARTH_FRAG,
-  STAR_VERT, STAR_FRAG,
-  FS_VERT, THRESHOLD_FRAG, BLUR_FRAG, COMPOSITE_FRAG, MOON_FOREGROUND_FRAG, MOON_EARTH_DISK_FRAG,
+  SAT_VERT,
+  SAT_FRAG,
+  EARTH_VERT,
+  EARTH_FRAG,
+  STAR_VERT,
+  STAR_FRAG,
+  FS_VERT,
+  THRESHOLD_FRAG,
+  BLUR_FRAG,
+  COMPOSITE_FRAG,
+  MOON_FOREGROUND_FRAG,
+  MOON_EARTH_DISK_FRAG,
 } from './shaders.js';
 
 /** Per-frame state handed to the renderer (shared with the WebGPU loop). */
 export interface WebGLFrame {
-  viewProj: Float32Array;   // column-major mat4 from CameraController.buildViewProjection
+  viewProj: Float32Array; // column-major mat4 from CameraController.buildViewProjection
   cameraPos: [number, number, number] | Float32Array;
   sunDir: [number, number, number];
   simTime: number;
@@ -145,7 +153,12 @@ export class WebGLRenderer {
     this.blurU = new UniformCache(gl, this.blurProgram);
     this.compositeProgram = createProgram(gl, FS_VERT, COMPOSITE_FRAG, 'composite');
     this.compositeU = new UniformCache(gl, this.compositeProgram);
-    this.moonForegroundProgram = createProgram(gl, FS_VERT, MOON_FOREGROUND_FRAG, 'moon-foreground');
+    this.moonForegroundProgram = createProgram(
+      gl,
+      FS_VERT,
+      MOON_FOREGROUND_FRAG,
+      'moon-foreground',
+    );
     this.moonForegroundU = new UniformCache(gl, this.moonForegroundProgram);
     this.moonEarthDiskProgram = createProgram(gl, FS_VERT, MOON_EARTH_DISK_FRAG, 'moon-earth-disk');
     this.moonEarthDiskU = new UniformCache(gl, this.moonEarthDiskProgram);
@@ -155,15 +168,17 @@ export class WebGLRenderer {
     this.fsTriangle = createFullscreenTriangle(gl);
 
     this.resize(width, height);
-    console.log(`[WebGL] Renderer initialized (${this.satCount.toLocaleString()} satellites, HDR=${floatRenderable}).`);
+    console.log(
+      `[WebGL] Renderer initialized (${this.satCount.toLocaleString()} satellites, HDR=${floatRenderable}).`,
+    );
   }
 
   /** Upload orbital elements as per-vertex POINTS attributes (no per-frame CPU work). */
   private buildSatelliteGeometry(): void {
     const gl = this.gl;
     this.satCount = Math.min(this.satelliteCount, this.orbital.numSatellites);
-    const vao = gl.createVertexArray()!;
-    const vbo = gl.createBuffer()!;
+    const vao = gl.createVertexArray();
+    const vbo = gl.createBuffer();
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
     // One vec4 element per satellite; each is its own GL_POINTS vertex.
@@ -176,9 +191,9 @@ export class WebGLRenderer {
 
   private buildEarthGeometry(earth: EarthMesh): void {
     const gl = this.gl;
-    const vao = gl.createVertexArray()!;
-    const vbo = gl.createBuffer()!;
-    const ibo = gl.createBuffer()!;
+    const vao = gl.createVertexArray();
+    const vbo = gl.createBuffer();
+    const ibo = gl.createBuffer();
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
     gl.bufferData(gl.ARRAY_BUFFER, earth.interleaved, gl.STATIC_DRAW);
@@ -242,7 +257,7 @@ export class WebGLRenderer {
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    const isMoonView = (frame.viewMode & 0xFFFF) === 4;
+    const isMoonView = (frame.viewMode & 0xffff) === 4;
     if (this.debug.showStars) this.drawStarfield(invViewProj, frame);
     if (!isMoonView && this.debug.showEarth) this.drawEarth(frame);
     if (this.debug.showSatellites) this.drawSatellites(frame);
@@ -266,7 +281,12 @@ export class WebGLRenderer {
     gl.uniformMatrix4fv(this.starU.loc('uInvViewProj'), false, invViewProj);
     gl.uniform1f(this.starU.loc('uTime'), frame.time);
     gl.uniform1i(this.starU.loc('uBackgroundMode'), frame.backgroundMode | 0);
-    gl.uniform3f(this.starU.loc('uCameraPos'), frame.cameraPos[0], frame.cameraPos[1], frame.cameraPos[2]);
+    gl.uniform3f(
+      this.starU.loc('uCameraPos'),
+      frame.cameraPos[0],
+      frame.cameraPos[1],
+      frame.cameraPos[2],
+    );
     gl.uniform3fv(this.starU.loc('uSunDir'), frame.sunDir);
     gl.uniform1i(this.starU.loc('uViewMode'), frame.viewMode | 0);
     gl.bindVertexArray(this.fsTriangle);
@@ -281,7 +301,7 @@ export class WebGLRenderer {
     gl.depthMask(true);
     gl.disable(gl.BLEND);
     gl.uniformMatrix4fv(this.earthU.loc('uViewProj'), false, frame.viewProj);
-    gl.uniform3fv(this.earthU.loc('uCameraPos'), frame.cameraPos as Float32Array);
+    gl.uniform3fv(this.earthU.loc('uCameraPos'), frame.cameraPos);
     gl.uniform3fv(this.earthU.loc('uSunDir'), frame.sunDir);
     gl.uniform1i(this.earthU.loc('uViewMode'), frame.viewMode | 0);
     gl.uniform1i(this.earthU.loc('uWireframe'), this.debug.wireframeEarth ? 1 : 0);
@@ -304,13 +324,13 @@ export class WebGLRenderer {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
     gl.uniformMatrix4fv(this.satU.loc('uViewProj'), false, frame.viewProj);
-    gl.uniform3fv(this.satU.loc('uCameraPos'), frame.cameraPos as Float32Array);
+    gl.uniform3fv(this.satU.loc('uCameraPos'), frame.cameraPos);
     gl.uniform1f(this.satU.loc('uSimTime'), frame.simTime);
     gl.uniform2f(this.satU.loc('uScreen'), this.width, this.height);
     gl.uniform1f(this.satU.loc('uPointScale'), this.debug.pointScale);
     gl.uniform1i(this.satU.loc('uLodDebug'), this.debug.lodDebug ? 1 : 0);
     gl.uniform1i(this.satU.loc('uViewMode'), frame.viewMode | 0);
-    gl.uniform1f(this.satU.loc('uDistanceCullKm'), this.satVisualPacked[6]!);
+    gl.uniform1f(this.satU.loc('uDistanceCullKm'), this.satVisualPacked[6]);
     gl.uniform1f(this.satU.loc('uTimeScale'), frame.timeScale ?? 1.0);
     const hv = frame.hostVelocity ?? [0, 0, 0];
     gl.uniform3f(this.satU.loc('uHostVelocity'), hv[0], hv[1], hv[2]);
@@ -428,7 +448,10 @@ export class WebGLRenderer {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.bloomA.color);
     gl.uniform1i(this.compositeU.loc('uBloom'), 1);
-    gl.uniform1f(this.compositeU.loc('uBloomIntensity'), this.debug.showBloom ? this.imageTuning.bloomIntensity : 0.0);
+    gl.uniform1f(
+      this.compositeU.loc('uBloomIntensity'),
+      this.debug.showBloom ? this.imageTuning.bloomIntensity : 0.0,
+    );
     gl.uniform1f(this.compositeU.loc('uExposure'), 1.0);
     gl.uniform1f(this.compositeU.loc('uTime'), frame.time);
     gl.uniform1i(this.compositeU.loc('uTonemap'), 0);
@@ -444,13 +467,16 @@ export class WebGLRenderer {
     destroyRenderTarget(gl, this.bloomA ?? null);
     destroyRenderTarget(gl, this.bloomB ?? null);
     for (const p of [
-      this.satProgram, this.earthProgram, this.starProgram,
-      this.thresholdProgram, this.blurProgram, this.compositeProgram,
-      this.moonForegroundProgram, this.moonEarthDiskProgram,
+      this.satProgram,
+      this.earthProgram,
+      this.starProgram,
+      this.thresholdProgram,
+      this.blurProgram,
+      this.compositeProgram,
+      this.moonForegroundProgram,
+      this.moonEarthDiskProgram,
     ]) {
       if (p) gl.deleteProgram(p);
     }
   }
 }
-
-export default WebGLRenderer;

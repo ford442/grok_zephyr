@@ -10,7 +10,9 @@ const CINEMATIC_STEPS: CinematicStep[] = [
   { id: 'fleet-fly', duration: 36 },
 ];
 
-const CONSTELLATION_CENTER_SAMPLE_INDICES = [0, 8191, 65535, 131071, 262143, 524287, 786431, 1048575];
+const CONSTELLATION_CENTER_SAMPLE_INDICES = [
+  0, 8191, 65535, 131071, 262143, 524287, 786431, 1048575,
+];
 
 export class CameraCinematic {
   private readonly blendOutDuration = 0.45;
@@ -100,15 +102,15 @@ export class CameraCinematic {
     const yaw = eased * MATH.TWO_PI * 1.2 + Math.sin(time * 0.12) * 0.06;
     const radius = CONSTANTS.CAMERA_RADIUS_KM + Math.sin(time * 0.08) * 10;
 
-    const position: Vec3 = [
-      radius * Math.cos(yaw),
-      radius * Math.sin(yaw),
-      0,
-    ];
+    const position: Vec3 = [radius * Math.cos(yaw), radius * Math.sin(yaw), 0];
 
     const radial = v3norm(position);
     const tangent = v3norm([-Math.sin(yaw), Math.cos(yaw), 0]);
-    const pitchVec: Vec3 = [0, 0, Math.sin(eased * MATH.TWO_PI) * 0.15 + Math.sin(time * 0.18) * 0.03];
+    const pitchVec: Vec3 = [
+      0,
+      0,
+      Math.sin(eased * MATH.TWO_PI) * 0.15 + Math.sin(time * 0.18) * 0.03,
+    ];
     const lookDir = v3norm(v3add(v3add(v3scale(tangent, 0.92), v3scale(radial, 0.22)), pitchVec));
     const target = v3add(position, v3scale(lookDir, 9000));
 
@@ -192,10 +194,7 @@ export class CameraCinematic {
     const bob = Math.sin(time * 1.6) * 1.2;
     const position = v3add(
       satPos,
-      v3add(
-        v3add(v3scale(localUp, 65 + bob), v3scale(right, 20 * bank)),
-        v3scale(forward, 18),
-      ),
+      v3add(v3add(v3scale(localUp, 65 + bob), v3scale(right, 20 * bank)), v3scale(forward, 18)),
     );
 
     const lead = 1500 + 900 * (0.5 + 0.5 * Math.sin(t * MATH.TWO_PI));
@@ -215,7 +214,10 @@ export class CameraCinematic {
     };
   }
 
-  private sampleConstellationCenter(getPosition: (index: number, time: number) => Vec3, time: number): Vec3 {
+  private sampleConstellationCenter(
+    getPosition: (index: number, time: number) => Vec3,
+    time: number,
+  ): Vec3 {
     let sum: Vec3 = [0, 0, 0];
     for (const index of CONSTELLATION_CENTER_SAMPLE_INDICES) {
       const p = getPosition(index, time);

@@ -6,24 +6,24 @@ swapchain that **headless browsers, Playwright, and agents cannot read back**,
 which makes automated and visual debugging of orbital geometry, Earth/atmosphere,
 glow, and bloom difficult.
 
-The **WebGL2 fallback renderer** renders the *same simulation* through a
+The **WebGL2 fallback renderer** renders the _same simulation_ through a
 readback-friendly WebGL2 path so the scene can be screenshotted and inspected by
 CI and agents, and so the project can serve as a working reference when porting
 large-scale GPU compute + rendering features.
 
 ## Usage
 
-| Action | How |
-|--------|-----|
-| Use the WebGL2 renderer | `?renderer=webgl` |
-| Force WebGPU (default) | `?renderer=webgpu` |
-| Persisted choice | Either value is saved to `localStorage['zephyr.renderer']` and used on the next load |
-| Reduce satellite count | `&sats=100000` (clamped to `[1, 1048576]`; default is the full constellation) |
-| Pick a view mode | `&mode=0..4` (0 horizon, 1 god, 2 fleet, 3 ground, 4 moon) |
-| Load real TLE data | `&tle=starlink` (shared with the WebGPU path) |
-| Debug flags | `&debug=wireframe,lod,points,noearth,nostars,nobloom,nosats` |
-| Image tuning (dev) | `&bloomThreshold=1.8&bloomKnee=0.05&bloomIntensity=1.6&satCore=0.35&satFalloff=0.08` |
-| Disable shader floors | `&dev=1` — sliders use the full configured range (no `max(threshold, 1.5)` clamp) |
+| Action                  | How                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------ |
+| Use the WebGL2 renderer | `?renderer=webgl`                                                                    |
+| Force WebGPU (default)  | `?renderer=webgpu`                                                                   |
+| Persisted choice        | Either value is saved to `localStorage['zephyr.renderer']` and used on the next load |
+| Reduce satellite count  | `&sats=100000` (clamped to `[1, 1048576]`; default is the full constellation)        |
+| Pick a view mode        | `&mode=0..4` (0 horizon, 1 god, 2 fleet, 3 ground, 4 moon)                           |
+| Load real TLE data      | `&tle=starlink` (shared with the WebGPU path)                                        |
+| Debug flags             | `&debug=wireframe,lod,points,noearth,nostars,nobloom,nosats`                         |
+| Image tuning (dev)      | `&bloomThreshold=1.8&bloomKnee=0.05&bloomIntensity=1.6&satCore=0.35&satFalloff=0.08` |
+| Disable shader floors   | `&dev=1` — sliders use the full configured range (no `max(threshold, 1.5)` clamp)    |
 
 Example: `http://localhost:5173/?renderer=webgl&cam=god&mode=1&sats=400000&debug=lod&bloomThreshold=1.6`
 
@@ -32,10 +32,10 @@ Example: `http://localhost:5173/?renderer=webgl&cam=god&mode=1&sats=400000&debug
 When the WebGL path is active, `window.zephyrGL` is exposed:
 
 ```js
-window.zephyrGL.getDebug();                 // current debug options
-window.zephyrGL.setDebug({ showBloom:false }); // toggle a pass at runtime
-window.zephyrGL.capture();                  // PNG data URL of the current canvas
-window.zephyrGL.renderer.hdrEnabled;        // true if RGBA16F targets are available
+window.zephyrGL.getDebug(); // current debug options
+window.zephyrGL.setDebug({ showBloom: false }); // toggle a pass at runtime
+window.zephyrGL.capture(); // PNG data URL of the current canvas
+window.zephyrGL.renderer.hdrEnabled; // true if RGBA16F targets are available
 ```
 
 `preserveDrawingBuffer` is enabled on the WebGL2 context, so `canvas.toDataURL()`
@@ -54,14 +54,14 @@ knee, intensity, satellite kernel, halo strength, and distance cull per camera m
 Profiles blend smoothly during mode transitions; the HUD `Tuning` line shows the
 active profile. Dev IMAGE TUNING sliders override profiles when moved.
 
-| Param | Range | Default | Maps to |
-|-------|-------|---------|---------|
-| `bloomThreshold` | 0.5–3.0 | 1.5 | Bloom bright-pass cutoff |
-| `bloomKnee` | 0.01–0.3 | 0.05 | Soft knee around threshold |
-| `bloomIntensity` | 0–3.0 | 2.25 | Composite bloom multiplier |
-| `satCore` | 0.20–0.55 | 0.40 | Satellite `smoothstep` outer edge |
-| `satFalloff` | 0.02–0.30 | 0.10 | Satellite `smoothstep` inner edge |
-| `dev` | `1` | off | Disables shipping shader floors for full slider range |
+| Param            | Range     | Default | Maps to                                               |
+| ---------------- | --------- | ------- | ----------------------------------------------------- |
+| `bloomThreshold` | 0.5–3.0   | 1.5     | Bloom bright-pass cutoff                              |
+| `bloomKnee`      | 0.01–0.3  | 0.05    | Soft knee around threshold                            |
+| `bloomIntensity` | 0–3.0     | 2.25    | Composite bloom multiplier                            |
+| `satCore`        | 0.20–0.55 | 0.40    | Satellite `smoothstep` outer edge                     |
+| `satFalloff`     | 0.02–0.30 | 0.10    | Satellite `smoothstep` inner edge                     |
+| `dev`            | `1`       | off     | Disables shipping shader floors for full slider range |
 
 An on-screen debug panel (bottom-right, "◈ WEBGL2") mirrors these toggles.
 
@@ -95,18 +95,18 @@ Do **not** rebaseline to silence a failing test without reviewing
 
 **Harness URL params** (used by `tests/visual/webgl-views.spec.ts`):
 
-| Param | Purpose |
-|-------|---------|
-| `renderer=webgl` | Boot the readback-friendly path |
-| `sats=30000` | Reduced constellation for CI speed |
-| `seed=42` | Deterministic Walker shell jitter |
-| `demo=0` | Disable auto demo cinematic |
-| `simTime=180` | Fixed orbital phase |
-| `timescale=0` | Freeze simulation after load |
-| `mode=0..5` | View mode (horizon / god / fleet / ground / moon / skyline) |
+| Param                | Purpose                                                                                              |
+| -------------------- | ---------------------------------------------------------------------------------------------------- |
+| `renderer=webgl`     | Boot the readback-friendly path                                                                      |
+| `sats=30000`         | Reduced constellation for CI speed                                                                   |
+| `seed=42`            | Deterministic Walker shell jitter                                                                    |
+| `demo=0`             | Disable auto demo cinematic                                                                          |
+| `simTime=180`        | Fixed orbital phase                                                                                  |
+| `timescale=0`        | Freeze simulation after load                                                                         |
+| `mode=0..5`          | View mode (horizon / god / fleet / ground / moon / skyline)                                          |
 | `ground=houseWindow` | Ground observer preset when `mode=3` (`beachNight`, `carWindshield`, `rooftop`, `airplaneWindow`, …) |
-| `pattern=0..2` | Beam pattern (chaos / GROK / 𝕏) — harness smoke on WebGL |
-| `animation=3..5` | Constellation animation (smile / rain / heartbeat) — WebGPU renders; WebGL harness only |
+| `pattern=0..2`       | Beam pattern (chaos / GROK / 𝕏) — harness smoke on WebGL                                             |
+| `animation=3..5`     | Constellation animation (smile / rain / heartbeat) — WebGPU renders; WebGL harness only              |
 
 **Baseline inventory** — see `tests/visual/baselines/README.md` for the full
 table (10 view/preset cases + 2 pattern harness cases).
@@ -138,6 +138,7 @@ Visual diff artifacts upload on CI failure.
 ## What is shared vs. reimplemented
 
 **Shared (single source of truth):**
+
 - Orbital element data + Keplerian math — `src/core/OrbitalElements.ts`. Both the
   WebGPU `SatelliteGPUBuffer` and the WebGL renderer use this; there is no second
   copy of the orbit generation, TLE parsing, or position/velocity formulae.
@@ -146,12 +147,13 @@ Visual diff artifacts upload on CI failure.
 - Earth geometry — `genSphere()` from `src/utils/math.ts`.
 
 **Reimplemented in GLSL ES 3.00** (`src/webgl/shaders.ts`):
+
 - Satellite billboards, Earth + atmosphere, starfield, bloom, ACES tonemap + grade.
 - Distance-based satellite LOD kernels (near / mid / far) match `src/shaders/render/satellites.ts`.
 
 **Not (yet) ported to WebGL:** volumetric god-ray beams, ribbon trails, TAA,
 motion blur, depth-of-field, and the J2 / RK4 physics modes. The WebGL path uses
-the *simple-mode* circular propagation only. These are intentionally WebGPU-only;
+the _simple-mode_ circular propagation only. These are intentionally WebGPU-only;
 the WebGL renderer is a reference/inspection tool, not a feature-parity clone.
 
 ## Architecture
@@ -177,7 +179,9 @@ src/webgl/
 state) and passes a compact `WebGLFrame` to the renderer:
 
 ```ts
-{ viewProj, cameraPos, sunDir, simTime, time, backgroundMode }
+{
+  (viewProj, cameraPos, sunDir, simTime, time, backgroundMode);
+}
 ```
 
 `viewProj` is the column-major matrix from `CameraController.buildViewProjection`,
@@ -205,14 +209,14 @@ formula is identical to `OrbitalElements.calculatePosition()`; an invariant test
 
 When using this WebGL path as a reference for a WebGPU port (or vice-versa):
 
-| Concern | WebGL2 (fallback) | WebGPU (production) |
-|---------|-------------------|---------------------|
-| Propagation | per-vertex in the vertex shader | compute shader → storage buffer, read by the vertex shader |
-| Per-instance data | vertex attribute (`vertexAttribPointer`) or a data texture sampled by `gl_VertexID`/`gl_InstanceID` | `storage` buffer indexed by `instance_index` |
-| Draw | `drawArrays(POINTS, 0, N)` (1 call) | `draw(6, N)` instanced billboards |
-| HDR target | `RGBA16F` via `EXT_color_buffer_float` (falls back to `RGBA8`) | native `rgba16float` |
-| Frustum cull / LOD | in the vertex shader or on CPU | in the compute pass (writes visibility into position.w) |
-| Bloom | threshold + 2× separable Gaussian (half-res) | Kawase dual-filter pyramid (up to 5 levels) |
+| Concern            | WebGL2 (fallback)                                                                                   | WebGPU (production)                                        |
+| ------------------ | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Propagation        | per-vertex in the vertex shader                                                                     | compute shader → storage buffer, read by the vertex shader |
+| Per-instance data  | vertex attribute (`vertexAttribPointer`) or a data texture sampled by `gl_VertexID`/`gl_InstanceID` | `storage` buffer indexed by `instance_index`               |
+| Draw               | `drawArrays(POINTS, 0, N)` (1 call)                                                                 | `draw(6, N)` instanced billboards                          |
+| HDR target         | `RGBA16F` via `EXT_color_buffer_float` (falls back to `RGBA8`)                                      | native `rgba16float`                                       |
+| Frustum cull / LOD | in the vertex shader or on CPU                                                                      | in the compute pass (writes visibility into position.w)    |
+| Bloom              | threshold + 2× separable Gaussian (half-res)                                                        | Kawase dual-filter pyramid (up to 5 levels)                |
 
 Rule of thumb: anything WebGPU does in a **compute dispatch over a storage
 buffer** maps to either a WebGL **vertex-shader computation over an instanced

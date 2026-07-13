@@ -26,18 +26,11 @@
       "@/physics/*": ["src/physics/*"],
       "@/render/*": ["src/render/*"],
       "@/camera/*": ["src/camera/*"],
-      "@/matrix/*": ["src/matrix/*"],
       "@/ui/*": ["src/ui/*"],
       "@/utils/*": ["src/utils/*"],
       "@/types/*": ["src/types/*"]
     }
   },
-  "include": [
-    "src/**/*",
-    "public/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["src/**/*", "public/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

@@ -33,7 +33,7 @@ struct Uni {
   sun_position   : vec4f,
 };
 
-// Bloom composite parameters — written by RenderPipeline.writeBloomCompositeUni()
+// Bloom composite parameters — CPU packer: packBloomCompositeUni() in uniformLayouts.ts
 struct BloomCompositeUni {
   bloomIntensity    : f32,
   anamorphicEnabled : u32,   // 1 = enabled, 0 = disabled

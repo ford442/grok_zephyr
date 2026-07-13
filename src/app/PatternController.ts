@@ -24,7 +24,7 @@ export function setupAnimationPatternButtons(rt: AppRuntime): void {
       const mode = parseInt(target.dataset.pattern || '3');
       rt.setAnimationPattern(mode);
       animButtons.forEach((b) => b.classList.remove('active'));
-      if (rt.currentAnimationPattern !== 0) {
+      if (rt.simulation.currentAnimationPattern !== 0) {
         target.classList.add('active');
       }
     });
@@ -45,8 +45,8 @@ export function setupPhysicsButtons(rt: AppRuntime): void {
 }
 
 export function setPatternMode(rt: AppRuntime, mode: number): void {
-  rt.currentPatternMode = mode;
-  rt.patternAnimationStart = performance.now() / 1000;
+  rt.simulation.currentPatternMode = mode;
+  rt.simulation.patternAnimationStart = performance.now() / 1000;
 
   if (!rt.context || !rt.buffers) {
     updatePatternTitle(rt);
@@ -57,7 +57,7 @@ export function setPatternMode(rt: AppRuntime, mode: number): void {
   const f32 = new Float32Array(beamParamsData);
   const u32 = new Uint32Array(beamParamsData);
 
-  f32[0] = rt.patternAnimationStart;
+  f32[0] = rt.simulation.patternAnimationStart;
   u32[1] = mode;
   u32[2] = 65536;
   u32[3] = 0;
@@ -73,12 +73,12 @@ export function setPatternMode(rt: AppRuntime, mode: number): void {
 }
 
 export function setAnimationPattern(rt: AppRuntime, mode: number): void {
-  if (rt.currentAnimationPattern === mode) {
+  if (rt.simulation.currentAnimationPattern === mode) {
     mode = 0;
   }
 
-  rt.currentAnimationPattern = mode;
-  rt.patternAnimationStart = performance.now() / 1000;
+  rt.simulation.currentAnimationPattern = mode;
+  rt.simulation.patternAnimationStart = performance.now() / 1000;
 
   const modeNames = ['OFF', '', '', '😊 SMILE', '💧 DIGITAL RAIN', '💓 HEARTBEAT'];
   console.log(`🎭 Animation pattern: ${modeNames[mode]}`);
@@ -93,12 +93,14 @@ export function setPhysicsMode(rt: AppRuntime, mode: number): void {
     return;
   }
 
-  rt.currentPhysicsMode = mode;
+  rt.simulation.currentPhysicsMode = mode;
 
   const modeNames = ['Simple (Circular)', 'Keplerian', 'J2 Perturbed'];
   const implemented = [true, true, false];
 
-  console.log(`⚛️ Physics mode switched to: ${modeNames[mode]} ${implemented[mode] ? '' : '(placeholder)'}`);
+  console.log(
+    `⚛️ Physics mode switched to: ${modeNames[mode]} ${implemented[mode] ? '' : '(placeholder)'}`,
+  );
 }
 
 export function writePatternParamsBuffer(rt: AppRuntime): void {
@@ -108,17 +110,17 @@ export function writePatternParamsBuffer(rt: AppRuntime): void {
   const f32 = new Float32Array(patternParamsData);
   const u32 = new Uint32Array(patternParamsData);
 
-  u32[0] = rt.currentAnimationPattern;
-  f32[1] = rt.patternAnimationStart || performance.now() / 1000;
-  f32[2] = rt.patternSeed;
-  u32[3] = rt.selectedSatelliteIndex >= 0 ? rt.selectedSatelliteIndex : 0xFFFFFFFF;
+  u32[0] = rt.simulation.currentAnimationPattern;
+  f32[1] = rt.simulation.patternAnimationStart || performance.now() / 1000;
+  f32[2] = rt.simulation.patternSeed;
+  u32[3] = rt.selectedSatelliteIndex >= 0 ? rt.selectedSatelliteIndex : 0xffffffff;
 
   rt.context.writeBuffer(rt.buffers.getBuffers().patternParams, patternParamsData);
 }
 
 export function updatePatternTitle(rt: AppRuntime): void {
   if (rt.patternNameDisplay) {
-    rt.patternNameDisplay.textContent = getBeamPatternTitle(rt.currentPatternMode);
+    rt.patternNameDisplay.textContent = getBeamPatternTitle(rt.simulation.currentPatternMode);
   }
 }
 

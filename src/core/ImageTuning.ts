@@ -44,9 +44,9 @@ export const SHIPPING_IMAGE_TUNING: ImageTuningSettings = {
   bloomThreshold: 1.5,
   bloomKnee: 0.05,
   bloomIntensity: RENDER.BLOOM_INTENSITY,
-  satCoreOuter: 0.40,
-  satCoreInner: 0.10,
-  haloStrength: 0.20,
+  satCoreOuter: 0.4,
+  satCoreInner: 0.1,
+  haloStrength: 0.2,
   coreBoost: 2.5,
   distanceCullKm: CULLING.MAX_DISTANCE,
   animationIntensity: 1.0,
@@ -59,12 +59,7 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function parseFloatParam(
-  raw: string | null,
-  min: number,
-  max: number,
-  fallback: number,
-): number {
+function parseFloatParam(raw: string | null, min: number, max: number, fallback: number): number {
   if (raw === null || raw === '') return fallback;
   const val = Number(raw);
   if (!Number.isFinite(val)) return fallback;
@@ -72,17 +67,17 @@ function parseFloatParam(
 }
 
 function normalizeCoreEdges(outer: number, inner: number): { outer: number; inner: number } {
-  const o = clamp(outer, 0.20, 0.55);
-  const i = clamp(inner, 0.02, 0.30);
+  const o = clamp(outer, 0.2, 0.55);
+  const i = clamp(inner, 0.02, 0.3);
   return i < o ? { outer: o, inner: i } : { outer: o, inner: Math.max(0.02, o - 0.05) };
 }
 
 /** Pack GPU uniform for satellite fragment kernel (32 bytes). */
 export function packSatelliteVisualUniform(tuning: ImageTuningSettings): Float32Array {
   const { outer, inner } = normalizeCoreEdges(tuning.satCoreOuter, tuning.satCoreInner);
-  const haloOuter = Math.min(0.58, outer + 0.10);
+  const haloOuter = Math.min(0.58, outer + 0.1);
   const haloInner = Math.min(haloOuter - 0.02, inner + 0.25);
-  const haloStrength = clamp(tuning.haloStrength, 0.05, 0.40);
+  const haloStrength = clamp(tuning.haloStrength, 0.05, 0.4);
   const coreBoost = clamp(tuning.coreBoost, 1.5, 3.0);
   const distanceCullKm = clamp(tuning.distanceCullKm, 10_000, 600_000);
   const animationIntensity = clamp(tuning.animationIntensity, 0.25, 2.5);
@@ -124,7 +119,9 @@ export function resolveImageTuning(search = ''): ImageTuningSettings {
     params.get('bloomThreshold'),
     0.5,
     3.0,
-    typeof stored.bloomThreshold === 'number' ? stored.bloomThreshold : SHIPPING_IMAGE_TUNING.bloomThreshold,
+    typeof stored.bloomThreshold === 'number'
+      ? stored.bloomThreshold
+      : SHIPPING_IMAGE_TUNING.bloomThreshold,
   );
   const bloomKnee = parseFloatParam(
     params.get('bloomKnee'),
@@ -136,20 +133,26 @@ export function resolveImageTuning(search = ''): ImageTuningSettings {
     params.get('bloomIntensity'),
     0.0,
     3.0,
-    typeof stored.bloomIntensity === 'number' ? stored.bloomIntensity : SHIPPING_IMAGE_TUNING.bloomIntensity,
+    typeof stored.bloomIntensity === 'number'
+      ? stored.bloomIntensity
+      : SHIPPING_IMAGE_TUNING.bloomIntensity,
   );
 
   const satCoreOuter = parseFloatParam(
     params.get('satCore'),
-    0.20,
+    0.2,
     0.55,
-    typeof stored.satCoreOuter === 'number' ? stored.satCoreOuter : SHIPPING_IMAGE_TUNING.satCoreOuter,
+    typeof stored.satCoreOuter === 'number'
+      ? stored.satCoreOuter
+      : SHIPPING_IMAGE_TUNING.satCoreOuter,
   );
   const satCoreInner = parseFloatParam(
     params.get('satFalloff') ?? params.get('satCoreInner'),
     0.02,
-    0.30,
-    typeof stored.satCoreInner === 'number' ? stored.satCoreInner : SHIPPING_IMAGE_TUNING.satCoreInner,
+    0.3,
+    typeof stored.satCoreInner === 'number'
+      ? stored.satCoreInner
+      : SHIPPING_IMAGE_TUNING.satCoreInner,
   );
   const { outer, inner } = normalizeCoreEdges(satCoreOuter, satCoreInner);
 
@@ -161,7 +164,7 @@ export function resolveImageTuning(search = ''): ImageTuningSettings {
     satCoreInner: inner,
     haloStrength:
       typeof stored.haloStrength === 'number'
-        ? clamp(stored.haloStrength, 0.05, 0.40)
+        ? clamp(stored.haloStrength, 0.05, 0.4)
         : SHIPPING_IMAGE_TUNING.haloStrength,
     coreBoost:
       typeof stored.coreBoost === 'number'

@@ -54,23 +54,28 @@ grok_zephyr/
 ## Key Features
 
 ### Build System
+
 - **Vite** for fast development and optimized production builds
 - **TypeScript** with strict type checking
 - **WGSL loader** plugin for importing shader files as strings
 - **Standalone build** mode to generate single-file HTML
 
 ### Core Infrastructure
+
 - **WebGPUContext**: Adapter/device initialization with proper limits for 1M satellites
 - **SatelliteGPUBuffer**: Double-buffered GPU storage for orbital elements and positions
 - **RenderPipeline**: 6-pass rendering (compute → scene → bloom → composite)
 
 ### Camera System
+
 Three view modes:
+
 1. **720km Horizon** - Camera at 720km altitude (default)
 2. **God View** - Orbiting free camera with mouse controls
 3. **Fleet POV** - First-person satellite view
 
 ### Performance
+
 - **PerformanceProfiler**: FPS counter with moving average
 - **GPU timestamp queries** (when supported)
 - **Frustum culling** in vertex shader
@@ -104,6 +109,7 @@ npm run preview
 ## Migration from Single-File
 
 The original `index.html` (~1,200 lines) has been refactored into:
+
 - Modular TypeScript classes
 - Separate WGSL shader files
 - Type-safe interfaces

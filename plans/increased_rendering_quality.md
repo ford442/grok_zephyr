@@ -5,6 +5,7 @@
 **Grok Zephyr** is a WebGPU-powered orbital simulation visualizing 1,048,576 satellites in Earth orbit. The current rendering pipeline consists of:
 
 ### Current Rendering Pipeline (7-Pass)
+
 1. **Compute Pass**: Update satellite positions via compute shader (1M satellites)
 2. **Smile V2 Pass**: Optional animation overlay (RGB beam projections)
 3. **Scene Pass**: Render to HDR (stars → Earth → atmosphere → satellites → laser beams)
@@ -14,16 +15,18 @@
 7. **Composite Pass**: ACES tonemapping + HDR composition
 
 ### Current Visual Elements
-| Element | Current Implementation | Quality Level |
-|---------|------------------------|---------------|
-| Stars | Procedural hash-based starfield with 2 layers, twinkling | Basic |
-| Earth | Sphere with procedural land/ocean/ice, simple lighting, city lights | Moderate |
-| Atmosphere | Simple limb glow with sunset colors | Basic |
-| Satellites | Billboard quads with 7 colors, ring+core glow | Moderate |
-| Bloom | Gaussian blur, 2-pass | Basic |
-| Tonemapping | ACES approximation | Basic |
+
+| Element     | Current Implementation                                              | Quality Level |
+| ----------- | ------------------------------------------------------------------- | ------------- |
+| Stars       | Procedural hash-based starfield with 2 layers, twinkling            | Basic         |
+| Earth       | Sphere with procedural land/ocean/ice, simple lighting, city lights | Moderate      |
+| Atmosphere  | Simple limb glow with sunset colors                                 | Basic         |
+| Satellites  | Billboard quads with 7 colors, ring+core glow                       | Moderate      |
+| Bloom       | Gaussian blur, 2-pass                                               | Basic         |
+| Tonemapping | ACES approximation                                                  | Basic         |
 
 ### Current Technical Specifications
+
 - **HDR Format**: rgba16float
 - **Depth Format**: depth24plus
 - **Bloom Threshold**: 0.75
@@ -36,56 +39,61 @@
 ## Executive Summary
 
 ### Vision Statement
+
 Transform Grok Zephyr from a functional satellite visualization into a breathtaking cinematic experience worthy of 1,048,576 orbiting lights. The goal is to achieve visual fidelity that evokes awe—the same emotional response as seeing the Milky Way from a dark site or witnessing the ISS streak across the sky.
 
 ### Current State Assessment
-| Aspect | Current | Target | Gap |
-|--------|---------|--------|-----|
-| **Atmosphere** | Simple rim glow | Rayleigh-Mie scattering | High |
-| **Earth** | Procedural noise terrain | PBR ocean + FBM terrain | Medium |
-| **Stars** | 2-layer hash grid | Magnitude-based + Milky Way | Medium |
-| **Satellites** | Basic billboards | Lens flare + glint + trails | High |
-| **Beams** | Non-functional placeholder | 65k volumetric lasers | Critical |
-| **Bloom** | Gaussian blur | Kawase multi-resolution | Medium |
-| **Camera** | Pinhole perfect | DoF + motion blur + vignette | Medium |
+
+| Aspect         | Current                    | Target                       | Gap      |
+| -------------- | -------------------------- | ---------------------------- | -------- |
+| **Atmosphere** | Simple rim glow            | Rayleigh-Mie scattering      | High     |
+| **Earth**      | Procedural noise terrain   | PBR ocean + FBM terrain      | Medium   |
+| **Stars**      | 2-layer hash grid          | Magnitude-based + Milky Way  | Medium   |
+| **Satellites** | Basic billboards           | Lens flare + glint + trails  | High     |
+| **Beams**      | Non-functional placeholder | 65k volumetric lasers        | Critical |
+| **Bloom**      | Gaussian blur              | Kawase multi-resolution      | Medium   |
+| **Camera**     | Pinhole perfect            | DoF + motion blur + vignette | Medium   |
 
 ### Recommended Implementation Roadmap
 
 #### Phase 1: Foundation (Week 1) — Immediate Visual Impact
-*Focus: Shader-only improvements requiring no new infrastructure*
 
-| Feature | Effort | Impact | Owner |
-|---------|--------|--------|-------|
-| Vignetting | 2 hrs | High cinematic feel | Agent 5 |
+_Focus: Shader-only improvements requiring no new infrastructure_
+
+| Feature               | Effort   | Impact                       | Owner   |
+| --------------------- | -------- | ---------------------------- | ------- |
+| Vignetting            | 2 hrs    | High cinematic feel          | Agent 5 |
 | Lens Flare Satellites | 1-2 days | Transforms "dots" to "stars" | Agent 4 |
-| Blackbody Star Colors | 1 day | Scientific authenticity | Agent 3 |
-| Shell Differentiation | 1 day | Visual hierarchy | Agent 4 |
-| Ocean Fresnel | 1 day | Realistic water | Agent 1 |
+| Blackbody Star Colors | 1 day    | Scientific authenticity      | Agent 3 |
+| Shell Differentiation | 1 day    | Visual hierarchy             | Agent 4 |
+| Ocean Fresnel         | 1 day    | Realistic water              | Agent 1 |
 
 **Phase 1 Result:** Immediate "wow" improvement with minimal risk. Satellites become star-like light sources, space feels more authentic, subtle lens effects add polish.
 
 #### Phase 2: Core Systems (Weeks 2-3) — Major Visual Features
-*Focus: Features requiring new compute passes and buffer management*
 
-| Feature | Effort | Impact | Owner |
-|---------|--------|--------|-------|
-| Functional Beam System | 5-7 days | Critical missing feature | Agent 4 |
-| Rayleigh-Mie Atmosphere | 3-4 days | Photorealistic Earth | Agent 1 |
-| Kawase Bloom | 2-3 days | Filmic glow quality | Agent 2 |
-| Orbital Trails | 3-4 days | Reveals orbital dynamics | Agent 4 |
-| Auto-Exposure | 2-3 days | Usable in all view modes | Agent 2 |
+_Focus: Features requiring new compute passes and buffer management_
+
+| Feature                 | Effort   | Impact                   | Owner   |
+| ----------------------- | -------- | ------------------------ | ------- |
+| Functional Beam System  | 5-7 days | Critical missing feature | Agent 4 |
+| Rayleigh-Mie Atmosphere | 3-4 days | Photorealistic Earth     | Agent 1 |
+| Kawase Bloom            | 2-3 days | Filmic glow quality      | Agent 2 |
+| Orbital Trails          | 3-4 days | Reveals orbital dynamics | Agent 4 |
+| Auto-Exposure           | 2-3 days | Usable in all view modes | Agent 2 |
 
 **Phase 2 Result:** The simulation becomes a true "light show." Atmospheric scattering transforms Earth's appearance, beams connect satellites in geometric patterns, trails reveal constellation structure.
 
 #### Phase 3: Polish (Week 4) — Cinematic Excellence
-*Focus: Camera effects and advanced post-processing*
 
-| Feature | Effort | Impact | Owner |
-|---------|--------|--------|-------|
-| Depth of Field | 2-3 days | Depth perception | Agent 5 |
-| Motion Blur | 2-3 days | Speed sensation | Agent 5 |
-| Anamorphic Bloom | 1 day | Cinematic character | Agent 2 |
-| Presentation Mode | 2 days | Demo/attract loop | Agent 5 |
+_Focus: Camera effects and advanced post-processing_
+
+| Feature           | Effort   | Impact              | Owner   |
+| ----------------- | -------- | ------------------- | ------- |
+| Depth of Field    | 2-3 days | Depth perception    | Agent 5 |
+| Motion Blur       | 2-3 days | Speed sensation     | Agent 5 |
+| Anamorphic Bloom  | 1 day    | Cinematic character | Agent 2 |
+| Presentation Mode | 2 days   | Demo/attract loop   | Agent 5 |
 
 **Phase 3 Result:** Cinematic quality suitable for showcases and presentations. Smooth camera work, professional color grading, motion effects convey orbital velocity.
 
@@ -96,20 +104,22 @@ Transform Grok Zephyr from a functional satellite visualization into a breathtak
 **Target:** Maintain >30 FPS with all effects
 **Headroom:** 6× safety margin
 
-| Phase | Added Cost | New FPS | Safe? |
-|-------|------------|---------|-------|
-| Phase 1 | +0.2ms | ~290 | ✅ |
-| Phase 2 | +1.5ms | ~200 | ✅ |
-| Phase 3 | +0.6ms | ~180 | ✅ |
+| Phase   | Added Cost | New FPS | Safe? |
+| ------- | ---------- | ------- | ----- |
+| Phase 1 | +0.2ms     | ~290    | ✅    |
+| Phase 2 | +1.5ms     | ~200    | ✅    |
+| Phase 3 | +0.6ms     | ~180    | ✅    |
 
 ### Resource Requirements
 
 **GPU Memory:**
+
 - Current: ~200 MB
 - Additional: ~150 MB (trails, velocity buffer, bloom pyramid)
 - Total: ~350 MB (well within modern GPU budgets)
 
 **Development Time:**
+
 - Total estimated: 20-25 developer days
 - Parallelizable: 3 developers can work simultaneously
 - Risk areas: Beam system (compute+render coordination)
@@ -123,18 +133,19 @@ Transform Grok Zephyr from a functional satellite visualization into a breathtak
 
 ### Risk Mitigation
 
-| Risk | Mitigation |
-|------|------------|
-| Performance regression | Implement quality tiers (Low/Medium/High) |
-| Beam system complexity | Start with 1k beams, scale to 65k |
+| Risk                        | Mitigation                                  |
+| --------------------------- | ------------------------------------------- |
+| Performance regression      | Implement quality tiers (Low/Medium/High)   |
+| Beam system complexity      | Start with 1k beams, scale to 65k           |
 | Atmospheric scattering cost | Use precomputed LUT, single scattering only |
-| Trail overdraw | Frustum cull, LOD based on distance |
+| Trail overdraw              | Frustum cull, LOD based on distance         |
 
 ### Conclusion
 
 This plan represents a comprehensive transformation of Grok Zephyr's visual quality. The phased approach allows for iterative validation and early wins while building toward the ultimate goal: a visualization that does justice to the awe-inspiring scale of 1 million satellites in orbit.
 
 **Recommended immediate next steps:**
+
 1. Implement vignetting (2 hours, immediate impact)
 2. Implement lens flare satellites (1-2 days, dramatic improvement)
 3. Begin beam system architecture design (parallel track)
@@ -179,10 +190,12 @@ Each agent should focus on specific aspects of rendering quality:
 ## Agent Research Areas (To Be Filled by Swarm)
 
 ### Agent 1: Lighting & Atmosphere Expert
-*Research atmospheric scattering models, Earth rendering techniques, and realistic lighting*
 
-### Agent 2: Post-Processing Specialist  
-*Research advanced bloom, filmic effects, and HDR pipeline improvements*
+_Research atmospheric scattering models, Earth rendering techniques, and realistic lighting_
+
+### Agent 2: Post-Processing Specialist
+
+_Research advanced bloom, filmic effects, and HDR pipeline improvements_
 
 ---
 
@@ -194,16 +207,17 @@ After reviewing the current Earth and atmosphere implementations, several critic
 
 #### Earth Shader Limitations
 
-| Issue | Current Implementation | Real-World Physics |
-|-------|----------------------|-------------------|
-| **Terrain** | Two sine waves (f1, f2) with simple thresholds produce cartoonish landmasses | Actual terrain has fractal height distribution with continental shelves, mountain ranges, river basins |
-| **Lighting** | Single Lambertian diffuse term with 4% ambient | Real Earth: specular ocean reflection, atmospheric in-scattering, terrain self-shadowing |
-| **Ocean** | Flat color (0.04, 0.10, 0.30) with no reflectance | Physical ocean has Fresnel reflectance (2-100% view-angle dependent), sun glint, wave normals |
-| **Ice Caps** | Simple latitude-based smoothstep | Actual ice follows elevation + latitude, with seasonal variation and albedo feedback |
-| **City Lights** | Procedural sine-wave patterns | Real cities follow coastlines, river valleys, population density distributions |
-| **Normals** | Vertex normals only, no surface detail | Terrain requires normal maps or procedural bump for meso-scale roughness |
+| Issue           | Current Implementation                                                       | Real-World Physics                                                                                     |
+| --------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **Terrain**     | Two sine waves (f1, f2) with simple thresholds produce cartoonish landmasses | Actual terrain has fractal height distribution with continental shelves, mountain ranges, river basins |
+| **Lighting**    | Single Lambertian diffuse term with 4% ambient                               | Real Earth: specular ocean reflection, atmospheric in-scattering, terrain self-shadowing               |
+| **Ocean**       | Flat color (0.04, 0.10, 0.30) with no reflectance                            | Physical ocean has Fresnel reflectance (2-100% view-angle dependent), sun glint, wave normals          |
+| **Ice Caps**    | Simple latitude-based smoothstep                                             | Actual ice follows elevation + latitude, with seasonal variation and albedo feedback                   |
+| **City Lights** | Procedural sine-wave patterns                                                | Real cities follow coastlines, river valleys, population density distributions                         |
+| **Normals**     | Vertex normals only, no surface detail                                       | Terrain requires normal maps or procedural bump for meso-scale roughness                               |
 
 **Key Shader Analysis** (`src/shaders/render/earth.ts`):
+
 ```wgsl
 // Current terrain generation (overly simplistic)
 let f1  = sin(lat*4.0+0.5)*cos(lon*3.0+1.2);
@@ -214,15 +228,16 @@ let land = smoothstep(0.15,0.35, f1*0.6+f2*0.4);
 
 #### Atmosphere Shader Limitations
 
-| Issue | Current Implementation | Real-World Physics |
-|-------|----------------------|-------------------|
+| Issue                | Current Implementation                        | Real-World Physics                                                                      |
+| -------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------- |
 | **Scattering Model** | Fake rim lighting: `pow(1.0 - dot(N,V), 3.5)` | Actual atmosphere: Rayleigh (λ⁻⁴) + Mie (λ⁻²) scattering with optical depth integration |
-| **Color Variation** | Hardcoded day/sunset colors | Wavelength-dependent scattering produces blue sky, red sunsets, aerial perspective |
-| **Density Profile** | Single scale height approximation | Exponential atmosphere with 8km scale height, ozone layer absorption |
-| **Sun Interactions** | Simple dot product for sunset gradient | In-scattering integral along view ray through varying density |
-| **Earth Shadow** | None implemented | Umbra/penumbra during eclipse, terminator softening |
+| **Color Variation**  | Hardcoded day/sunset colors                   | Wavelength-dependent scattering produces blue sky, red sunsets, aerial perspective      |
+| **Density Profile**  | Single scale height approximation             | Exponential atmosphere with 8km scale height, ozone layer absorption                    |
+| **Sun Interactions** | Simple dot product for sunset gradient        | In-scattering integral along view ray through varying density                           |
+| **Earth Shadow**     | None implemented                              | Umbra/penumbra during eclipse, terminator softening                                     |
 
 **Key Shader Analysis** (`src/shaders/render/atmosphere.ts`):
+
 ```wgsl
 // Current "atmosphere" is just rim glow
 let rim  = 1.0 - abs(dot(N,V));
@@ -241,12 +256,14 @@ let limb = pow(rim, 3.5);
 **Why**: Current fake rim lighting looks artificial. Proper atmospheric scattering creates the iconic blue limb, soft horizon haze, and dramatic sunsets essential for orbital photography aesthetics.
 
 **Physics Model**:
+
 - **Rayleigh Scattering**: λ⁻⁴ dependence (blue sky, red sunset)
 - **Mie Scattering**: λ⁻² dependence (white forward-scattering haze around sun)
 - **Phase Functions**: Rayleigh uses (3/4)(1 + cos²θ), Mie uses Henyey-Greenstein
 - **Optical Depth**: Precomputed 2D LUT for view and sun angles
 
 **Implementation Strategy**:
+
 ```
 Precomputation (CPU or startup compute shader):
   - Generate 256×64 optical depth texture
@@ -255,7 +272,7 @@ Precomputation (CPU or startup compute shader):
   - R channel: Rayleigh optical depth
   - G channel: Mie optical depth
   - B channel: Transmittance
-  
+
 Runtime (fragment shader):
   - Sample optical depth from LUT based on view/sun geometry
   - Calculate in-scattering using phase functions
@@ -263,6 +280,7 @@ Runtime (fragment shader):
 ```
 
 **WGSL Pseudocode**:
+
 ```wgsl
 // Precomputed optical depth LUT
 @group(1) @binding(0) var opticalDepthLUT: texture_2d<f32>;
@@ -289,30 +307,30 @@ fn getOpticalDepth(viewCos: f32, sunCos: f32) -> vec4f {
 
 fn atmosphericScattering(
     viewDir: vec3f,     // Normalized view direction
-    sunDir: vec3f,      // Normalized sun direction  
+    sunDir: vec3f,      // Normalized sun direction
     surfacePos: vec3f,  // Position on Earth surface
     surfaceNormal: vec3f
 ) -> vec3f {
     let viewCos = dot(viewDir, surfaceNormal);
     let sunCos = dot(sunDir, surfaceNormal);
     let cosTheta = dot(viewDir, sunDir);
-    
+
     let opticalDepth = getOpticalDepth(viewCos, sunCos);
-    
+
     // Rayleigh in-scattering (blue sky)
-    let rayleigh = RAYLEIGH_SCATTERING * 
-                   opticalDepth.x * 
+    let rayleigh = RAYLEIGH_SCATTERING *
+                   opticalDepth.x *
                    rayleighPhase(cosTheta);
-    
+
     // Mie in-scattering (haze, sun glow)
-    let mie = vec3f(MIE_SCATTERING) * 
-              opticalDepth.y * 
+    let mie = vec3f(MIE_SCATTERING) *
+              opticalDepth.y *
               miePhase(cosTheta, MIE_G);
-    
+
     // Apply transmittance to surface color
     let transmittance = opticalDepth.z;
     let inScatter = rayleigh + mie;
-    
+
     return inScatter * 20.0; // Scale factor for HDR
 }
 
@@ -321,17 +339,17 @@ fn atmosphericScattering(
     let N = normalize(in.n);
     let V = normalize(uni.camera_pos.xyz - in.wp);
     let sunDir = normalize(vec3f(1.0, 0.4, 0.2));
-    
+
     // Get base terrain color (improved - see section 3)
     let terrain = getTerrainColor(in.wp, N, sunDir);
-    
+
     // Apply atmospheric scattering
     let atmosphere = atmosphericScattering(V, sunDir, in.wp, N);
     let transmittance = getOpticalDepth(dot(V, N), dot(sunDir, N)).z;
-    
+
     // Terrain dims near limb due to longer atmospheric path
     let litTerrain = terrain * transmittance;
-    
+
     // Add in-scattered atmosphere (stronger at limb)
     return vec4f(litTerrain + atmosphere, 1.0);
 }
@@ -350,6 +368,7 @@ fn atmosphericScattering(
 **Why**: Current flat ocean color misses the dynamic specular highlights and view-dependent reflectance that make water recognizable. From orbit, sun glint on ocean is a dominant visual feature.
 
 **Implementation Strategy**:
+
 ```
 Ocean Surface Model:
   - Base color: Deep ocean (0.02, 0.08, 0.18) to shallow (0.05, 0.20, 0.35)
@@ -359,6 +378,7 @@ Ocean Surface Model:
 ```
 
 **WGSL Pseudocode**:
+
 ```wgsl
 // Ocean physical parameters
 const OCEAN_BASE_COLOR = vec3f(0.02, 0.08, 0.18);
@@ -371,22 +391,22 @@ fn schlickFresnel(cosTheta: f32, F0: f32) -> f32 {
 
 // Gerstner wave contribution
 fn gerstnerWave(
-    pos: vec2f, 
-    dir: vec2f, 
-    wavelength: f32, 
-    amplitude: f32, 
+    pos: vec2f,
+    dir: vec2f,
+    wavelength: f32,
+    amplitude: f32,
     time: f32
 ) -> vec3f {
     let k = 2.0 * PI / wavelength;
     let c = sqrt(9.8 / k); // Wave speed (gravity waves)
     let phase = k * (dot(dir, pos) - c * time);
-    
+
     let displacement = vec2f(
         dir.x * (amplitude * cos(phase)),
         dir.y * (amplitude * cos(phase))
     );
     let height = amplitude * sin(phase);
-    
+
     return vec3f(displacement.x, height, displacement.y);
 }
 
@@ -395,19 +415,19 @@ fn getOceanNormal(worldPos: vec3f, time: f32) -> vec3f {
     let lat = asin(worldPos.z / EARTH_RADIUS_KM);
     let lon = atan2(worldPos.y, worldPos.x);
     let pos2d = vec2f(lon * EARTH_RADIUS_KM, lat * EARTH_RADIUS_KM);
-    
+
     // Sum 4 octaves of Gerstner waves
     var wavePos = vec3f(0.0);
-    
+
     // Large swells
     wavePos += gerstnerWave(pos2d, normalize(vec2f(1.0, 0.3)), 2000.0, 15.0, time * 0.05);
-    // Medium waves  
+    // Medium waves
     wavePos += gerstnerWave(pos2d, normalize(vec2f(0.8, 0.6)), 800.0, 6.0, time * 0.08);
     // Small chop
     wavePos += gerstnerWave(pos2d, normalize(vec2f(0.3, 0.9)), 300.0, 2.0, time * 0.12);
     // Detail
     wavePos += gerstnerWave(pos2d, normalize(vec2f(0.5, 0.5)), 100.0, 0.5, time * 0.2);
-    
+
     // Construct normal from displacement gradient
     let tangent = normalize(vec3f(1.0, 0.0, wavePos.x / 100.0));
     let bitangent = normalize(vec3f(0.0, 1.0, wavePos.z / 100.0));
@@ -415,40 +435,40 @@ fn getOceanNormal(worldPos: vec3f, time: f32) -> vec3f {
 }
 
 fn oceanColor(
-    worldPos: vec3f, 
-    normal: vec3f, 
-    viewDir: vec3f, 
+    worldPos: vec3f,
+    normal: vec3f,
+    viewDir: vec3f,
     sunDir: vec3f,
     time: f32
 ) -> vec3f {
     // Get wave-perturbed normal
     let waveNormal = getOceanNormal(worldPos, time);
     let N = normalize(normal + waveNormal * 0.3); // Blend with geometric normal
-    
+
     // Fresnel reflectance (more reflective at glancing angles)
     let VdotN = max(dot(viewDir, N), 0.0);
     let fresnel = schlickFresnel(VdotN, F0);
-    
+
     // Base ocean color (depth variation)
     let depthFactor = 0.8; // Could sample bathymetry
     let baseColor = mix(OCEAN_DEEP_COLOR, OCEAN_SHALLOW_COLOR, depthFactor);
-    
+
     // Diffuse lighting (subsurface scattering approximation)
     let NdotL = max(dot(N, sunDir), 0.0);
     let diffuse = baseColor * NdotL * (1.0 - fresnel);
-    
+
     // Specular sun glint (Blinn-Phong with roughness from wave slope)
     let H = normalize(viewDir + sunDir);
     let NdotH = max(dot(N, H), 0.0);
     let roughness = 0.1 + 0.2 * (1.0 - VdotN); // Rougher at distance
     let specPower = mix(200.0, 20.0, roughness);
     let specular = pow(NdotH, specPower) * fresnel * 2.0;
-    
+
     // Environment reflection (sky color approximation)
     let reflectDir = reflect(-viewDir, N);
     let skyColor = vec3f(0.4, 0.7, 1.0); // Simplified sky
     let reflection = skyColor * fresnel * 0.5;
-    
+
     return diffuse + vec3f(specular) + reflection;
 }
 ```
@@ -466,6 +486,7 @@ fn oceanColor(
 **Why**: Current terrain looks artificial and repetitive. Fractal Brownian Motion (FBM) produces natural-looking terrain with proper frequency distribution.
 
 **Implementation Strategy**:
+
 ```
 Terrain Generation:
   - 4-octave Simplex FBM for height
@@ -475,6 +496,7 @@ Terrain Generation:
 ```
 
 **WGSL Pseudocode**:
+
 ```wgsl
 // Simplex noise functions (simplified - use established implementations)
 fn simplex3d(p: vec3f) -> f32 {
@@ -487,26 +509,26 @@ fn fbmTerrain(pos: vec3f, octaves: i32) -> f32 {
     var amplitude = 0.5;
     var frequency = 1.0;
     var maxValue = 0.0;
-    
+
     for (var i = 0; i < octaves; i++) {
         value += amplitude * simplex3d(pos * frequency);
         maxValue += amplitude;
         amplitude *= 0.5;
         frequency *= 2.0;
     }
-    
+
     return value / maxValue; // Normalize to 0-1
 }
 
 fn calculateTerrainNormal(pos: vec3f, radius: f32) -> vec3f {
     let epsilon = 0.01;
-    
+
     // Sample height at neighbors for gradient
     let hL = fbmTerrain(normalize(pos + vec3f(-epsilon, 0.0, 0.0)) * radius, 4);
     let hR = fbmTerrain(normalize(pos + vec3f(epsilon, 0.0, 0.0)) * radius, 4);
     let hD = fbmTerrain(normalize(pos + vec3f(0.0, -epsilon, 0.0)) * radius, 4);
     let hU = fbmTerrain(normalize(pos + vec3f(0.0, epsilon, 0.0)) * radius, 4);
-    
+
     // Construct tangent-space normal from gradient
     let gradient = vec2f(hR - hL, hU - hD) / (2.0 * epsilon);
     return normalize(vec3f(-gradient.x, -gradient.y, 1.0));
@@ -519,10 +541,10 @@ fn biomeColor(height: f32, latitude: f32, slope: f32) -> vec3f {
     const PLAINS = 0.55;
     const HILLS = 0.70;
     const MOUNTAIN = 0.85;
-    
+
     // Temperature based on latitude
     let temp = 1.0 - abs(latitude) / (PI / 2.0); // 1.0 at equator, 0.0 at poles
-    
+
     // Biome colors
     let ocean = vec3f(0.02, 0.08, 0.18);
     let beach = vec3f(0.76, 0.70, 0.50);
@@ -530,7 +552,7 @@ fn biomeColor(height: f32, latitude: f32, slope: f32) -> vec3f {
     let forest = mix(vec3f(0.12, 0.28, 0.08), vec3f(0.08, 0.20, 0.05), temp);
     let rock = vec3f(0.35, 0.32, 0.28);
     let snow = vec3f(0.90, 0.92, 0.95);
-    
+
     var color: vec3f;
     if (height < SEA_LEVEL) {
         color = ocean;
@@ -545,11 +567,11 @@ fn biomeColor(height: f32, latitude: f32, slope: f32) -> vec3f {
     } else {
         color = mix(rock, snow, (height - MOUNTAIN) / (1.0 - MOUNTAIN));
     }
-    
+
     // Slope affects vegetation (steeper = more rock)
     let slopeFactor = smoothstep(0.3, 0.7, slope);
     color = mix(color, rock, slopeFactor * 0.7);
-    
+
     // Add some noise for texture variation
     let noise = simplex3d(pos * 500.0) * 0.1 + 0.9;
     return color * noise;
@@ -559,26 +581,26 @@ fn biomeColor(height: f32, latitude: f32, slope: f32) -> vec3f {
 fn getTerrainColor(worldPos: vec3f, normal: vec3f, sunDir: vec3f) -> vec3f {
     let lat = asin(worldPos.z / length(worldPos));
     let height = fbmTerrain(worldPos, 4);
-    
+
     // Calculate slope from normal
     let geometricNormal = normalize(worldPos);
     let slope = length(normal - geometricNormal);
-    
+
     // Get biome color
     var color = biomeColor(height, lat, slope);
-    
+
     // Apply terrain normal for lighting
     let terrainNormal = calculateTerrainNormal(worldPos, length(worldPos));
     let N = normalize(normal + terrainNormal * 0.5);
-    
+
     // Diffuse lighting
     let NdotL = max(dot(N, sunDir), 0.0);
     let ambient = 0.03;
     let lit = color * (NdotL * 0.9 + ambient);
-    
+
     // Add atmospheric perspective (distance fade to blue)
     // ... handled by atmospheric scattering pass
-    
+
     return lit;
 }
 ```
@@ -591,18 +613,19 @@ fn getTerrainColor(worldPos: vec3f, normal: vec3f, sunDir: vec3f) -> vec3f {
 
 ### Implementation Complexity Summary
 
-| Effect | Complexity | GPU Cost | Memory | Visual Impact |
-|--------|------------|----------|--------|---------------|
-| Rayleigh-Mie Scattering | High | ~0.5ms | 64KB LUT | Very High |
-| PBR Ocean | Medium | ~0.3ms | None | High |
-| FBM Terrain | Medium | ~0.4ms | None | Medium |
-| Combined Pipeline | - | ~1.2ms | 64KB | Transformative |
+| Effect                  | Complexity | GPU Cost | Memory   | Visual Impact  |
+| ----------------------- | ---------- | -------- | -------- | -------------- |
+| Rayleigh-Mie Scattering | High       | ~0.5ms   | 64KB LUT | Very High      |
+| PBR Ocean               | Medium     | ~0.3ms   | None     | High           |
+| FBM Terrain             | Medium     | ~0.4ms   | None     | Medium         |
+| Combined Pipeline       | -          | ~1.2ms   | 64KB     | Transformative |
 
 ---
 
 ### Performance Impact Analysis
 
 **Current Pipeline Timing**:
+
 ```
 Scene Pass (Earth + Atmosphere): ~0.8ms
   - Earth: 0.5ms (simple shading)
@@ -610,10 +633,11 @@ Scene Pass (Earth + Atmosphere): ~0.8ms
 ```
 
 **Proposed Pipeline Timing**:
+
 ```
 Scene Pass (Enhanced Earth): ~2.0ms
   - Terrain (FBM + biomes): 0.9ms
-  - Ocean (Gerstner + Fresnel): 0.6ms  
+  - Ocean (Gerstner + Fresnel): 0.6ms
   - Atmosphere (Rayleigh-Mie): 0.5ms
 ```
 
@@ -621,6 +645,7 @@ Scene Pass (Enhanced Earth): ~2.0ms
 **Total Pipeline**: 3.2ms → 4.4ms (still well within 16.6ms budget for 60fps)
 
 **Optimization Notes**:
+
 - Optical depth LUT is 256×64 = 16K samples, trivial memory
 - Consider LOD: simpler terrain noise for distant views
 - Ocean waves can be vertex-shader based for better performance
@@ -631,9 +656,11 @@ Scene Pass (Enhanced Earth): ~2.0ms
 ### Priority Ranking (Top 3 Recommendations)
 
 #### 🥇 1. Rayleigh-Mie Atmospheric Scattering
+
 **Why #1**: The atmosphere is visible in every shot and currently looks fake. Proper scattering transforms the entire visual identity—blue limbs, soft horizons, and realistic sunsets are the hallmark of space imagery.
 
 **Implementation Order**:
+
 1. Precompute optical depth LUT on CPU at startup
 2. Implement Rayleigh phase function in fragment shader
 3. Add Mie scattering for haze/glow near sun
@@ -643,9 +670,11 @@ Scene Pass (Enhanced Earth): ~2.0ms
 ---
 
 #### 🥈 2. Physically-Based Ocean with Sun Glint
+
 **Why #2**: From the 720km camera view, oceans cover 70% of visible surface. Dynamic specular highlights and view-dependent Fresnel reflectance add life and motion to the scene.
 
 **Implementation Order**:
+
 1. Implement Schlick Fresnel function
 2. Add 4-octave Gerstner wave normals
 3. Blinn-Phong sun glint with wave-roughness modulation
@@ -655,9 +684,11 @@ Scene Pass (Enhanced Earth): ~2.0ms
 ---
 
 #### 🥉 3. FBM Terrain with Biome System
+
 **Why #3**: While less noticeable than atmosphere, proper terrain prevents the "plastic planet" look. Fractal noise creates natural coastlines, mountain ranges, and vegetation zones.
 
 **Implementation Order**:
+
 1. Implement Simplex noise function (or use math library)
 2. Create 4-octave FBM terrain height function
 3. Height-based biome classification system
@@ -669,6 +700,7 @@ Scene Pass (Enhanced Earth): ~2.0ms
 ### Shader Code Organization
 
 Proposed file structure for enhanced shaders:
+
 ```
 src/shaders/render/
 ├── earth.ts                 # UPDATE: Enhanced terrain + ocean
@@ -698,13 +730,13 @@ struct EarthAtmosphereParams {
     mieAsymmetry: f32,             // Henyey-Greenstein g parameter
     atmosphereScale: f32,          // Scale height multiplier
     sunIntensity: f32,             // Solar irradiance scale
-    
+
     // Ocean
     waveTime: f32,                 // Animation time for waves
     waveScale: f32,                // Wave height multiplier
     oceanRoughness: f32,           // Specular power control
     pad1: f32,
-    
+
     // Terrain
     terrainScale: f32,             // Noise frequency multiplier
     terrainHeight: f32,            // Maximum displacement
@@ -769,6 +801,7 @@ After reviewing the current post-processing implementation, several limitations 
 **Why**: Produces superior quality with fewer samples, natural falloff, and better performance.
 
 **Implementation**:
+
 ```
 Downsample Chain: 1x → 1/2x → 1/4x → 1/8x → 1/16x
 Upsample Chain: 1/16x → 1/8x → 1/4x → 1/2x → 1x
@@ -776,18 +809,19 @@ Kawase Kernel: Sample 4 corners at increasing offsets per level
 ```
 
 **WGSL Pseudocode**:
+
 ```wgsl
 // Kawase downsample - 4 taps per pixel
 fn kawaseDownsample(uv: vec2f, offset: f32) -> vec3f {
     let texel = 1.0 / vec2f(textureDimensions(srcTex, 0));
     let d = offset * texel;
-    
+
     var sum = vec3f(0.0);
     sum += textureSample(srcTex, samp, uv + vec2f(-d.x, -d.y)).rgb;
     sum += textureSample(srcTex, samp, uv + vec2f( d.x, -d.y)).rgb;
     sum += textureSample(srcTex, samp, uv + vec2f(-d.x,  d.y)).rgb;
     sum += textureSample(srcTex, samp, uv + vec2f( d.x,  d.y)).rgb;
-    
+
     return sum * 0.25;
 }
 
@@ -795,14 +829,14 @@ fn kawaseDownsample(uv: vec2f, offset: f32) -> vec3f {
 fn kawaseUpsample(uv: vec2f, offset: f32) -> vec3f {
     let texel = 1.0 / vec2f(textureDimensions(srcTex, 0));
     let d = offset * texel;
-    
+
     var sum = vec3f(0.0);
     sum += textureSample(srcTex, samp, uv + vec2f(-d.x * 2.0,  0.0)).rgb * 0.25;
     sum += textureSample(srcTex, samp, uv + vec2f( d.x * 2.0,  0.0)).rgb * 0.25;
     sum += textureSample(srcTex, samp, uv + vec2f( 0.0, -d.y * 2.0)).rgb * 0.25;
     sum += textureSample(srcTex, samp, uv + vec2f( 0.0,  d.y * 2.0)).rgb * 0.25;
     sum += textureSample(srcTex, samp, uv).rgb;
-    
+
     return sum * 0.2;
 }
 ```
@@ -820,6 +854,7 @@ fn kawaseUpsample(uv: vec2f, offset: f32) -> vec3f {
 **Why**: Different view modes (720km horizon vs Moon view) have vastly different lighting. Fixed exposure causes blown-out or underexposed scenes.
 
 **Implementation**:
+
 ```
 1. Luminance histogram compute pass (64 bins)
 2. Target exposure calculation from average luminance
@@ -828,18 +863,19 @@ fn kawaseUpsample(uv: vec2f, offset: f32) -> vec3f {
 ```
 
 **WGSL Pseudocode**:
+
 ```wgsl
 // Luminance extraction in compute shader
 @compute @workgroup_size(16, 16)
 fn buildHistogram(@builtin(global_invocation_id) gid: vec3u) {
     let dims = textureDimensions(sceneTex, 0);
     if (gid.x >= dims.x || gid.y >= dims.y) { return; }
-    
+
     let color = textureLoad(sceneTex, vec2i(gid.xy), 0).rgb;
     let lum = dot(color, vec3f(0.2126, 0.7152, 0.0722));
     let logLum = clamp(log2(lum + 0.001) * 0.1 + 0.5, 0.0, 1.0);
     let bin = u32(logLum * 63.0);
-    
+
     atomicAdd(&histogram[bin], 1u);
 }
 
@@ -847,14 +883,14 @@ fn buildHistogram(@builtin(global_invocation_id) gid: vec3u) {
 fn calculateExposure(histogram: array<u32, 64>) -> f32 {
     var totalLum = 0.0;
     var totalWeight = 0.0;
-    
+
     for (var i = 0u; i < 64u; i++) {
         let weight = f32(histogram[i]);
         let lum = exp2((f32(i) / 63.0 - 0.5) * 10.0); // log-space to linear
         totalLum += lum * weight;
         totalWeight += weight;
     }
-    
+
     let avgLum = totalLum / max(totalWeight, 1.0);
     let targetExposure = 0.18 / avgLum; // Middle gray at 18%
     return clamp(targetExposure, 0.1, 10.0);
@@ -874,6 +910,7 @@ fn calculateExposure(histogram: array<u32, 64>) -> f32 {
 **Why**: Different scenes benefit from different tonemapping characteristics. ACES can be contrasty; AgX is more filmic; Reinhard preserves shadows.
 
 **WGSL Pseudocode**:
+
 ```wgsl
 const TONEMAP_ACES = 0u;
 const TONEMAP_AGX = 1u;
@@ -884,11 +921,11 @@ const TONEMAP_UNCHARTED = 3u;
 fn tonemapAgX(x: vec3f) -> vec3f {
     const EV_OFFSET = 0.0;
     const SIGMA = 0.5;
-    
+
     let x_log = max(vec3f(0.0), log2(x) + EV_OFFSET);
     let x_sigmoid = x_log * inversesqrt(x_log * x_log + SIGMA * SIGMA);
     let x_linear = 0.5 + 0.5 * x_sigmoid;
-    
+
     // Approximate AgX look-up (simplified)
     let toe = pow(x_linear, vec3f(2.2));
     let shoulder = 1.0 - pow(1.0 - x_linear, vec3f(2.2));
@@ -910,7 +947,7 @@ fn tonemapUncharted2(x: vec3f) -> vec3f {
     const D = 0.20; // toe strength
     const E = 0.02; // toe numerator
     const F = 0.30; // toe denominator
-    
+
     return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
 }
 
@@ -919,7 +956,7 @@ fn applyTonemap(hdr: vec3f, mode: u32, exposure: f32) -> vec3f {
     switch(mode) {
         case TONEMAP_AGX: { return tonemapAgX(exposed); }
         case TONEMAP_REINHARD: { return tonemapReinhard(exposed, 4.0); }
-        case TONEMAP_UNCHARTED: { 
+        case TONEMAP_UNCHARTED: {
             let W = 11.2; // white scale
             let curr = tonemapUncharted2(exposed);
             let whiteScale = 1.0 / tonemapUncharted2(vec3f(W));
@@ -943,12 +980,14 @@ fn applyTonemap(hdr: vec3f, mode: u32, exposure: f32) -> vec3f {
 **Why**: Creates dramatic stretched highlights characteristic of anamorphic lenses - perfect for satellite light shows.
 
 **Implementation**:
+
 ```
 Standard bloom pipeline + extra horizontal blur pass with 2-4x stretch
 Or: Modify blur direction vector per pyramid level
 ```
 
 **WGSL Pseudocode**:
+
 ```wgsl
 // Anamorphic stretch factor (1.0 = spherical, 4.0 = extreme anamorphic)
 const ANAMORPHIC_RATIO: f32 = 2.5;
@@ -962,7 +1001,7 @@ fn anamorphicBlur(uv: vec2f, dir: vec2f) -> vec3f {
 // Or in composite pass, sample with horizontal offset
 fn applyAnamorphicBloom(scene: vec3f, bloomTex: texture_2d<f32>, uv: vec2f) -> vec3f {
     let bloom = textureSample(bloomTex, samp, uv).rgb;
-    
+
     // Additional horizontal streak
     var streak = vec3f(0.0);
     let texelX = 1.0 / f32(textureDimensions(bloomTex, 0).x);
@@ -970,7 +1009,7 @@ fn applyAnamorphicBloom(scene: vec3f, bloomTex: texture_2d<f32>, uv: vec2f) -> v
         let weight = exp(-f32(i * i) * 0.02); // Gaussian falloff
         streak += textureSample(bloomTex, samp, uv + vec2f(f32(i) * texelX * 4.0, 0.0)).rgb * weight;
     }
-    
+
     return scene + bloom * 0.5 + streak * 0.3;
 }
 ```
@@ -988,15 +1027,16 @@ fn applyAnamorphicBloom(scene: vec3f, bloomTex: texture_2d<f32>, uv: vec2f) -> v
 **Why**: Draws viewer attention to center composition, adds cinematic framing.
 
 **WGSL Pseudocode**:
+
 ```wgsl
 fn applyVignette(color: vec3f, uv: vec2f) -> vec3f {
     let center = uv - 0.5;
     let dist = length(center);
     let vignette = 1.0 - dist * dist * VIGNETTE_STRENGTH; // 0.8 typical
-    
+
     // Optional: color tint toward edges
     let tint = mix(vec3f(1.0), VIGNETTE_COLOR, dist * 0.5);
-    
+
     return color * vignette * tint;
 }
 
@@ -1004,14 +1044,14 @@ fn applyVignette(color: vec3f, uv: vec2f) -> vec3f {
 fn colorGrade(color: vec3f) -> vec3f {
     // Contrast (S-curve)
     let contrasted = (color - 0.5) * CONTRAST + 0.5;
-    
+
     // Saturation
     let lum = dot(contrasted, vec3f(0.299, 0.587, 0.114));
     let saturated = mix(vec3f(lum), contrasted, SATURATION);
-    
+
     // Color balance (shadows/midtones/highlights)
     let graded = saturated * COLOR_TINT;
-    
+
     return clamp(graded, vec3f(0.0), vec3f(1.0));
 }
 ```
@@ -1029,19 +1069,20 @@ fn colorGrade(color: vec3f) -> vec3f {
 **Why**: Adds lens authenticity; subtle effect enhances "photographed" quality.
 
 **WGSL Pseudocode**:
+
 ```wgsl
 fn applyChromaticAberration(sceneTex: texture_2d<f32>, uv: vec2f) -> vec3f {
     let center = uv - 0.5;
     let dist = length(center);
     let dir = normalize(center);
-    
+
     // Aberration increases toward edges
     let amount = dist * dist * CA_STRENGTH; // 0.003 typical
-    
+
     let r = textureSample(sceneTex, samp, uv + dir * amount * 1.0).r;
     let g = textureSample(sceneTex, samp, uv + dir * amount * 0.5).g;
     let b = textureSample(sceneTex, samp, uv).b;
-    
+
     return vec3f(r, g, b);
 }
 ```
@@ -1059,6 +1100,7 @@ fn applyChromaticAberration(sceneTex: texture_2d<f32>, uv: vec2f) -> vec3f {
 **Why**: Bright satellites should produce cinematic lens flare artifacts.
 
 **Implementation**:
+
 ```
 1. Compute pass identifies satellites with brightness > threshold
 2. Generate flare quads at those screen positions
@@ -1066,14 +1108,15 @@ fn applyChromaticAberration(sceneTex: texture_2d<f32>, uv: vec2f) -> vec3f {
 ```
 
 **WGSL Pseudocode**:
+
 ```wgsl
 // Lens flare sprite fragment shader
 fn lensFlareSprite(uv: vec2f, intensity: f32) -> vec3f {
     let dist = length(uv - 0.5);
-    
+
     // Halo
     let halo = exp(-dist * 4.0) * 0.5;
-    
+
     // Ghosts (multiple offset orbs)
     var ghosts = vec3f(0.0);
     for (var i = 0; i < 5; i++) {
@@ -1081,11 +1124,11 @@ fn lensFlareSprite(uv: vec2f, intensity: f32) -> vec3f {
         let ghostDist = length(uv - ghostPos);
         ghosts += FLARE_COLORS[i] * exp(-ghostDist * 8.0) * 0.3;
     }
-    
+
     // Star burst (radial streaks)
     let angle = atan2(uv.y - 0.5, uv.x - 0.5);
     let burst = pow(sin(angle * 8.0), 4.0) * exp(-dist * 2.0) * 0.5;
-    
+
     return (halo + ghosts + burst) * intensity;
 }
 ```
@@ -1103,6 +1146,7 @@ fn lensFlareSprite(uv: vec2f, intensity: f32) -> vec3f {
 **Why**: Reduces banding, adds perceived detail, "grounds" the image.
 
 **WGSL Pseudocode**:
+
 ```wgsl
 // Simplex noise or blue noise texture lookup
 fn filmGrain(uv: vec2f, time: f32) -> f32 {
@@ -1128,38 +1172,42 @@ fn applyFilmGrain(color: vec3f, uv: vec2f, time: f32) -> vec3f {
 
 ### Implementation Complexity Summary
 
-| Effect | Complexity | Performance Cost | Visual Impact |
-|--------|------------|------------------|---------------|
-| Kawase Bloom | Medium | Medium (better than current) | Very High |
-| Auto-Exposure | Medium | Low | High |
-| Tonemapping Options | Low | Negligible | Medium |
-| Anamorphic Bloom | Low | Low | High |
-| Vignetting | Low | Negligible | Medium |
-| Chromatic Aberration | Low | Very Low | Low |
-| Lens Flares | High | Medium | High |
-| Film Grain | Low | Negligible | Low |
+| Effect               | Complexity | Performance Cost             | Visual Impact |
+| -------------------- | ---------- | ---------------------------- | ------------- |
+| Kawase Bloom         | Medium     | Medium (better than current) | Very High     |
+| Auto-Exposure        | Medium     | Low                          | High          |
+| Tonemapping Options  | Low        | Negligible                   | Medium        |
+| Anamorphic Bloom     | Low        | Low                          | High          |
+| Vignetting           | Low        | Negligible                   | Medium        |
+| Chromatic Aberration | Low        | Very Low                     | Low           |
+| Lens Flares          | High       | Medium                       | High          |
+| Film Grain           | Low        | Negligible                   | Low           |
 
 ---
 
 ### Performance Impact Analysis
 
 **Current Pipeline Memory**:
+
 - HDR buffer: width × height × 8 bytes (rgba16float)
 - Bloom A/B: 2 × width × height × 8 bytes
 - Total per frame: ~3× screen size × 8 bytes
 
 **Proposed Pipeline Memory**:
+
 - HDR buffer: width × height × 8 bytes
 - Bloom pyramid: 1× + 0.25× + 0.0625× + 0.0156× + 0.0039× ≈ 1.33× screen size × 8 bytes
 - Luminance histogram: 256 bytes (negligible)
 - **Net result**: Lower memory usage than current (1.33× vs 2× for bloom)
 
 **Render Passes**:
+
 - Current: Threshold + H-Blur + V-Blur + Composite = 4 passes
 - Proposed: Threshold + 4× Downsample + 4× Upsample + Composite = 9 passes
 - **But**: Each pass works on smaller data; total pixel throughput is lower
 
 **Estimated Performance**:
+
 - Kawase bloom: 20-30% faster than Gaussian (fewer total samples)
 - Auto-exposure: +0.1ms compute time
 - Additional effects: <0.05ms combined
@@ -1169,9 +1217,11 @@ fn applyFilmGrain(color: vec3f, uv: vec2f, time: f32) -> vec3f {
 ### Priority Ranking (Top 3 Recommendations)
 
 #### 🥇 1. Kawase Multi-Resolution Bloom
+
 **Why #1**: Biggest visual improvement with better performance. Current Gaussian bloom looks artificial; Kawase produces organic, filmic glow essential for the satellite light show aesthetic.
 
 **Implementation Order**:
+
 1. Create bloom pyramid textures (1/2, 1/4, 1/8, 1/16 resolution)
 2. Implement Kawase downsample shaders
 3. Implement Kawase upsample shaders with additive blend
@@ -1181,9 +1231,11 @@ fn applyFilmGrain(color: vec3f, uv: vec2f, time: f32) -> vec3f {
 ---
 
 #### 🥈 2. Adaptive Auto-Exposure with Multiple Tonemappers
+
 **Why #2**: Essential for usability across view modes. Moon view vs 720km horizon have 1000× luminance difference. AgX tonemapping provides more filmic, less contrasty look than current ACES.
 
 **Implementation Order**:
+
 1. Add luminance histogram compute shader (64 bins)
 2. CPU-side exposure calculation with temporal adaptation
 3. Add exposure uniform to composite shader
@@ -1193,9 +1245,11 @@ fn applyFilmGrain(color: vec3f, uv: vec2f, time: f32) -> vec3f {
 ---
 
 #### 🥉 3. Anamorphic Bloom + Vignetting
+
 **Why #3**: Distinctive cinematic look that differentiates Grok Zephyr. Anamorphic stretch makes satellite highlights feel like a light show. Vignetting adds professional framing with minimal cost.
 
 **Implementation Order**:
+
 1. Add horizontal stretch factor to bloom blur directions
 2. OR: Add extra horizontal-only blur pass
 3. Implement radial vignette in composite shader
@@ -1206,6 +1260,7 @@ fn applyFilmGrain(color: vec3f, uv: vec2f, time: f32) -> vec3f {
 ### Shader Code Organization
 
 Proposed file structure for new shaders:
+
 ```
 src/shaders/render/postProcess/
 ├── bloomThreshold.ts      # (existing - update threshold)
@@ -1227,19 +1282,19 @@ struct PostProcessParams {
     bloomIntensity: f32,           // 0.0 - 3.0
     anamorphicRatio: f32,          // 1.0 - 4.0
     bloomPad: f32,
-    
+
     // Tonemapping
     exposure: f32,                 // Auto or manual (0.1 - 10.0)
     tonemapMode: u32,              // 0=ACES, 1=AgX, 2=Reinhard, 3=Uncharted
     adaptationSpeed: f32,          // Eye adaptation rate (0.1 - 5.0)
     targetLuminance: f32,          // Target avg luminance (0.1 - 1.0)
-    
+
     // Color Grading
     contrast: f32,                 // 0.5 - 2.0
     saturation: f32,               // 0.0 - 2.0
     colorTemp: f32,                // -1.0 (cool) to 1.0 (warm)
     vignetteStrength: f32,         // 0.0 - 1.0
-    
+
     // Effects
     caStrength: f32,               // Chromatic aberration (0.0 - 0.01)
     grainStrength: f32,            // Film grain (0.0 - 0.1)
@@ -1263,7 +1318,8 @@ These enhancements maintain the WebGPU performance budget while significantly el
 ---
 
 ### Agent 3: Space Environment Artist
-*Research starfield realism, deep space environments, and cosmic effects*
+
+_Research starfield realism, deep space environments, and cosmic effects_
 
 ---
 
@@ -1273,17 +1329,18 @@ These enhancements maintain the WebGPU performance budget while significantly el
 
 The existing starfield implementation (`src/shaders/render/stars.ts`) has several artificial characteristics that break immersion:
 
-| Issue | Current Implementation | Real-World Physics |
-|-------|----------------------|-------------------|
-| **Distribution** | Uniform 2D grid-based hash (512×512 + 200×200 cells) | Stars follow magnitude distribution: ~10× more stars per magnitude dimmer than previous |
-| **Colors** | Simple blue↔yellow mix based on random hash | Blackbody radiation: 3,000K (red) to 30,000K (blue-white) with distinct spectral types |
-| **Brightness** | Power function of random hash with arbitrary thresholds | Pogson magnitude scale: brightness ratio of 2.512× per magnitude step |
-| **Twinkling** | Sine-wave based intensity oscillation | Atmospheric scintillation: high-frequency turbulence-driven intensity/position variation |
-| **Depth** | Static 2 parallax layers with fixed scales | Infinite depth with proper motion, parallax, and galactic structure |
-| **Galaxy** | No galactic structure | Milky Way band: ~200-400 billion stars concentrated along galactic plane |
-| **Nebulae** | None | Zodiacal light, cosmic dust, reflection/emission nebulae visible from space |
+| Issue            | Current Implementation                                  | Real-World Physics                                                                       |
+| ---------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **Distribution** | Uniform 2D grid-based hash (512×512 + 200×200 cells)    | Stars follow magnitude distribution: ~10× more stars per magnitude dimmer than previous  |
+| **Colors**       | Simple blue↔yellow mix based on random hash             | Blackbody radiation: 3,000K (red) to 30,000K (blue-white) with distinct spectral types   |
+| **Brightness**   | Power function of random hash with arbitrary thresholds | Pogson magnitude scale: brightness ratio of 2.512× per magnitude step                    |
+| **Twinkling**    | Sine-wave based intensity oscillation                   | Atmospheric scintillation: high-frequency turbulence-driven intensity/position variation |
+| **Depth**        | Static 2 parallax layers with fixed scales              | Infinite depth with proper motion, parallax, and galactic structure                      |
+| **Galaxy**       | No galactic structure                                   | Milky Way band: ~200-400 billion stars concentrated along galactic plane                 |
+| **Nebulae**      | None                                                    | Zodiacal light, cosmic dust, reflection/emission nebulae visible from space              |
 
 **Key Observations:**
+
 - The procedural hash approach produces ~3,000 visible stars (0.6% of screen pixels at 1080p), while real dark-sky viewing shows 4,500-6,000 stars naked-eye
 - Current twinkling is synchronized and periodic; real scintillation is chaotic, faster (10-100Hz), and altitude-dependent
 - No account for interstellar extinction (reddening) or galactic coordinates
@@ -1297,6 +1354,7 @@ The existing starfield implementation (`src/shaders/render/stars.ts`) has severa
 **Concept**: Replace grid-based spawning with magnitude-limited distribution following the real stellar luminosity function.
 
 **Technical Details**:
+
 - Use Hipparcos catalog subset: ~118,000 stars with Vmag ≤ 12.5
 - Approximate the remainder procedurally using luminosity function:
   ```
@@ -1308,6 +1366,7 @@ The existing starfield implementation (`src/shaders/render/stars.ts`) has severa
   ```
 
 **Implementation Strategy**:
+
 - **Option A (Lightweight)**: Pre-bake 8,000 brightest stars (Vmag ≤ 6.5) into a GPU storage buffer, render as point list with compute-culled billboards
 - **Option B (Comprehensive)**: Store ~100,000 stars in 3D cubemap texture (galactic coordinates), sample with LOD based on view direction
 
@@ -1329,25 +1388,26 @@ Temperature ranges by spectral type:
 ```
 
 **WGSL Implementation** (fast approximation):
+
 ```wgsl
 fn temperatureToRGB(temp: f32) -> vec3f {
     // Simple blackbody approximation (T in Kelvin)
     let t = clamp(temp, 1000.0, 40000.0) / 1000.0;
-    
+
     var r: f32;
     if (t <= 6.6) {
         r = 1.0;
     } else {
         r = 1.292 - 0.1292 * t + 0.0054 * t * t - 0.00007 * t * t * t;
     }
-    
+
     var g: f32;
     if (t <= 6.6) {
         g = -0.351 + 0.458 * t - 0.0237 * t * t + 0.0004 * t * t * t;
     } else {
         g = 1.016 - 0.0638 * t + 0.0014 * t * t;
     }
-    
+
     var b: f32;
     if (t <= 4.0) {
         b = 0.07 * t;
@@ -1356,7 +1416,7 @@ fn temperatureToRGB(temp: f32) -> vec3f {
     } else {
         b = 1.0;
     }
-    
+
     return clamp(vec3f(r, g, b), vec3f(0.0), vec3f(1.0));
 }
 ```
@@ -1366,11 +1426,13 @@ fn temperatureToRGB(temp: f32) -> vec3f {
 **Physical Basis**: Scintillation arises from atmospheric turbulence cells (Fried scale r₀ ~ 5-20cm) causing wavefront phase distortions that convert to intensity fluctuations.
 
 **Key Parameters**:
+
 - Scintillation frequency: 10-100 Hz (wind speed / turbulence cell size)
 - Amplitude increases with airmass: scint ∝ sec(zenith_angle)^1.5
 - Color-dependent: blue scintillates more than red
 
 **WGSL Implementation**:
+
 ```wgsl
 fn atmosphericScintillation(
     starPos: vec3f,      // Star direction vector
@@ -1381,24 +1443,24 @@ fn atmosphericScintillation(
     // Airmass approximation (increases near horizon)
     let zenithAngle = acos(clamp(starPos.y, 0.0, 1.0));
     let airmass = 1.0 / max(cos(zenithAngle), 0.01);  // sec(z) approx
-    
+
     // Only twinkle below ~80° from zenith, stronger near horizon
     if (airmass < 1.02) { return 1.0; }  // Zenith: no twinkling
-    
+
     // Turbulence noise (multi-octave)
-    let turbulence = 
+    let turbulence =
         noise3d(starPos * 50.0 + time * 8.0) * 0.5 +
         noise3d(starPos * 120.0 + time * 15.0) * 0.3 +
         noise3d(starPos * 250.0 + time * 25.0) * 0.2;
-    
+
     // Scintillation intensity increases with:
     // - Airmass (near horizon)
     // - Fainter stars (point sources twinkle more)
     let scintStrength = (airmass - 1.0) * 0.3 * (1.0 + magnitude * 0.1);
-    
+
     // Log-normal distribution (intensity fluctuations are multiplicative)
     let scintillation = exp(turbulence * scintStrength);
-    
+
     // Chromatic effect: blue scintillates more
     return scintillation;
 }
@@ -1410,33 +1472,35 @@ fn atmosphericScintillation(
 The Milky Way appears as a band ~10-20° wide, brightest toward the galactic center (Sagittarius A* direction).
 
 **Procedural Approach** (no textures needed):
+
 ```wgsl
 fn milkyWayDensity(galacticCoord: vec2f) -> f32 {
     // galacticCoord: (longitude l, latitude b) in radians
     // l=0 at galactic center, b=0 at galactic plane
-    
+
     let l = galacticCoord.x;  // Longitude: 0-2π
     let b = galacticCoord.y;  // Latitude: -π/2 to π/2
-    
+
     // Vertical profile: Gaussian with ~15° FWHM
     let verticalProfile = exp(-b * b / (2.0 * 0.13 * 0.13));
-    
+
     // Radial profile: exponential disk with scale length
     // Brighter toward center, dust lane obscuration
     let r = length(vec2f(cos(l) - 0.15, sin(l)));  // Offset for bar
     let radialProfile = exp(-r * 2.5) + 0.1 * exp(-r * 0.5);  // Bulge + disk
-    
+
     // Dust lanes (dark features near galactic plane)
     let dust = 1.0 - 0.3 * exp(-b * b / 0.002) * smoothstep(0.8, 1.0, cos(l));
-    
+
     // Overall density
     let density = verticalProfile * radialProfile * dust;
-    
+
     return max(density, 0.0);
 }
 ```
 
 **Rendering Technique**:
+
 - Use low-frequency 3D noise (FBM) modulated by Milky Way density function
 - Render as additive glow behind stars
 - Color: blue-white in spiral arms, yellow-white toward bulge, dark lanes for dust
@@ -1446,19 +1510,20 @@ fn milkyWayDensity(galacticCoord: vec2f) -> f32 {
 **Zodiacal Light**: Sunlight scattered by interplanetary dust concentrated near the ecliptic plane.
 
 **WGSL Implementation**:
+
 ```wgsl
 fn zodiacalLight(viewDir: vec3f, sunDir: vec3f) -> vec3f {
     // Fomalhaut dust cone: concentration near ecliptic
     let eclipticAngle = acos(abs(dot(viewDir, vec3f(0.0, 0.4, 0.0))));
-    
+
     // Gegenschein (opposition glow) - dust backscatter
     let oppositionAngle = acos(dot(viewDir, -sunDir));
     let gegenschein = exp(-oppositionAngle * oppositionAngle * 50.0) * 0.15;
-    
+
     // General zodiacal glow
     let elongation = acos(dot(viewDir, sunDir));
     let zodiacal = 0.1 * pow(elongation + 0.1, -1.5) * exp(-eclipticAngle * 2.0);
-    
+
     // Color: slightly reddened sunlight
     return vec3f(1.0, 0.95, 0.85) * (zodiacal + gegenschein);
 }
@@ -1467,18 +1532,19 @@ fn zodiacalLight(viewDir: vec3f, sunDir: vec3f) -> vec3f {
 #### 2.6 Nebula & Deep Space Background
 
 **Procedural Nebula Clouds** (using signed distance fields + noise):
+
 ```wgsl
 fn nebulaDensity(worldPos: vec3f, seed: f32) -> f32 {
     // Base shape: ellipsoidal regions
     let center = vec3f(0.5, 0.3, -0.8) * 1000.0;  // Example nebula position
     let radius = 200.0;
-    
+
     let dist = length((worldPos - center) / vec3f(radius, radius * 0.4, radius));
-    
+
     // Modulate with FBM noise for cloud structure
     let noise = fbm(worldPos * 0.01 + seed);
     let density = smoothstep(0.6, 0.3, dist) * noise;
-    
+
     return max(density, 0.0);
 }
 
@@ -1488,19 +1554,19 @@ fn renderNebula(viewDir: vec3f) -> vec3f {
     let stepSize = 50.0;
     var accumulated = vec3f(0.0);
     var transmittance = 1.0;
-    
+
     for (var i = 0; i < steps; i++) {
         let t = 500.0 + f32(i) * stepSize;
         let pos = viewDir * t;
-        
+
         let density = nebulaDensity(pos, 0.0);
         let emission = vec3f(0.4, 0.6, 1.0) * density * 0.1;  // Blue emission
         let absorption = density * 0.05;
-        
+
         accumulated += transmittance * emission;
         transmittance *= exp(-absorption);
     }
-    
+
     return accumulated;
 }
 ```
@@ -1541,7 +1607,7 @@ fn noise3d(p: vec3f) -> f32 {
     let i = floor(p);
     let f = fract(p);
     f = f * f * (3.0 - 2.0 * f);  // Smoothstep
-    
+
     return mix(
         mix(mix(hash3d(i + vec3f(0,0,0)), hash3d(i + vec3f(1,0,0)), f.x),
             mix(hash3d(i + vec3f(0,1,0)), hash3d(i + vec3f(1,1,0)), f.x), f.y),
@@ -1555,7 +1621,7 @@ fn fbm(p: vec3f) -> f32 {
     var value = 0.0;
     var amplitude = 0.5;
     var freq = 1.0;
-    
+
     for (var i = 0; i < 4; i++) {
         value += amplitude * noise3d(p * freq);
         amplitude *= 0.5;
@@ -1570,12 +1636,12 @@ fn fbm(p: vec3f) -> f32 {
 fn blackbodyColor(temp: f32) -> vec3f {
     // Fast approximation for stellar temperatures
     let t = clamp(temp, 1000.0, 40000.0) / 1000.0;
-    
+
     var r: f32 = 1.0;
     if (t > 6.6) {
         r = 1.292 - 0.1292*t + 0.0054*t*t - 0.00007*t*t*t;
     }
-    
+
     var g: f32;
     if (t <= 6.6) {
         g = 0.04 + 0.319*t - 0.026*t*t + 0.0009*t*t*t;
@@ -1583,7 +1649,7 @@ fn blackbodyColor(temp: f32) -> vec3f {
         g = 1.016 - 0.0638*t + 0.0014*t*t;
     }
     g = clamp(g, 0.0, 1.0);
-    
+
     var b: f32;
     if (t < 4.0) {
         b = 0.07 * t;
@@ -1593,7 +1659,7 @@ fn blackbodyColor(temp: f32) -> vec3f {
         b = 1.0;
     }
     b = clamp(b, 0.0, 1.0);
-    
+
     return vec3f(r, g, b);
 }
 
@@ -1605,24 +1671,24 @@ fn renderMilkyWay(viewDir: vec3f) -> vec3f {
     // Galactic north pole at RA=192.85°, Dec=+27.13°
     let galacticNorth = vec3f(-0.0548, 0.4941, 0.8677);
     let galacticCenter = vec3f(-0.0558, -0.8744, 0.4821);
-    
+
     let galacticLat = asin(dot(viewDir, galacticNorth));
     let projGC = normalize(viewDir - galacticNorth * dot(viewDir, galacticNorth));
-    let galacticLon = atan2(dot(projGC, cross(galacticNorth, galacticCenter)), 
+    let galacticLon = atan2(dot(projGC, cross(galacticNorth, galacticCenter)),
                             dot(projGC, galacticCenter));
-    
+
     // Density profile
     let verticalProfile = exp(-galacticLat * galacticLat / (2.0 * 0.15 * 0.15));
     let r = length(vec2f(cos(galacticLon) - 0.1, sin(galacticLon)));
     let radialProfile = 0.3 * exp(-r * 3.0) + 0.7 * exp(-r * 0.8);
-    
+
     // Noise modulation
     let noiseCoord = viewDir * 8.0 + vec3f(100.0);
     let detail = fbm(noiseCoord) * 0.4 + 0.6;
-    
+
     // Color: yellow-white center, blue-white arms
     let color = mix(vec3f(0.9, 0.85, 0.7), vec3f(0.75, 0.8, 1.0), r);
-    
+
     let intensity = verticalProfile * radialProfile * detail * 0.3;
     return color * intensity;
 }
@@ -1632,41 +1698,41 @@ fn renderMilkyWay(viewDir: vec3f) -> vec3f {
 // ============================================================================
 fn renderProceduralStars(uv: vec2f, time: f32) -> vec3f {
     var total = vec3f(0.0);
-    
+
     // Layer 1: Distant background (magnitude 5-7)
     let cell1 = floor(uv * 400.0);
     let h1 = hash3d(vec3f(cell1, 0.0));
     let h1b = hash3d(vec3f(cell1 + vec2f(1.0,0.0), 0.0));
-    
+
     // Magnitude-based probability (more dim stars)
     let mag1 = h1 * 7.0;  // Magnitude 0-7
     let prob1 = pow(2.512, -mag1) * 2.0;  // Pogson's law
-    
+
     if (h1b < prob1) {
         let temp1 = mix(3000.0, 10000.0, hash3d(vec3f(cell1, 1.0)));
         let color1 = blackbodyColor(temp1);
         let brightness1 = pow(2.512, -mag1) * 3.0;
         total += color1 * brightness1 * 0.3;
     }
-    
+
     // Layer 2: Closer stars (magnitude 3-5)
     let cell2 = floor(uv * 200.0 + vec2f(50.0));
     let h2 = hash3d(vec3f(cell2, 2.0));
     let h2b = hash3d(vec3f(cell2 + vec2f(1.0,0.0), 2.0));
-    
+
     let mag2 = h2 * 5.0;
     let prob2 = pow(2.512, -mag2) * 1.5;
-    
+
     if (h2b < prob2) {
         let temp2 = mix(3500.0, 15000.0, hash3d(vec3f(cell2, 3.0)));
         let color2 = blackbodyColor(temp2);
         let brightness2 = pow(2.512, -mag2) * 2.0;
-        
+
         // Scintillation
         let scint = 0.85 + 0.15 * sin(time * 12.0 + h2 * 50.0);
         total += color2 * brightness2 * scint;
     }
-    
+
     return total;
 }
 
@@ -1675,24 +1741,24 @@ fn renderProceduralStars(uv: vec2f, time: f32) -> vec3f {
 // ============================================================================
 @fragment fn fs(in: VSOut) -> @location(0) vec4f {
     var color = vec3f(0.0);
-    
+
     // 1. Milky Way background (deepest layer)
     let viewDir = normalize(calculateViewDirection(in.uv));
     color += renderMilkyWay(viewDir);
-    
+
     // 2. Nebula clouds (mid layer)
     // color += renderNebula(viewDir);  // Optional
-    
+
     // 3. Zodiacal light (near sun)
     // color += zodiacalLight(viewDir, sunDirection);
-    
+
     // 4. Catalog stars (bright, with proper motion)
     // Rendered via point sprites or compute-shader billboards
     // color += renderCatalogStars(viewDir);
-    
+
     // 5. Procedural stars (background fill)
     color += renderProceduralStars(in.uv, uni.time);
-    
+
     return vec4f(color, 1.0);
 }
 ```
@@ -1701,14 +1767,15 @@ fn renderProceduralStars(uv: vec2f, time: f32) -> vec3f {
 
 ### 4. Data Requirements
 
-| Asset | Format | Size | Purpose |
-|-------|--------|------|---------|
-| **Hipparcos Subset** | Binary (custom) | ~200KB | 8,000 brightest stars (Vmag ≤ 6.5) with RA, Dec, Vmag, B-V color index |
-| **Star Storage Buffer** | GPU Storage | 128KB | 8,000 stars × 16 bytes (vec4 position, magnitude, temp, motion) |
-| **3D Noise Texture** | rgba8unorm 64³ | 256KB | Pre-computed FBM for nebula/milky way detail |
-| **Milky Way LUT** | rgba8 512×256 | 512KB | Baked galactic density + color (optional optimization) |
+| Asset                   | Format          | Size   | Purpose                                                                |
+| ----------------------- | --------------- | ------ | ---------------------------------------------------------------------- |
+| **Hipparcos Subset**    | Binary (custom) | ~200KB | 8,000 brightest stars (Vmag ≤ 6.5) with RA, Dec, Vmag, B-V color index |
+| **Star Storage Buffer** | GPU Storage     | 128KB  | 8,000 stars × 16 bytes (vec4 position, magnitude, temp, motion)        |
+| **3D Noise Texture**    | rgba8unorm 64³  | 256KB  | Pre-computed FBM for nebula/milky way detail                           |
+| **Milky Way LUT**       | rgba8 512×256   | 512KB  | Baked galactic density + color (optional optimization)                 |
 
 **Data Generation Script** (Python):
+
 ```python
 # Extract Hipparcos subset for GPU loading
 import pandas as pd
@@ -1716,16 +1783,16 @@ import pandas as pd
 def process_hipparcos():
     # Load catalog (CSV format)
     hip = pd.read_csv('hipparcos.csv')
-    
+
     # Filter bright stars
     bright = hip[hip['Vmag'] <= 6.5].copy()
-    
+
     # Calculate temperature from B-V color index
     # B-V ≈ 0.0 (A-type) → ~10,000K
-    # B-V ≈ 0.65 (G-type/Sun) → ~5,800K  
+    # B-V ≈ 0.65 (G-type/Sun) → ~5,800K
     # B-V ≈ 1.5 (M-type) → ~3,500K
     bright['temp'] = 4600 * (1/(0.92*bright['BV'] + 1.7) + 1/(0.92*bright['BV'] + 0.62))
-    
+
     # Pack for GPU
     output = []
     for _, row in bright.iterrows():
@@ -1735,13 +1802,13 @@ def process_hipparcos():
         x = np.cos(dec) * np.cos(ra)
         y = np.sin(dec)
         z = np.cos(dec) * np.sin(ra)
-        
+
         output.append({
             'direction': [x, y, z],
             'magnitude': row['Vmag'],
             'temperature': row['temp']
         })
-    
+
     return output
 ```
 
@@ -1749,35 +1816,36 @@ def process_hipparcos():
 
 ### 5. Implementation Complexity
 
-| Feature | Complexity | Notes |
-|---------|------------|-------|
-| **Magnitude-based distribution** | Low | Modify existing hash thresholds to follow Pogson's law |
-| **Blackbody star colors** | Low | Add temperature→RGB function, ~20 lines WGSL |
+| Feature                                | Complexity | Notes                                                         |
+| -------------------------------------- | ---------- | ------------------------------------------------------------- |
+| **Magnitude-based distribution**       | Low        | Modify existing hash thresholds to follow Pogson's law        |
+| **Blackbody star colors**              | Low        | Add temperature→RGB function, ~20 lines WGSL                  |
 | **Improved twinkling (scintillation)** | Low-Medium | Replace sine with noise-based turbulence, add altitude factor |
-| **Milky Way band** | Medium | Add galactic coordinate transform + density function |
-| **Catalog star integration** | Medium | Requires data pipeline + storage buffer management |
-| **Zodiacal light** | Low | Simple glow function near ecliptic |
-| **Nebula volumes** | High | Requires ray-marching or volumetric texture |
-| **Proper motion over time** | Low | Add velocity to star data, accumulate position |
+| **Milky Way band**                     | Medium     | Add galactic coordinate transform + density function          |
+| **Catalog star integration**           | Medium     | Requires data pipeline + storage buffer management            |
+| **Zodiacal light**                     | Low        | Simple glow function near ecliptic                            |
+| **Nebula volumes**                     | High       | Requires ray-marching or volumetric texture                   |
+| **Proper motion over time**            | Low        | Add velocity to star data, accumulate position                |
 
 ---
 
 ### 6. Performance Impact
 
-| Feature | GPU Cost (Full HD) | Memory Impact | FPS Impact (est.) |
-|---------|-------------------|---------------|-------------------|
-| Current starfield | ~0.05ms | None (procedural) | Baseline |
-| + Magnitude distribution | ~0.01ms | None | Negligible |
-| + Blackbody colors | ~0.01ms | None | Negligible |
-| + Improved twinkling | ~0.03ms | None | -1-2 FPS |
-| + Milky Way band | ~0.1ms | None | -2-3 FPS |
-| + 8K catalog stars (point sprites) | ~0.2ms | 128KB | -3-5 FPS |
-| + Zodiacal light | ~0.02ms | None | Negligible |
-| + Simple nebula (8-step raymarch) | ~0.3ms | 256KB (3D noise) | -5-8 FPS |
+| Feature                            | GPU Cost (Full HD) | Memory Impact     | FPS Impact (est.) |
+| ---------------------------------- | ------------------ | ----------------- | ----------------- |
+| Current starfield                  | ~0.05ms            | None (procedural) | Baseline          |
+| + Magnitude distribution           | ~0.01ms            | None              | Negligible        |
+| + Blackbody colors                 | ~0.01ms            | None              | Negligible        |
+| + Improved twinkling               | ~0.03ms            | None              | -1-2 FPS          |
+| + Milky Way band                   | ~0.1ms             | None              | -2-3 FPS          |
+| + 8K catalog stars (point sprites) | ~0.2ms             | 128KB             | -3-5 FPS          |
+| + Zodiacal light                   | ~0.02ms            | None              | Negligible        |
+| + Simple nebula (8-step raymarch)  | ~0.3ms             | 256KB (3D noise)  | -5-8 FPS          |
 
 **Total for Full Implementation**: ~0.7ms additional GPU time, ~400KB memory
 
 **Optimization Strategies**:
+
 - Use LOD: procedural stars at distance, catalog stars only within 10° of view center
 - Compute shader culling: only process visible stars each frame
 - Temporal reprojection: accumulate nebula samples across frames
@@ -1789,15 +1857,17 @@ def process_hipparcos():
 #### Top 3 Recommendations (In Order)
 
 **🥇 Priority 1: Magnitude-Based Distribution + Blackbody Colors**
+
 - **Complexity**: Low
 - **Impact**: High visual improvement, scientifically accurate
-- **Implementation**: 
+- **Implementation**:
   1. Replace star probability thresholds with Pogson's law
   2. Add `blackbodyColor(temp)` function
   3. Vary temperature by random hash (3000K-30000K range)
 - **Result**: Immediately more realistic star colors (red giants, blue main sequence) and proper brightness distribution
 
 **🥈 Priority 2: Improved Scintillation (Atmospheric Twinkling)**
+
 - **Complexity**: Low-Medium
 - **Impact**: High immersion, especially for ground view
 - **Implementation**:
@@ -1807,6 +1877,7 @@ def process_hipparcos():
 - **Result**: Stars twinkle realistically near horizon, stay steady at zenith
 
 **🥉 Priority 3: Milky Way Band**
+
 - **Complexity**: Medium
 - **Impact**: Major sense of place in galaxy, beautiful backdrop
 - **Implementation**:
@@ -1820,17 +1891,20 @@ def process_hipparcos():
 ### Additional Notes
 
 **Compatibility Considerations**:
+
 - All improvements are additive (can be toggled via uniform flags)
 - No changes to existing satellite rendering pipeline
 - Can implement in stages without breaking existing visuals
 
 **Future Extensions**:
+
 - **Constellation lines**: Connect catalog stars with fade-in/out
 - **Deep sky objects**: Messier catalog (galaxies, nebulae) as billboards
 - **Variable stars**: Pulsating Cepheids based on period from catalog
 - **Exoplanet markers**: Highlight stars with known planetary systems
 
 **Scientific Accuracy Goals**:
+
 - Magnitude distribution: ±10% of real stellar luminosity function
 - Colors: ±200K temperature accuracy (good for spectral typing)
 - Positions: ±0.1° for catalog stars (Hipparcos precision)
@@ -1839,10 +1913,12 @@ def process_hipparcos():
 ---
 
 ### Agent 4: Satellite Visualization Engineer
-*Research satellite representation, trails, and beam visualization techniques*
+
+_Research satellite representation, trails, and beam visualization techniques_
 
 ### Agent 5: Camera & Cinematic Effects Designer
-*Research camera effects, depth of field, and cinematic presentation*
+
+_Research camera effects, depth of field, and cinematic presentation_
 
 ---
 
@@ -1852,16 +1928,17 @@ def process_hipparcos():
 
 The existing camera system provides functional coverage of the simulation but lacks cinematic polish:
 
-| Aspect | Current State | Limitation |
-|--------|---------------|------------|
-| **Focus** | Infinite/Fixed | All satellites equally sharp regardless of distance; no depth perception cues |
-| **Motion** | Instant changes | Camera mode switches are abrupt; no velocity-based motion blur |
-| **Lens Model** | Perfect pinhole | No lens distortion, vignetting, or optical imperfections |
-| **Transitions** | Instant | No smooth interpolation between view modes |
-| **Presentation** | Interactive only | No automated cinematic sequences or framing helpers |
-| **FOV** | Fixed 60° | No dynamic FOV for speed sensation or dramatic framing |
+| Aspect           | Current State    | Limitation                                                                    |
+| ---------------- | ---------------- | ----------------------------------------------------------------------------- |
+| **Focus**        | Infinite/Fixed   | All satellites equally sharp regardless of distance; no depth perception cues |
+| **Motion**       | Instant changes  | Camera mode switches are abrupt; no velocity-based motion blur                |
+| **Lens Model**   | Perfect pinhole  | No lens distortion, vignetting, or optical imperfections                      |
+| **Transitions**  | Instant          | No smooth interpolation between view modes                                    |
+| **Presentation** | Interactive only | No automated cinematic sequences or framing helpers                           |
+| **FOV**          | Fixed 60°        | No dynamic FOV for speed sensation or dramatic framing                        |
 
 **Specific Missing Features:**
+
 - **Depth of Field (DoF)**: With 1M satellites at varying distances, DoF would create natural depth hierarchy and draw attention to subjects
 - **Motion Blur**: Satellites orbit at ~7.6 km/s; motion blur would convey speed and reduce temporal aliasing
 - **Camera Shake/Vibration**: Fleet POV lacks procedural shake from orbital mechanics
@@ -1879,27 +1956,30 @@ The existing camera system provides functional coverage of the simulation but la
 For 1M satellites, a full bokeh simulation is prohibitive. Instead, use a **bilateral blur** approach with separable Gaussian kernels weighted by CoC (Circle of Confusion) radius.
 
 **Implementation Strategy:**
+
 1. **CoC Calculation**: Compute in composite shader based on depth buffer
 2. **Tile-based Max CoC**: Downsample depth to tiles (e.g., 16x16) for blur radius lookup
 3. **Separable Bilateral Blur**: Horizontal + vertical passes with depth-aware weights
 4. **Bokeh Shape Approximation**: Use hexagonal or circular kernel via rotated sampling
 
 **Focus Modes:**
-| Mode | Focus Target | Use Case |
-|------|--------------|----------|
-| `Auto Center` | Screen center average | General exploration |
+
+| Mode               | Focus Target               | Use Case              |
+| ------------------ | -------------------------- | --------------------- |
+| `Auto Center`      | Screen center average      | General exploration   |
 | `Surface Distance` | Fixed distance from camera | Ground view starscape |
-| `Satellite Track` | Specific satellite ID | Following a target |
-| `Earth Center` | Earth's center | God view overview |
+| `Satellite Track`  | Specific satellite ID      | Following a target    |
+| `Earth Center`     | Earth's center             | God view overview     |
 
 **CoC Calculation (WGSL):**
+
 ```wgsl
 fn circleOfConfusion(depth: f32, focusDistance: f32, aperture: f32) -> f32 {
     // Thin lens equation approximation
     let focalLength = 0.035; // 35mm equivalent
     let sensorSize = 0.036;  // Full frame
     let depthDiff = abs(depth - focusDistance);
-    let coc = (aperture * focalLength * focalLength * depthDiff) 
+    let coc = (aperture * focalLength * focalLength * depthDiff)
             / (depth * (focusDistance - focalLength));
     return clamp(coc / sensorSize * screenSize.y, 0.0, maxBlurRadius);
 }
@@ -1917,49 +1997,54 @@ fn circleOfConfusion(depth: f32, focusDistance: f32, aperture: f32) -> f32 {
 Two approaches based on camera mode:
 
 **A) Camera Motion Blur (Screen-Space)**
+
 - Use velocity buffer derived from camera movement
 - Applicable to all view modes
 - Implemented as fullscreen post-process
 
 **B) Satellite Velocity Blur (Object-Space)**
+
 - Store satellite velocity from compute shader
 - Extend billboard quad along velocity vector
 - Fade based on angular velocity relative to camera
 
 **Implementation for Satellites:**
+
 ```wgsl
 // In vertex shader - extend billboard along velocity
-fn vs_main(@builtin(instance_index) instance: u32, 
+fn vs_main(@builtin(instance_index) instance: u32,
            @builtin(vertex_index) vid: u32) -> VSOut {
     let pos = satPositions[instance];
     let vel = satVelocities[instance]; // New buffer needed
-    
+
     // Project velocity to screen space
     let clipVel = uni.view_proj * vec4f(vel, 0.0);
     let screenVel = normalize(clipVel.xy / clipVel.w);
-    
+
     // Billboard extension along velocity
     let blurScale = length(vel) * motionBlurStrength * deltaTime;
     let vertexOffset = billboardQuad[vid] + screenVel * blurScale * blurMask[vid];
-    
+
     // Fade trailing edge
     out.alpha = 1.0 - blurMask[vid] * 0.5;
 }
 ```
 
 **Velocity Buffer Requirements:**
+
 - Add `satVelocities` storage buffer (16MB for 1M satellites, vec3f padded)
 - Compute velocity in orbital compute shader (nearly free)
 - Or calculate analytically: `v = ω × r` for circular orbits
 
 **Motion Blur Intensity by View Mode:**
-| View Mode | Recommended Blur | Reason |
-|-----------|------------------|--------|
-| 720km Horizon | Low (0.3) | Stationary camera reference |
-| God View | Medium (0.5) | Orbital motion visible |
-| Fleet POV | High (0.8) | Speed sensation critical |
-| Ground View | Very Low (0.1) | Stars shouldn't streak |
-| Moon View | Off | Static observation point |
+
+| View Mode     | Recommended Blur | Reason                      |
+| ------------- | ---------------- | --------------------------- |
+| 720km Horizon | Low (0.3)        | Stationary camera reference |
+| God View      | Medium (0.5)     | Orbital motion visible      |
+| Fleet POV     | High (0.8)       | Speed sensation critical    |
+| Ground View   | Very Low (0.1)   | Stars shouldn't streak      |
+| Moon View     | Off              | Static observation point    |
 
 **Complexity**: Medium
 **Performance Impact**: ~0.2ms for velocity pass + minimal vertex cost
@@ -1975,13 +2060,13 @@ Natural vignetting for lens realism + stylized vignetting for focus.
 ```wgsl
 fn applyVignetting(color: vec3f, uv: vec2f) -> vec3f {
     let dist = length(uv - 0.5) * 1.414; // Normalized to corner
-    
+
     // Natural lens vignetting (cos^4 falloff approximation)
     let naturalVignette = pow(1.0 - dist * 0.3, 4.0);
-    
+
     // Stylized vignette for cinematic focus
     let stylizedVignette = smoothstep(vignetteOuter, vignetteInner, dist);
-    
+
     return color * mix(naturalVignette, stylizedVignette, vignetteStrength);
 }
 ```
@@ -2007,11 +2092,11 @@ RGB channel separation at frame edges:
 fn chromaticAberration(tex: texture_2d<f32>, uv: vec2f, strength: f32) -> vec3f {
     let direction = normalize(uv - 0.5);
     let offset = direction * strength * length(uv - 0.5);
-    
+
     let r = textureSample(tex, samp, uv + offset).r;
     let g = textureSample(tex, samp, uv).g;
     let b = textureSample(tex, samp, uv - offset).b;
-    
+
     return vec3f(r, g, b);
 }
 ```
@@ -2040,15 +2125,11 @@ class CinematicCamera {
   private current: CameraState;
   private target: CameraState;
   private transitionProgress: number = 1.0;
-  
+
   update(deltaTime: number): CameraState {
     if (this.transitionProgress < 1.0) {
       this.transitionProgress += deltaTime / transitionDuration;
-      return this.interpolateState(
-        this.current, 
-        this.target, 
-        smoothstep(this.transitionProgress)
-      );
+      return this.interpolateState(this.current, this.target, smoothstep(this.transitionProgress));
     }
     return this.target;
   }
@@ -2056,6 +2137,7 @@ class CinematicCamera {
 ```
 
 **Transition Types:**
+
 - `Cut`: Instant (current behavior)
 - `Dolly`: Smooth position interpolation
 - `Orbit`: Arc path around Earth
@@ -2073,21 +2155,21 @@ interface CinematicSequence {
 }
 
 const PRESENTATION_SEQUENCES = {
-  'fleet_intro': {
+  fleet_intro: {
     // Sweep across constellation wall
     waypoints: [
       { mode: 'horizon-720', angles: { yaw: -45, pitch: 0 }, duration: 5 },
       { mode: 'horizon-720', angles: { yaw: 45, pitch: 15 }, duration: 10 },
       { mode: 'god', angles: { yaw: 0, pitch: 60, distance: 15000 }, duration: 8 },
-    ]
+    ],
   },
-  'god_overview': {
+  god_overview: {
     // Full orbital overview
     waypoints: [
       { mode: 'god', angles: { yaw: 0, pitch: 45 }, duration: 10 },
       { mode: 'god', angles: { yaw: 180, pitch: 45 }, duration: 20 },
-    ]
-  }
+    ],
+  },
 };
 ```
 
@@ -2132,35 +2214,35 @@ const BLUR_KERNEL: array<f32, 16> = array(0.028, 0.048, 0.068, 0.088, ...);
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     let centerDepth = textureSample(depthTex, linearSamp, uv).r;
-    let centerCoC = circleOfConfoc(centerDepth, dofParams.focusDistance, 
+    let centerCoC = circleOfConfoc(centerDepth, dofParams.focusDistance,
                                     dofParams.aperture);
-    
+
     var colorSum = vec3f(0.0);
     var weightSum = 0.0;
-    
+
     for (var i: i32 = -BLUR_SAMPLES; i <= BLUR_SAMPLES; i++) {
         let offset = vec2f(f32(i) / screenSize.x, 0.0);
         let sampleUv = uv + offset * centerCoC;
-        
+
         let sampleColor = textureSample(sceneTex, linearSamp, sampleUv).rgb;
         let sampleDepth = textureSample(depthTex, linearSamp, sampleUv).r;
         let sampleCoC = circleOfConfusion(sampleDepth, dofParams.focusDistance,
                                           dofParams.aperture);
-        
+
         // Bilateral weight based on depth similarity
         let depthDiff = abs(sampleDepth - centerDepth);
         let depthWeight = exp(-depthDiff * 10.0);
-        
+
         // Gaussian kernel weight
         let kernelWeight = BLUR_KERNEL[abs(i)];
-        
+
         // Combine weights
         let weight = kernelWeight * depthWeight * (1.0 + sampleCoC);
-        
+
         colorSum += sampleColor * weight;
         weightSum += weight;
     }
-    
+
     return vec4f(colorSum / weightSum, 1.0);
 }
 ```
@@ -2175,39 +2257,39 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
 
 const NUM_MOTION_SAMPLES: i32 = 8;
 
-@fragment  
+@fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     let depth = textureSample(depthTex, linearSamp, uv).r;
-    
+
     // Reconstruct world position
     let worldPos = reconstructWorldPos(uv, depth);
-    
+
     // Calculate previous frame screen position
     let prevClip = uni.prevViewProj * vec4f(worldPos, 1.0);
     let prevUv = prevClip.xy / prevClip.w * 0.5 + 0.5;
-    
+
     // Motion vector
     let motion = uv - prevUv;
     let motionLen = length(motion);
-    
+
     // Early exit for minimal motion
     if (motionLen < 0.001) {
         return textureSample(sceneTex, linearSamp, uv);
     }
-    
+
     // Sample along motion vector
     let step = motion / f32(NUM_MOTION_SAMPLES);
     var color = vec3f(0.0);
-    
+
     for (var i: i32 = 0; i < NUM_MOTION_SAMPLES; i++) {
         let t = f32(i) / f32(NUM_MOTION_SAMPLES - 1);
         let sampleUv = uv - step * f32(i);
-        
+
         // Weight samples (center is brightest)
         let weight = 1.0 - abs(t - 0.5) * 2.0;
         color += textureSample(sceneTex, linearSamp, sampleUv).rgb * weight;
     }
-    
+
     return vec4f(color / f32(NUM_MOTION_SAMPLES), 1.0);
 }
 ```
@@ -2219,18 +2301,18 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
 fn applyVignette(color: vec3f, uv: vec2f) -> vec3f {
     // Distance from center (0.0 at center, 1.0 at corners)
     let dist = length((uv - 0.5) * 1.414);
-    
+
     // Configurable vignette parameters
     let vignetteInner: f32 = 0.5;  // Start of falloff
     let vignetteOuter: f32 = 1.2;  // Complete darkness
     let vignetteStrength: f32 = 0.4; // 0.0 = none, 1.0 = full
-    
+
     // Smooth vignette falloff
     let vignette = 1.0 - smoothstep(vignetteInner, vignetteOuter, dist);
-    
+
     // Optional: natural lens vignetting (cos^4)
     let naturalVignette = pow(vignette, 4.0);
-    
+
     return color * mix(vignette, naturalVignette, 0.3);
 }
 
@@ -2238,14 +2320,14 @@ fn applyVignette(color: vec3f, uv: vec2f) -> vec3f {
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     let scene = textureSample(sceneTex, linearSamp, uv).rgb;
     let bloom = textureSample(bloomTex, linearSamp, uv).rgb;
-    
+
     let hdr = scene + bloom * 0.5;
     let mapped = acesToneMapping(hdr * EXPOSURE);
     let gammaCorrected = pow(mapped, vec3f(1.0 / GAMMA));
-    
+
     // Apply vignette
     let vignetted = applyVignette(gammaCorrected, uv);
-    
+
     return vec4f(vignetted, 1.0);
 }
 ```
@@ -2259,20 +2341,20 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
 ```wgsl
 struct Uni {
     // ... existing fields ...
-    
+
     // Camera effects (add 32 bytes)
     prev_view_proj: mat4x4f,        // For motion blur (64 bytes - replace pad2)
-    
+
     // DoF parameters (16 bytes)
     focus_distance: f32,
     aperture: f32,
     focal_length: f32,
     dof_strength: f32,
-    
+
     // Motion blur (8 bytes)
     motion_blur_scale: f32,
     delta_time: f32,
-    
+
     // Lens effects (8 bytes)
     vignette_strength: f32,
     chromatic_aberration: f32,
@@ -2283,31 +2365,31 @@ struct Uni {
 
 #### 4.2 New Buffers Required
 
-| Buffer | Size | Purpose | Update Frequency |
-|--------|------|---------|------------------|
-| `satVelocities` | 16 MB | Per-satellite velocity (vec3f + pad) | Every frame (compute) |
-| `prevViewProj` | 64 B | Previous frame view-projection matrix | Every frame (CPU) |
-| `dofTileMax` | ~16 KB | Tile-based max CoC buffer (1/16 resolution) | Every frame (compute) |
+| Buffer          | Size   | Purpose                                     | Update Frequency      |
+| --------------- | ------ | ------------------------------------------- | --------------------- |
+| `satVelocities` | 16 MB  | Per-satellite velocity (vec3f + pad)        | Every frame (compute) |
+| `prevViewProj`  | 64 B   | Previous frame view-projection matrix       | Every frame (CPU)     |
+| `dofTileMax`    | ~16 KB | Tile-based max CoC buffer (1/16 resolution) | Every frame (compute) |
 
 #### 4.3 CPU-Side Changes
 
 ```typescript
 // CameraController.ts additions
 interface CinematicParams {
-    // DoF
-    focusMode: 'auto' | 'surface' | 'satellite' | 'earth';
-    focusTargetSatellite: number | null;
-    aperture: number; // f-stop
-    
-    // Motion blur
-    motionBlurStrength: number;
-    
-    // Lens
-    vignetteStrength: number;
-    
-    // Transitions
-    transitionDuration: number;
-    isInTransition: boolean;
+  // DoF
+  focusMode: 'auto' | 'surface' | 'satellite' | 'earth';
+  focusTargetSatellite: number | null;
+  aperture: number; // f-stop
+
+  // Motion blur
+  motionBlurStrength: number;
+
+  // Lens
+  vignetteStrength: number;
+
+  // Transitions
+  transitionDuration: number;
+  isInTransition: boolean;
 }
 
 // In main.ts render loop
@@ -2321,16 +2403,16 @@ interface CinematicParams {
 
 ### 5. Implementation Complexity Assessment
 
-| Feature | Complexity | GPU Cost | CPU Cost | Total Effort |
-|---------|------------|----------|----------|--------------|
-| **Vignetting** | Low | Negligible | None | 2 hours |
-| **Motion Blur (Camera)** | Medium | Low | Low | 1 day |
-| **Motion Blur (Satellite)** | Medium | Low | Low | 1-2 days |
-| **Depth of Field** | Medium | Medium | Low | 2-3 days |
-| **Smooth Transitions** | Medium | None | Medium | 1-2 days |
-| **Auto-Presentation Mode** | Medium | None | Medium | 2 days |
-| **Chromatic Aberration** | Low | Negligible | None | 1 hour |
-| **Barrel Distortion** | Low | Low | None | 2 hours |
+| Feature                     | Complexity | GPU Cost   | CPU Cost | Total Effort |
+| --------------------------- | ---------- | ---------- | -------- | ------------ |
+| **Vignetting**              | Low        | Negligible | None     | 2 hours      |
+| **Motion Blur (Camera)**    | Medium     | Low        | Low      | 1 day        |
+| **Motion Blur (Satellite)** | Medium     | Low        | Low      | 1-2 days     |
+| **Depth of Field**          | Medium     | Medium     | Low      | 2-3 days     |
+| **Smooth Transitions**      | Medium     | None       | Medium   | 1-2 days     |
+| **Auto-Presentation Mode**  | Medium     | None       | Medium   | 2 days       |
+| **Chromatic Aberration**    | Low        | Negligible | None     | 1 hour       |
+| **Barrel Distortion**       | Low        | Low        | None     | 2 hours      |
 
 **Total Estimated Effort**: 8-12 developer days
 
@@ -2350,20 +2432,21 @@ With Camera Effects (10 passes):
 
 **Estimated Timing Breakdown** (RTX 3060, 1920x1080):
 
-| Pass | Current (ms) | With Effects (ms) | Delta |
-|------|--------------|-------------------|-------|
-| Compute | 0.5 | 0.5 (+velocity) | +0.0 |
-| Scene | 1.2 | 1.2 | +0.0 |
-| Motion Blur | - | 0.3 | +0.3 |
-| DoF (Tile+Blur) | - | 0.8 | +0.8 |
-| Bloom (3 passes) | 0.4 | 0.4 | +0.0 |
-| Composite | 0.2 | 0.25 | +0.05 |
-| **Total** | **~2.3** | **~3.45** | **+1.15ms** |
+| Pass             | Current (ms) | With Effects (ms) | Delta       |
+| ---------------- | ------------ | ----------------- | ----------- |
+| Compute          | 0.5          | 0.5 (+velocity)   | +0.0        |
+| Scene            | 1.2          | 1.2               | +0.0        |
+| Motion Blur      | -            | 0.3               | +0.3        |
+| DoF (Tile+Blur)  | -            | 0.8               | +0.8        |
+| Bloom (3 passes) | 0.4          | 0.4               | +0.0        |
+| Composite        | 0.2          | 0.25              | +0.05       |
+| **Total**        | **~2.3**     | **~3.45**         | **+1.15ms** |
 
 **FPS Impact**: ~435 FPS → ~290 FPS (30% decrease)
 **Acceptable**: Well above 30 FPS target, leaves headroom for other effects
 
 **Performance Mitigations:**
+
 1. **Half-resolution DoF**: Perform blur at 50% resolution
 2. **Conditional Effects**: Disable motion blur in Ground View
 3. **Quality Tiers**: Low/Medium/High effect presets
@@ -2376,12 +2459,15 @@ With Camera Effects (10 passes):
 Based on visual impact, implementation effort, and synergy with existing systems:
 
 #### 🥇 Priority 1: Vignetting + Presentation Mode
-**Rationale**: 
+
+**Rationale**:
+
 - Vignetting is trivial to implement (1 hour) but dramatically improves cinematic feel
 - Auto-presentation mode enables demo/attract loop for showcases
 - Together they create immediate "wow factor" with minimal effort
 
 **Implementation Order:**
+
 1. Add vignette to composite shader (1 hour)
 2. Create `CinematicSequence` controller (1 day)
 3. Add UI toggle for presentation mode (2 hours)
@@ -2389,13 +2475,16 @@ Based on visual impact, implementation effort, and synergy with existing systems
 ---
 
 #### 🥈 Priority 2: Depth of Field
+
 **Rationale**:
+
 - Critical for depth perception with 1M satellites at varying distances
 - Transforms flat "wall of dots" into layered spatial composition
 - Essential for Fleet POV immersion (focus on nearby satellites)
 - Leverages existing HDR/bloom infrastructure
 
 **Implementation Order:**
+
 1. Add CoC calculation to composite shader
 2. Create separable bilateral blur passes
 3. Add focus controls to UI
@@ -2404,13 +2493,16 @@ Based on visual impact, implementation effort, and synergy with existing systems
 ---
 
 #### 🥉 Priority 3: Motion Blur (Camera + Satellite)
+
 **Rationale**:
+
 - Conveys the incredible speed of orbital mechanics (~7.6 km/s)
 - Reduces temporal aliasing during fast camera movements
 - Satellite velocity blur adds "light trail" aesthetic during transitions
 - Fleet POV particularly benefits from speed sensation
 
 **Implementation Order:**
+
 1. Add velocity buffer output to compute shader
 2. Implement screen-space camera motion blur
 3. Extend satellite billboard for velocity-based stretching
@@ -2422,15 +2514,16 @@ Based on visual impact, implementation effort, and synergy with existing systems
 
 **Scene: Fleet POV Looking Across Constellation**
 
-| Without Effects | With Full Camera Effects |
-|-----------------|--------------------------|
+| Without Effects              | With Full Camera Effects                           |
+| ---------------------------- | -------------------------------------------------- |
 | All satellites equally sharp | Nearby sats sharp, distant sats soft bokeh circles |
-| Static, frozen appearance | Subtle motion blur on fast-moving neighbors |
-| Flat lighting across frame | Vignette draws eye to center; natural falloff |
-| Instant camera jumps | Smooth dolly between positions |
-| Perfect optical clarity | Subtle lens character, cinematic feel |
+| Static, frozen appearance    | Subtle motion blur on fast-moving neighbors        |
+| Flat lighting across frame   | Vignette draws eye to center; natural falloff      |
+| Instant camera jumps         | Smooth dolly between positions                     |
+| Perfect optical clarity      | Subtle lens character, cinematic feel              |
 
 **Key Visual Moment:**
+
 > The camera dollies through the constellation wall. Satellites 100m away are razor-sharp with bloom halos, while the Earth below and distant orbital planes dissolve into soft, hexagonal bokeh. Motion blur streaks the passing satellites into brief light trails. A subtle vignette darkens the corners, focusing attention on the constellation's geometric beauty. The effect is both scientifically accurate (real optics) and emotionally compelling (cinematic immersion).
 
 ---
@@ -2450,6 +2543,7 @@ As the Satellite Visualization Engineer for Grok Zephyr, I've analyzed the curre
 ### 1.1 Satellite Rendering Limitations
 
 **Current Implementation:**
+
 - Simple billboard quads (6 vertices per satellite = 6M vertices)
 - Fixed 7-color palette (RGB + CMY + white) with hardcoded values
 - Basic ring+core glow pattern using distance-based alpha
@@ -2476,6 +2570,7 @@ let hdr = in.color * (ring + core * 2.2) * in.bright * 2.8;
 ### 1.2 Beam Rendering Limitations
 
 **Current Implementation:**
+
 - Placeholder shader with no actual beam generation
 - Triangle strip topology prepared but unused
 - No beam data generation in compute shader
@@ -2504,6 +2599,7 @@ fn vs(@builtin(vertex_index) vi : u32) -> VOut {
 ### 1.3 Missing Trail System
 
 **Current State:**
+
 - Trail buffer exists (2 frames × vec4f per satellite = 32 MB)
 - Smile V2 uses trails for phase 6, but no general trail rendering
 - No persistent orbital path visualization
@@ -2523,12 +2619,13 @@ fn vs(@builtin(vertex_index) vi : u32) -> VOut {
 Modern lens flares create a distinctive star-like appearance with radial streaks and concentric halos. This transforms satellites from simple dots into compelling light sources.
 
 **Implementation:**
+
 ```wgsl
 // Multi-octave glow with diffraction spikes
 fn lensFlareGlow(uv: vec2f, dist: f32, angle: f32, intensity: f32) -> vec3f {
     // Core glow (Gaussian)
     let core = exp(-dist * dist * 8.0);
-    
+
     // Multi-octave halos
     var halos = 0.0;
     for (var i = 1; i <= 3; i++) {
@@ -2536,18 +2633,19 @@ fn lensFlareGlow(uv: vec2f, dist: f32, angle: f32, intensity: f32) -> vec3f {
         let width = 0.08 / f32(i);
         halos += exp(-pow((dist - radius) / width, 2.0)) * (0.4 / f32(i));
     }
-    
+
     // 4-point diffraction spike
     let spike = pow(abs(cos(angle * 4.0)), 16.0) * exp(-dist * 3.0) * 0.5;
-    
+
     // Secondary ring
     let ring = exp(-pow((dist - 0.6) / 0.05, 2.0)) * 0.3;
-    
+
     return vec3f(core + halos * 0.5 + spike + ring) * intensity;
 }
 ```
 
 **Why This Works:**
+
 - Multi-octave halos simulate complex lens optics
 - Diffraction spikes create recognizable "star" appearance
 - Ring adds visual interest at medium distances
@@ -2560,13 +2658,15 @@ fn lensFlareGlow(uv: vec2f, dist: f32, angle: f32, intensity: f32) -> vec3f {
 **Technique**: Differentiate satellites by orbital shell using size, color temperature, and glow intensity.
 
 **Shell Characteristics:**
-| Shell | Altitude | Color Temp | Size | Glow Style |
-|-------|----------|------------|------|------------|
-| LEO (340km) | Low | Warm amber | Smaller | Tight, intense |
-| Mid (550km) | Reference | White/blue | Reference | Balanced |
-| High (1150km) | High | Cool cyan | Larger | Soft, diffuse |
+
+| Shell         | Altitude  | Color Temp | Size      | Glow Style     |
+| ------------- | --------- | ---------- | --------- | -------------- |
+| LEO (340km)   | Low       | Warm amber | Smaller   | Tight, intense |
+| Mid (550km)   | Reference | White/blue | Reference | Balanced       |
+| High (1150km) | High      | Cool cyan  | Larger    | Soft, diffuse  |
 
 **Implementation:**
+
 ```wgsl
 // Shell-specific parameters
 const SHELL_CONFIGS = array<vec4f, 3>(
@@ -2589,6 +2689,7 @@ const SHELL_COLOR_SHIFTS = array<vec3f, 3>(
 **Technique**: Add specular flash based on sun-satellite-camera angle.
 
 **Implementation:**
+
 ```wgsl
 fn calculateGlint(satIdx: u32, time: f32) -> f32 {
     let hash = hash_u32(satIdx);
@@ -2617,15 +2718,15 @@ Trails arc behind satellites, showing their orbital paths. Longer trails for fas
 fn updateTrails(@builtin(global_invocation_id) gid: vec3u) {
     let satIdx = gid.x;
     if (satIdx >= NUM_SATELLITES) { return; }
-    
+
     let currentPos = sat_positions[satIdx].xyz;
     let trailBase = satIdx * TRAIL_LENGTH;
-    
+
     // Shift existing trail points
     for (var i = TRAIL_LENGTH - 1; i > 0; i--) {
         trail_buffer[trailBase + i] = trail_buffer[trailBase + i - 1];
     }
-    
+
     // Insert new position
     trail_buffer[trailBase] = vec4f(currentPos, uni.time);
 }
@@ -2639,11 +2740,11 @@ fn vs_trail(
     let segmentIdx = vi / 2;
     let trailBase = ii * TRAIL_LENGTH;
     let pointData = trail_buffer[trailBase + segmentIdx];
-    
+
     let age = uni.time - pointData.w;
     let fade = 1.0 - smoothstep(0.0, TRAIL_DURATION, age);
     let width = TRAIL_WIDTH * fade;
-    
+
     // Output trail vertex...
 }
 ```
@@ -2664,20 +2765,20 @@ fn vs_trail(
 fn generateBeams(@builtin(global_invocation_id) gid: vec3u) {
     let beamIdx = gid.x;
     if (beamIdx >= MAX_BEAMS) { return; }
-    
+
     let patternMode = u32(beam_params.y);
     let time = beam_params.x;
-    
+
     // Select satellite pair based on pattern
     let satPair = selectSatellitePair(beamIdx, patternMode);
-    
+
     let posA = sat_positions[satPair.x].xyz;
     let posB = sat_positions[satPair.y].xyz;
-    
+
     let distance = length(posB - posA);
     let intensity = max(0.0, 1.0 - distance / MAX_BEAM_DIST);
     let pulse = 0.5 + 0.5 * sin(time * 2.0 + f32(beamIdx) * 0.1);
-    
+
     beams[beamIdx * 2] = vec4f(posA, intensity * pulse);
     beams[beamIdx * 2 + 1] = vec4f(posB, f32(satPair.x % 7u));
 }
@@ -2691,32 +2792,32 @@ fn fs_beam(in: VOut) -> @location(0) vec4f {
     let u = in.uv.x;
     let v = in.uv.y;
     let centerDist = abs(v - 0.5) * 2.0;
-    
+
     // Core (tight, bright)
     let coreWidth = 0.15;
     let core = 1.0 - smoothstep(0.0, coreWidth, centerDist);
-    
+
     // Inner glow (medium falloff)
     let innerGlow = exp(-centerDist * centerDist * 4.0) * 0.6;
-    
+
     // Outer haze (wide, soft)
     let haze = exp(-centerDist * 3.0) * 0.2;
-    
+
     // End fade
     let endFade = sin(u * 3.14159);
-    
+
     // Pulse animation
     let pulsePos = fract(uni.time * 0.5);
     let pulseDist = abs(u - pulsePos);
     let pulse = exp(-pulseDist * pulseDist * 50.0) * 0.5;
-    
+
     let total = (core + innerGlow + haze + pulse) * in.intensity * endFade;
-    
+
     // Color temperature: core white-hot, edges colored
     let coreColor = vec3f(1.0, 1.0, 1.0);
     let edgeColor = in.color;
     let finalColor = mix(edgeColor, coreColor, core * 0.7);
-    
+
     return vec4f(finalColor * total * 4.0, total * 0.8);
 }
 ```
@@ -2727,12 +2828,12 @@ fn fs_beam(in: VOut) -> @location(0) vec4f {
 
 ### New GPU Resources Required
 
-| Resource | Size | Purpose |
-|----------|------|---------|
-| **Trail Buffer** | 64 MB | 16 frames × vec4f × 1M satellites |
-| **Satellite Visual Params** | 8 MB | Per-satellite size, glow, glint phase |
-| **Beam Data** | 2 MB | 65k beams × 2 vec4f (exists) |
-| **Pattern Texture** | 4 MB | Noise for glint variation |
+| Resource                    | Size  | Purpose                               |
+| --------------------------- | ----- | ------------------------------------- |
+| **Trail Buffer**            | 64 MB | 16 frames × vec4f × 1M satellites     |
+| **Satellite Visual Params** | 8 MB  | Per-satellite size, glow, glint phase |
+| **Beam Data**               | 2 MB  | 65k beams × 2 vec4f (exists)          |
+| **Pattern Texture**         | 4 MB  | Noise for glint variation             |
 
 **Total New Memory:** ~78 MB (within Pascal 128 MB budget)
 
@@ -2740,29 +2841,30 @@ fn fs_beam(in: VOut) -> @location(0) vec4f {
 
 ## 4. Implementation Complexity Analysis
 
-| Feature | Complexity | Est. Time | Risk |
-|---------|------------|-----------|------|
-| **Lens Flare Satellites** | Low | 1-2 days | Low |
-| **Shell Differentiation** | Low | 1 day | Low |
-| **Solar Glint** | Medium | 2-3 days | Medium |
-| **Orbital Trails** | Medium | 3-4 days | Medium |
-| **Beam Generation** | High | 5-7 days | High |
-| **Volumetric Beams** | Medium | 3-4 days | Medium |
-| **Atmospheric Scattering** | Medium | 2-3 days | Low |
+| Feature                    | Complexity | Est. Time | Risk   |
+| -------------------------- | ---------- | --------- | ------ |
+| **Lens Flare Satellites**  | Low        | 1-2 days  | Low    |
+| **Shell Differentiation**  | Low        | 1 day     | Low    |
+| **Solar Glint**            | Medium     | 2-3 days  | Medium |
+| **Orbital Trails**         | Medium     | 3-4 days  | Medium |
+| **Beam Generation**        | High       | 5-7 days  | High   |
+| **Volumetric Beams**       | Medium     | 3-4 days  | Medium |
+| **Atmospheric Scattering** | Medium     | 2-3 days  | Low    |
 
 ---
 
 ## 5. Performance Impact Estimation
 
-| Feature | Vertex Cost | Fragment Cost | Memory BW | Total Impact |
-|---------|-------------|---------------|-----------|--------------|
-| Lens Flare Sats | Same | +20% | None | +0.1ms |
-| Shell Diff | Same | +5% | None | +0.02ms |
-| Solar Glint | Same | +15% | None | +0.08ms |
-| Trails (visible only) | +1.6M vert | +20M pix | +64MB/s | +1.2ms |
-| Beams (65k) | +260k vert | +60M pix | +32MB/s | +0.8ms |
+| Feature               | Vertex Cost | Fragment Cost | Memory BW | Total Impact |
+| --------------------- | ----------- | ------------- | --------- | ------------ |
+| Lens Flare Sats       | Same        | +20%          | None      | +0.1ms       |
+| Shell Diff            | Same        | +5%           | None      | +0.02ms      |
+| Solar Glint           | Same        | +15%          | None      | +0.08ms      |
+| Trails (visible only) | +1.6M vert  | +20M pix      | +64MB/s   | +1.2ms       |
+| Beams (65k)           | +260k vert  | +60M pix      | +32MB/s   | +0.8ms       |
 
 **Optimized Trail Performance:**
+
 - Only render trails for visible satellites (~50,000)
 - Trail vertices: 50k × 16 segments × 2 = 1.6M vertices
 - Estimated cost: +1.2ms (acceptable)
@@ -2774,6 +2876,7 @@ fn fs_beam(in: VOut) -> @location(0) vec4f {
 ### 🥇 Priority 1: Lens Flare Satellite Rendering
 
 **Why This is #1:**
+
 - **Immediate visual impact**: Transforms flat dots into compelling light sources
 - **Low implementation risk**: Shader-only change, no new buffers needed
 - **Performance neutral**: Same vertex count, ALU-only fragment increase
@@ -2787,6 +2890,7 @@ Satellites appear as star-like points with radial spikes and soft halos. The con
 ### 🥈 Priority 2: Functional Beam System
 
 **Why This is #2:**
+
 - **Critical missing feature**: Current beams are completely non-functional
 - **High "wow factor"**: Laser beams are central to the "light show" concept
 - **Moderate complexity**: Requires both compute and render shaders
@@ -2800,6 +2904,7 @@ Satellites appear as star-like points with radial spikes and soft halos. The con
 ### 🥉 Priority 3: Selective Orbital Trails
 
 **Why This is #3:**
+
 - **Reveals orbital dynamics**: Makes satellite motion visually understandable
 - **Beautiful patterns**: Walker constellation creates spirograph-like trails
 - **Performance concern**: Requires careful optimization (LOD, frustum cull)
@@ -2822,41 +2927,45 @@ Together with atmospheric scattering and post-processing enhancements, these cha
 
 ---
 
-*Document prepared by Agent 4: Satellite Visualization Engineer*
-*Date: 2026-04-12*
+_Document prepared by Agent 4: Satellite Visualization Engineer_
+_Date: 2026-04-12_
 
 ---
 
 ## Consolidated Recommendations (To Be Filled)
 
 ### Phase 1: Quick Wins (Low Complexity, High Impact)
-| Feature | Agent | Complexity | Impact | Effort |
-|---------|-------|------------|--------|--------|
-| Vignetting | Agent 5 | Low | High | 2 hours |
-| Lens Flare Satellites | Agent 4 | Low | Very High | 1-2 days |
-| Shell Differentiation | Agent 4 | Low | Medium | 1 day |
-| Ocean Fresnel | Agent 1 | Low | High | 1 day |
-| Blackbody Star Colors | Agent 3 | Low | High | 1 day |
+
+| Feature               | Agent   | Complexity | Impact    | Effort   |
+| --------------------- | ------- | ---------- | --------- | -------- |
+| Vignetting            | Agent 5 | Low        | High      | 2 hours  |
+| Lens Flare Satellites | Agent 4 | Low        | Very High | 1-2 days |
+| Shell Differentiation | Agent 4 | Low        | Medium    | 1 day    |
+| Ocean Fresnel         | Agent 1 | Low        | High      | 1 day    |
+| Blackbody Star Colors | Agent 3 | Low        | High      | 1 day    |
 
 ### Phase 2: Medium Enhancements (Moderate Complexity)
-| Feature | Agent | Complexity | Impact | Effort |
-|---------|-------|------------|--------|--------|
-| Functional Beam System | Agent 4 | High | Very High | 5-7 days |
-| Depth of Field | Agent 5 | Medium | High | 2-3 days |
-| Atmospheric Scattering | Agent 1 | Medium | Very High | 3-4 days |
-| Orbital Trails | Agent 4 | Medium | High | 3-4 days |
-| Kawase Bloom | Agent 2 | Medium | Very High | 2-3 days |
-| Auto-Exposure | Agent 2 | Medium | High | 2-3 days |
+
+| Feature                | Agent   | Complexity | Impact    | Effort   |
+| ---------------------- | ------- | ---------- | --------- | -------- |
+| Functional Beam System | Agent 4 | High       | Very High | 5-7 days |
+| Depth of Field         | Agent 5 | Medium     | High      | 2-3 days |
+| Atmospheric Scattering | Agent 1 | Medium     | Very High | 3-4 days |
+| Orbital Trails         | Agent 4 | Medium     | High      | 3-4 days |
+| Kawase Bloom           | Agent 2 | Medium     | Very High | 2-3 days |
+| Auto-Exposure          | Agent 2 | Medium     | High      | 2-3 days |
 
 ### Phase 3: Advanced Features (High Complexity)
-| Feature | Agent | Complexity | Impact | Effort |
-|---------|-------|------------|--------|--------|
-| Volumetric Beams | Agent 4 | Medium | High | 3-4 days |
-| Motion Blur | Agent 5 | Medium | Medium | 2-3 days |
-| Volumetric Clouds | Agent 1 | High | Medium | 5-7 days |
-| Lens Flares | Agent 2 | High | Medium | 3-4 days |
+
+| Feature           | Agent   | Complexity | Impact | Effort   |
+| ----------------- | ------- | ---------- | ------ | -------- |
+| Volumetric Beams  | Agent 4 | Medium     | High   | 3-4 days |
+| Motion Blur       | Agent 5 | Medium     | Medium | 2-3 days |
+| Volumetric Clouds | Agent 1 | High       | Medium | 5-7 days |
+| Lens Flares       | Agent 2 | High       | Medium | 3-4 days |
 
 ### Implementation Priority Matrix
+
 ```
                     Low Effort                          High Effort
                  ┌─────────────────┬─────────────────┬─────────────────┐
@@ -2873,6 +2982,7 @@ Together with atmospheric scattering and post-processing enhancements, these cha
 ```
 
 **Recommended Implementation Order:**
+
 1. **Week 1**: Vignetting + Lens Flare Satellites + Shell Differentiation
 2. **Week 2**: Beam System (compute + render) + Ocean Fresnel
 3. **Week 3**: Atmospheric Scattering + Orbital Trails (optimized)

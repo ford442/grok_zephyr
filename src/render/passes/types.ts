@@ -1,15 +1,21 @@
 /**
- * Pass encoding context shared across render passes
+ * Frame encoding context shared across render passes
  */
 
-import type WebGPUContext from '@/core/WebGPUContext.js';
+import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
 import type { BloomConfig } from '@/types/animation.js';
 import type { DepthOfFieldQualitySettings } from '@/core/QualityPresets.js';
-import type { ExposureSettingsConfig, MotionBlurConfig, PipelineBindGroups, Pipelines, RenderTargets } from '../pipelines/types.js';
+import type {
+  ExposureSettingsConfig,
+  MotionBlurConfig,
+  PipelineBindGroups,
+  Pipelines,
+  RenderTargets,
+} from '../pipelines/types.js';
 import type { RenderUniformBuffers } from '../RenderUniformBuffers.js';
 
-export interface PassContext {
+export interface FrameContext {
   context: WebGPUContext;
   buffers: SatelliteBufferSet;
   renderTargets: RenderTargets;

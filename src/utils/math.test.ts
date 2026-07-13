@@ -37,7 +37,10 @@ function expectVecClose(actual: ArrayLike<number>, expected: ArrayLike<number>, 
   }
 }
 
-function mulMat4Vec4(m: Float32Array, v: [number, number, number, number]): [number, number, number, number] {
+function mulMat4Vec4(
+  m: Float32Array,
+  v: [number, number, number, number],
+): [number, number, number, number] {
   return [
     m[0] * v[0] + m[4] * v[1] + m[8] * v[2] + m[12] * v[3],
     m[1] * v[0] + m[5] * v[1] + m[9] * v[2] + m[13] * v[3],
@@ -75,27 +78,12 @@ describe('math utilities', () => {
   });
 
   it('returns identity matrix', () => {
-    expect(Array.from(mat4identity())).toEqual([
-      1, 0, 0, 0,
-      0, 1, 0, 0,
-      0, 0, 1, 0,
-      0, 0, 0, 1,
-    ]);
+    expect(Array.from(mat4identity())).toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
   });
 
   it('multiplies matrices in column-major order (a * b)', () => {
-    const scale = new Float32Array([
-      2, 0, 0, 0,
-      0, 3, 0, 0,
-      0, 0, 4, 0,
-      0, 0, 0, 1,
-    ]);
-    const translate = new Float32Array([
-      1, 0, 0, 0,
-      0, 1, 0, 0,
-      0, 0, 1, 0,
-      10, 20, 30, 1,
-    ]);
+    const scale = new Float32Array([2, 0, 0, 0, 0, 3, 0, 0, 0, 0, 4, 0, 0, 0, 0, 1]);
+    const translate = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1]);
     const point: [number, number, number, number] = [1, 1, 1, 1];
 
     const ts = mat4mul(translate, scale); // scale first, then translate
@@ -104,12 +92,7 @@ describe('math utilities', () => {
   });
 
   it('inverts diagonal scale matrix and round-trips to identity', () => {
-    const scale = new Float32Array([
-      2, 0, 0, 0,
-      0, 3, 0, 0,
-      0, 0, 4, 0,
-      0, 0, 0, 1,
-    ]);
+    const scale = new Float32Array([2, 0, 0, 0, 0, 3, 0, 0, 0, 0, 4, 0, 0, 0, 0, 1]);
     const inv = mat4inv(scale);
     const ident = mat4mul(scale, inv);
     expectVecClose(ident, mat4identity(), 1e-4);

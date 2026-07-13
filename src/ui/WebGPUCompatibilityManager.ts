@@ -1,6 +1,6 @@
 /**
  * WebGPU Compatibility Manager
- * 
+ *
  * Handles comprehensive WebGPU support detection and user-friendly error messaging.
  */
 
@@ -79,12 +79,12 @@ export class WebGPUCompatibilityManager {
 
     const suggestions: Record<string, string[]> = {
       Chrome: [
-        'You already have Chrome! Just make sure it\'s version 113 or newer.',
+        "You already have Chrome! Just make sure it's version 113 or newer.",
         'Check chrome://version to see your Chrome version.',
         'WebGPU is enabled by default in recent Chrome versions.',
       ],
       Edge: [
-        'You already have Edge! Just make sure it\'s version 113 or newer.',
+        "You already have Edge! Just make sure it's version 113 or newer.",
         'Edge Chromium includes WebGPU support.',
       ],
       Firefox: [
@@ -106,10 +106,58 @@ export class WebGPUCompatibilityManager {
   }
 
   /**
-   * Check if a compatibility overlay is already displayed
+   * Non-fatal overlay shown while the app recreates GPU resources after device loss.
+   */
+  static createRecoveryOverlay(): HTMLElement {
+    const overlay = document.createElement('div');
+    overlay.id = 'webgpu-recovery-overlay';
+    overlay.setAttribute('role', 'status');
+    overlay.setAttribute('aria-live', 'polite');
+    overlay.className = 'compatibility-overlay severity-info';
+
+    overlay.innerHTML = `
+      <div class="compatibility-content">
+        <div class="compatibility-icon" aria-hidden="true">⟳</div>
+        <h1 class="compatibility-title">GPU Device Lost — Recovering…</h1>
+        <p class="compatibility-message">
+          The graphics device was reset. Grok Zephyr is rebuilding GPU resources.
+          This usually takes a few seconds.
+        </p>
+      </div>
+    `;
+
+    return overlay;
+  }
+
+  /** Build a compatibility result for a failed initialization or recovery stage. */
+  static createInitFailureResult(stage: string, message: string): CompatibilityCheckResult {
+    return {
+      isSupported: false,
+      browserName: this.detectBrowser(),
+      message: `Initialization failed during ${stage}: ${message}`,
+      suggestions: [
+        'Reload the page and try again.',
+        'Update your browser to the latest Chrome 113+ or Edge 113+ build.',
+        'If the problem persists, try disabling hardware acceleration or switching GPUs.',
+      ],
+      severity: 'critical',
+    };
+  }
+
+  /**
+   * Check if a compatibility overlay is already displayed (excluding recovery banner).
+   */
+  static hasCompatibilityOverlay(): boolean {
+    return document.querySelector('#webgpu-compatibility-overlay') !== null;
+  }
+
+  /**
+   * Check if a compatibility or recovery overlay is already displayed.
    */
   static hasActiveOverlay(): boolean {
-    return document.querySelector('#webgpu-compatibility-overlay') !== null;
+    return (
+      this.hasCompatibilityOverlay() || document.querySelector('#webgpu-recovery-overlay') !== null
+    );
   }
 
   /**
@@ -181,9 +229,9 @@ export class WebGPUCompatibilityManager {
     `;
 
     // Attach event listeners
-    const downloadBtn = overlay.querySelector('#compat-download-btn') as HTMLButtonElement | null;
-    const retryBtn = overlay.querySelector('#compat-retry-btn') as HTMLButtonElement | null;
-    const continueBtn = overlay.querySelector('#compat-continue-btn') as HTMLButtonElement | null;
+    const downloadBtn = overlay.querySelector('#compat-download-btn');
+    const retryBtn = overlay.querySelector('#compat-retry-btn');
+    const continueBtn = overlay.querySelector('#compat-continue-btn');
 
     if (downloadBtn) {
       downloadBtn.addEventListener('click', () => {

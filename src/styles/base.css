@@ -12,8 +12,15 @@
 :root {
   --hud-border: rgba(0, 255, 170, 0.26);
   --hud-border-strong: rgba(102, 238, 255, 0.5);
-  --hud-glass: linear-gradient(130deg, rgba(4, 16, 34, 0.8) 0%, rgba(2, 20, 36, 0.62) 60%, rgba(12, 18, 34, 0.76) 100%);
-  --hud-shadow: 0 16px 44px rgba(0, 0, 0, 0.45), 0 0 30px rgba(0, 180, 255, 0.12), inset 0 0 40px rgba(0, 0, 0, 0.42);
+  --hud-glass: linear-gradient(
+    130deg,
+    rgba(4, 16, 34, 0.8) 0%,
+    rgba(2, 20, 36, 0.62) 60%,
+    rgba(12, 18, 34, 0.76) 100%
+  );
+  --hud-shadow:
+    0 16px 44px rgba(0, 0, 0, 0.45), 0 0 30px rgba(0, 180, 255, 0.12),
+    inset 0 0 40px rgba(0, 0, 0, 0.42);
   --hud-radius: 14px;
   --hud-text: #c9ffe7;
   --hud-muted: rgba(130, 255, 219, 0.78);
@@ -27,7 +34,8 @@
   --overlay-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
-html, body {
+html,
+body {
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -46,7 +54,9 @@ html, body {
   left: 0;
   /* Prevent browser scroll/pinch from intercepting canvas touch events */
   touch-action: none;
-  transition: top 180ms ease-out, height 180ms ease-out;
+  transition:
+    top 180ms ease-out,
+    height 180ms ease-out;
 }
 
 /* UI Panel */
@@ -208,7 +218,12 @@ html, body {
   font-size: clamp(10px, 1vw, 11px);
   letter-spacing: 1px;
   border-radius: 8px;
-  transition: background 0.18s ease, box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease, color 0.18s ease;
+  transition:
+    background 0.18s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease,
+    color 0.18s ease;
   pointer-events: auto;
   text-transform: uppercase;
   min-height: 34px;
@@ -225,24 +240,38 @@ html, body {
   opacity: 0;
   background: currentColor;
   transform: scaleX(0.25);
-  transition: transform 0.18s ease, opacity 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease;
 }
 
 .vbtn:hover {
   background: rgba(0, 255, 136, 0.2);
-  box-shadow: 0 0 20px rgba(0, 255, 136, 0.38), inset 0 0 18px rgba(0, 255, 136, 0.12);
+  box-shadow:
+    0 0 20px rgba(0, 255, 136, 0.38),
+    inset 0 0 18px rgba(0, 255, 136, 0.12);
   border-color: #4bffc2;
   transform: translateY(-1px) scale(1.02);
 }
 
-:is(.vbtn, .pbtn, .anim-btn, .physics-btn, .quality-btn, .time-preset-btn, .capture-btn):hover::after {
+:is(
+    .vbtn,
+    .pbtn,
+    .anim-btn,
+    .physics-btn,
+    .quality-btn,
+    .time-preset-btn,
+    .capture-btn
+  ):hover::after {
   opacity: 0.8;
   transform: scaleX(1);
 }
 
 .vbtn.active {
   background: rgba(0, 255, 136, 0.22);
-  box-shadow: 0 0 22px rgba(0, 255, 136, 0.42), 0 0 6px rgba(0, 255, 136, 0.6) inset;
+  box-shadow:
+    0 0 22px rgba(0, 255, 136, 0.42),
+    0 0 6px rgba(0, 255, 136, 0.6) inset;
   border-color: #00ff88;
   color: #fff;
   transform: translateY(-1px);
@@ -254,7 +283,15 @@ html, body {
 
 .capture-video-row select:focus-visible,
 :is(#trailsLength, #exposureMode, #tonemapMode):focus-visible,
-:is(.vbtn, .pbtn, .anim-btn, .physics-btn, .quality-btn, .time-preset-btn, .capture-btn):focus-visible,
+:is(
+  .vbtn,
+  .pbtn,
+  .anim-btn,
+  .physics-btn,
+  .quality-btn,
+  .time-preset-btn,
+  .capture-btn
+):focus-visible,
 .angle-display button:focus-visible,
 .preset-btn:focus-visible {
   outline: 1px solid var(--hud-border-strong);
@@ -281,7 +318,12 @@ html, body {
   font-family: 'Courier New', monospace;
   font-size: 10px;
   letter-spacing: 1px;
-  transition: background 0.18s ease, box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease, color 0.18s ease;
+  transition:
+    background 0.18s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease,
+    color 0.18s ease;
   pointer-events: auto;
   margin: 1px 0;
   border-radius: 8px;
@@ -291,14 +333,18 @@ html, body {
 
 .pbtn:hover {
   background: rgba(0, 170, 255, 0.2);
-  box-shadow: 0 0 16px rgba(0, 170, 255, 0.33), inset 0 0 14px rgba(0, 170, 255, 0.12);
+  box-shadow:
+    0 0 16px rgba(0, 170, 255, 0.33),
+    inset 0 0 14px rgba(0, 170, 255, 0.12);
   border-color: #00aaff;
   transform: translateY(-1px) scale(1.02);
 }
 
 .pbtn.active {
   background: rgba(0, 170, 255, 0.2);
-  box-shadow: 0 0 16px rgba(0, 170, 255, 0.35), 0 0 4px rgba(0, 170, 255, 0.5) inset;
+  box-shadow:
+    0 0 16px rgba(0, 170, 255, 0.35),
+    0 0 4px rgba(0, 170, 255, 0.5) inset;
   border-color: #00aaff;
   color: #fff;
 }
@@ -397,7 +443,9 @@ html, body {
     rgba(0, 255, 170, 0.15) 88%,
     transparent 100%
   );
-  box-shadow: 0 0 12px rgba(0, 255, 170, 0.35), 0 0 28px rgba(255, 140, 60, 0.12);
+  box-shadow:
+    0 0 12px rgba(0, 255, 170, 0.35),
+    0 0 28px rgba(255, 140, 60, 0.12);
 }
 
 #horizon-limb-line::after {
@@ -429,7 +477,9 @@ html, body {
   border: 1px solid rgba(0, 255, 170, 0.2);
   border-radius: 11px;
   backdrop-filter: blur(12px) saturate(132%);
-  box-shadow: inset 0 0 24px rgba(0, 174, 255, 0.12), 0 0 24px rgba(0, 0, 0, 0.35);
+  box-shadow:
+    inset 0 0 24px rgba(0, 174, 255, 0.12),
+    0 0 24px rgba(0, 0, 0, 0.35);
 }
 
 #moon-scale-annotation {

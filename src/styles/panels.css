@@ -205,12 +205,12 @@
     max-width: calc(100vw - 20px);
     padding: 12px 14px;
   }
-  
+
   #ui .stat {
     font-size: 11px;
     line-height: 1.65;
   }
-  
+
   #controls {
     width: calc(100vw - 20px);
     max-height: 46vh;
@@ -228,12 +228,12 @@
   .view-btn-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  
+
   .vbtn {
     padding: 7px 10px;
     font-size: 10px;
   }
-  
+
   #horizon-indicator,
   #horizon-limb-line {
     display: none;
@@ -267,7 +267,9 @@
     backdrop-filter: blur(14px) saturate(135%);
     box-shadow: var(--hud-shadow);
     pointer-events: auto;
-    transition: background 0.18s ease, transform 0.15s ease;
+    transition:
+      background 0.18s ease,
+      transform 0.15s ease;
   }
 
   #menu-toggle:hover,
@@ -292,7 +294,19 @@
   }
 
   /* Ensure all interactive elements meet 44×44 dp minimum touch target */
-  :is(.vbtn, .pbtn, .anim-btn, .physics-btn, .quality-btn, .time-preset-btn, .capture-btn, #capVideoLength, #trailsLength, #exposureMode, #tonemapMode) {
+  :is(
+    .vbtn,
+    .pbtn,
+    .anim-btn,
+    .physics-btn,
+    .quality-btn,
+    .time-preset-btn,
+    .capture-btn,
+    #capVideoLength,
+    #trailsLength,
+    #exposureMode,
+    #tonemapMode
+  ) {
     min-height: 44px;
   }
 
@@ -343,8 +357,13 @@
 }
 
 @keyframes orientSpin {
-  0%, 100% { transform: rotate(0deg); }
-  50% { transform: rotate(90deg); }
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(90deg);
+  }
 }
 
 /* Physics Controls */
@@ -373,7 +392,12 @@
   font-family: 'Courier New', monospace;
   font-size: 10px;
   letter-spacing: 1px;
-  transition: background 0.18s ease, box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease, color 0.18s ease;
+  transition:
+    background 0.18s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease,
+    color 0.18s ease;
   pointer-events: auto;
   margin: 1px 0;
   border-radius: 8px;
@@ -383,14 +407,18 @@
 
 .physics-btn:hover:not(.disabled) {
   background: rgba(255, 170, 0, 0.2);
-  box-shadow: 0 0 16px rgba(255, 170, 0, 0.32), inset 0 0 14px rgba(255, 170, 0, 0.1);
+  box-shadow:
+    0 0 16px rgba(255, 170, 0, 0.32),
+    inset 0 0 14px rgba(255, 170, 0, 0.1);
   border-color: #ffaa00;
   transform: translateY(-1px) scale(1.02);
 }
 
 .physics-btn.active {
   background: rgba(255, 170, 0, 0.2);
-  box-shadow: 0 0 14px rgba(255, 170, 0, 0.3), 0 0 4px rgba(255, 170, 0, 0.5) inset;
+  box-shadow:
+    0 0 14px rgba(255, 170, 0, 0.3),
+    0 0 4px rgba(255, 170, 0, 0.5) inset;
   border-color: #ffaa00;
   color: #fff;
 }
@@ -428,7 +456,12 @@
   font-family: 'Courier New', monospace;
   font-size: 10px;
   letter-spacing: 1px;
-  transition: background 0.18s ease, box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease, color 0.18s ease;
+  transition:
+    background 0.18s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease,
+    color 0.18s ease;
   pointer-events: auto;
   margin: 1px 0;
   border-radius: 8px;
@@ -438,14 +471,18 @@
 
 .anim-btn:hover {
   background: rgba(255, 102, 255, 0.2);
-  box-shadow: 0 0 16px rgba(255, 102, 255, 0.32), inset 0 0 14px rgba(255, 102, 255, 0.12);
+  box-shadow:
+    0 0 16px rgba(255, 102, 255, 0.32),
+    inset 0 0 14px rgba(255, 102, 255, 0.12);
   border-color: #ff66ff;
   transform: translateY(-1px) scale(1.02);
 }
 
 .anim-btn.active {
   background: rgba(255, 102, 255, 0.2);
-  box-shadow: 0 0 14px rgba(255, 102, 255, 0.3), 0 0 4px rgba(255, 102, 255, 0.5) inset;
+  box-shadow:
+    0 0 14px rgba(255, 102, 255, 0.3),
+    0 0 4px rgba(255, 102, 255, 0.5) inset;
   border-color: #ff66ff;
   color: #fff;
 }
@@ -470,7 +507,7 @@
   min-width: 40px;
 }
 
-.anim-controls-row input[type="range"] {
+.anim-controls-row input[type='range'] {
   width: 60px;
   height: 4px;
   background: rgba(255, 102, 255, 0.2);
@@ -479,7 +516,7 @@
   -webkit-appearance: none;
 }
 
-.anim-controls-row input[type="range"]::-webkit-slider-thumb {
+.anim-controls-row input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 10px;
   height: 10px;
@@ -488,7 +525,7 @@
   cursor: pointer;
 }
 
-.anim-controls-row input[type="range"]::-moz-range-thumb {
+.anim-controls-row input[type='range']::-moz-range-thumb {
   width: 10px;
   height: 10px;
   background: #ff66ff;
@@ -497,7 +534,7 @@
   border: none;
 }
 
-.anim-controls-row input[type="checkbox"] {
+.anim-controls-row input[type='checkbox'] {
   width: 14px;
   height: 14px;
   accent-color: #ff66ff;

@@ -33,7 +33,7 @@
   width: 100%;
 }
 
-.time-slider-row input[type="range"] {
+.time-slider-row input[type='range'] {
   flex: 1;
   height: 4px;
   background: rgba(0, 255, 204, 0.2);
@@ -42,7 +42,7 @@
   -webkit-appearance: none;
 }
 
-.time-slider-row input[type="range"]::-webkit-slider-thumb {
+.time-slider-row input[type='range']::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 10px;
   height: 10px;
@@ -52,7 +52,7 @@
   box-shadow: none;
 }
 
-.time-slider-row input[type="range"]::-moz-range-thumb {
+.time-slider-row input[type='range']::-moz-range-thumb {
   width: 10px;
   height: 10px;
   background: #00ffcc;
@@ -85,7 +85,12 @@
   font-family: 'Courier New', monospace;
   font-size: 9px;
   letter-spacing: 1px;
-  transition: background 0.18s ease, box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease, color 0.18s ease;
+  transition:
+    background 0.18s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease,
+    color 0.18s ease;
   pointer-events: auto;
   border-radius: 7px;
   min-height: 28px;
@@ -94,14 +99,18 @@
 
 .time-preset-btn:hover {
   background: rgba(0, 255, 204, 0.2);
-  box-shadow: 0 0 16px rgba(0, 255, 204, 0.32), inset 0 0 12px rgba(0, 255, 204, 0.12);
+  box-shadow:
+    0 0 16px rgba(0, 255, 204, 0.32),
+    inset 0 0 12px rgba(0, 255, 204, 0.12);
   border-color: #00ffcc;
   transform: translateY(-1px) scale(1.02);
 }
 
 .time-preset-btn.active {
   background: rgba(0, 255, 204, 0.2);
-  box-shadow: 0 0 14px rgba(0, 255, 204, 0.3), 0 0 4px rgba(0, 255, 204, 0.5) inset;
+  box-shadow:
+    0 0 14px rgba(0, 255, 204, 0.3),
+    0 0 4px rgba(0, 255, 204, 0.5) inset;
   border-color: #00ffcc;
   color: #fff;
 }
@@ -132,7 +141,12 @@
   font-family: 'Courier New', monospace;
   font-size: 10px;
   letter-spacing: 1px;
-  transition: background 0.18s ease, box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease, color 0.18s ease;
+  transition:
+    background 0.18s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease,
+    color 0.18s ease;
   pointer-events: auto;
   margin: 1px 0;
   min-width: 80px;
@@ -144,14 +158,18 @@
 
 .quality-btn:hover {
   background: rgba(255, 221, 0, 0.2);
-  box-shadow: 0 0 16px rgba(255, 221, 0, 0.32), inset 0 0 12px rgba(255, 221, 0, 0.12);
+  box-shadow:
+    0 0 16px rgba(255, 221, 0, 0.32),
+    inset 0 0 12px rgba(255, 221, 0, 0.12);
   border-color: #ffdd00;
   transform: translateY(-1px) scale(1.02);
 }
 
 .quality-btn.active {
   background: rgba(255, 221, 0, 0.2);
-  box-shadow: 0 0 14px rgba(255, 221, 0, 0.3), 0 0 4px rgba(255, 221, 0, 0.5) inset;
+  box-shadow:
+    0 0 14px rgba(255, 221, 0, 0.3),
+    0 0 4px rgba(255, 221, 0, 0.5) inset;
   border-color: #ffdd00;
   color: #fff;
 }
@@ -189,14 +207,21 @@
   font-family: 'Courier New', monospace;
   font-size: 10px;
   letter-spacing: 0.8px;
-  transition: background 0.18s ease, box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease, color 0.18s ease;
+  transition:
+    background 0.18s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease,
+    color 0.18s ease;
   position: relative;
 }
 
 .capture-btn:hover {
   background: rgba(133, 196, 255, 0.2);
   border-color: #8ed2ff;
-  box-shadow: 0 0 16px rgba(132, 198, 255, 0.3), inset 0 0 14px rgba(132, 198, 255, 0.12);
+  box-shadow:
+    0 0 16px rgba(132, 198, 255, 0.3),
+    inset 0 0 14px rgba(132, 198, 255, 0.12);
   transform: translateY(-1px) scale(1.02);
 }
 
@@ -277,7 +302,7 @@
   letter-spacing: 0.6px;
 }
 
-.tuning-row.tuning-check input[type="checkbox"] {
+.tuning-row.tuning-check input[type='checkbox'] {
   accent-color: #5fe0ff;
   margin: 0;
 }
@@ -311,7 +336,7 @@
   font-size: 10px;
 }
 
-.capture-toggle input[type="checkbox"] {
+.capture-toggle input[type='checkbox'] {
   accent-color: #86c8ff;
 }
 
@@ -403,7 +428,9 @@
   border: 1px solid rgba(0, 255, 136, 0.3);
   border-radius: 8px;
   backdrop-filter: blur(10px);
-  box-shadow: 0 0 24px rgba(0, 170, 255, 0.15), inset 0 0 20px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    0 0 24px rgba(0, 170, 255, 0.15),
+    inset 0 0 20px rgba(0, 0, 0, 0.3);
   padding: 12px 14px;
   min-width: 220px;
   max-width: 240px;
@@ -543,7 +570,8 @@
 }
 
 @keyframes pulseYellow {
-  0%, 100% {
+  0%,
+  100% {
     color: #ffdd00;
     text-shadow: none;
   }
@@ -584,7 +612,9 @@
 }
 
 button:focus-visible {
-  box-shadow: var(--hud-focus-ring), 0 0 10px rgba(0, 255, 170, 0.3);
+  box-shadow:
+    var(--hud-focus-ring),
+    0 0 10px rgba(0, 255, 170, 0.3);
 }
 
 /* High contrast mode support */

@@ -20,10 +20,10 @@ import { CONSTANTS, INCLINATION_SHELLS } from '@/types/constants.js';
 import type { TLEData } from '@/types/index.js';
 import { createSeededRandom } from '@/core/seededRandom.js';
 
-/** Orbit radius (km) per inclination shell — matches orbital_compute.wgsl simple mode. */
+/** Orbit radius (km) per inclination shell — matches compute/orbital.ts simple mode. */
 export const SHELL_RADII_KM = [6711.0, 6921.0, 7521.0];
 
-/** Mean motion (rad/s) per shell — matches orbital_compute.wgsl simple mode. */
+/** Mean motion (rad/s) per shell — matches compute/orbital.ts simple mode. */
 export const SHELL_MEAN_MOTIONS = [0.001153, 0.001097, 0.000946];
 
 /** Color index per shell (used by the satellite shader's shell color table). */
@@ -77,7 +77,7 @@ export class OrbitalElements {
         }
 
         const colorIndex = SHELL_COLORS[shellIndex];
-        const shellData = (shellIndex << 8) | (colorIndex & 0xFF);
+        const shellData = (shellIndex << 8) | (colorIndex & 0xff);
 
         data[idx + 0] = raan;
         data[idx + 1] = inclination;
@@ -120,7 +120,7 @@ export class OrbitalElements {
       else shellIndex = 2;
 
       const colorIndex = SHELL_COLORS[shellIndex];
-      const shellData = (shellIndex << 8) | (colorIndex & 0xFF);
+      const shellData = (shellIndex << 8) | (colorIndex & 0xff);
 
       const idx = t * 4;
       data[idx + 0] = raan;
@@ -147,7 +147,7 @@ export class OrbitalElements {
 
         const shellIndex = globalIdx % 3 === 0 ? 0 : globalIdx % 3 === 1 ? 1 : 2;
         const colorIndex = SHELL_COLORS[shellIndex];
-        const shellData = (shellIndex << 8) | (colorIndex & 0xFF);
+        const shellData = (shellIndex << 8) | (colorIndex & 0xff);
 
         const idx = globalIdx * 4;
         data[idx + 0] = raan;
@@ -162,7 +162,7 @@ export class OrbitalElements {
 
   /**
    * Calculate satellite position on CPU (multi-shell, simple circular mode).
-   * Mirrors the simple-mode propagation in orbital_compute.wgsl.
+   * Mirrors the simple-mode propagation in compute/orbital.ts.
    */
   calculatePosition(index: number, time: number): [number, number, number] {
     const i = index * 4;
@@ -171,7 +171,7 @@ export class OrbitalElements {
     const meanAnomaly0 = this.data[i + 2];
     const shellData = this.data[i + 3];
 
-    const shellIndex = (shellData >> 8) & 0xFF;
+    const shellIndex = (shellData >> 8) & 0xff;
     const orbitR = SHELL_RADII_KM[shellIndex] || 6921.0;
     const meanMotion = SHELL_MEAN_MOTIONS[shellIndex] || 0.001097;
 
@@ -184,11 +184,7 @@ export class OrbitalElements {
     const cI = Math.cos(inclination);
     const sI = Math.sin(inclination);
 
-    return [
-      orbitR * (cR * cM - sR * sM * cI),
-      orbitR * (sR * cM + cR * sM * cI),
-      orbitR * sM * sI,
-    ];
+    return [orbitR * (cR * cM - sR * sM * cI), orbitR * (sR * cM + cR * sM * cI), orbitR * sM * sI];
   }
 
   /**
@@ -201,7 +197,7 @@ export class OrbitalElements {
     const meanAnomaly0 = this.data[i + 2];
     const shellData = this.data[i + 3];
 
-    const shellIndex = (shellData >> 8) & 0xFF;
+    const shellIndex = (shellData >> 8) & 0xff;
     const meanMotion = SHELL_MEAN_MOTIONS[shellIndex] || 0.001097;
 
     const meanAnomaly = meanAnomaly0 + meanMotion * time;
@@ -221,5 +217,3 @@ export class OrbitalElements {
     return [vx / len, vy / len, vz / len];
   }
 }
-
-export default OrbitalElements;

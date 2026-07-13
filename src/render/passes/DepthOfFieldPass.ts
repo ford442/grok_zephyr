@@ -2,11 +2,11 @@
  * Depth of field pass encoder
  */
 
-import type { PassContext } from './types.js';
+import type { FrameContext } from './types.js';
 
 export function encodeDepthOfFieldPasses(
   encoder: GPUCommandEncoder,
-  ctx: PassContext,
+  ctx: FrameContext,
 ): GPUTextureView {
   if (!ctx.dofConfig.enabled || !ctx.dofUniformBuffer) {
     return ctx.renderTargets.hdrView;
@@ -53,12 +53,14 @@ export function encodeDepthOfFieldPasses(
 
   {
     const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: ctx.renderTargets.dofHalfAView,
-        clearValue: { r: 0, g: 0, b: 0, a: 0 },
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
+      colorAttachments: [
+        {
+          view: ctx.renderTargets.dofHalfAView,
+          clearValue: { r: 0, g: 0, b: 0, a: 0 },
+          loadOp: 'clear',
+          storeOp: 'store',
+        },
+      ],
     });
     pass.setViewport(0, 0, halfWidth, halfHeight, 0, 1);
     pass.setPipeline(ctx.pipelines.dofDownsample);
@@ -68,12 +70,14 @@ export function encodeDepthOfFieldPasses(
   }
   {
     const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: ctx.renderTargets.dofHalfBView,
-        clearValue: { r: 0, g: 0, b: 0, a: 0 },
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
+      colorAttachments: [
+        {
+          view: ctx.renderTargets.dofHalfBView,
+          clearValue: { r: 0, g: 0, b: 0, a: 0 },
+          loadOp: 'clear',
+          storeOp: 'store',
+        },
+      ],
     });
     pass.setViewport(0, 0, halfWidth, halfHeight, 0, 1);
     pass.setPipeline(ctx.pipelines.dofBlurH);
@@ -83,12 +87,14 @@ export function encodeDepthOfFieldPasses(
   }
   {
     const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: ctx.renderTargets.dofHalfAView,
-        clearValue: { r: 0, g: 0, b: 0, a: 0 },
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
+      colorAttachments: [
+        {
+          view: ctx.renderTargets.dofHalfAView,
+          clearValue: { r: 0, g: 0, b: 0, a: 0 },
+          loadOp: 'clear',
+          storeOp: 'store',
+        },
+      ],
     });
     pass.setViewport(0, 0, halfWidth, halfHeight, 0, 1);
     pass.setPipeline(ctx.pipelines.dofBlurV);
@@ -98,12 +104,14 @@ export function encodeDepthOfFieldPasses(
   }
   {
     const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: ctx.renderTargets.dofCompositeView,
-        clearValue: { r: 0, g: 0, b: 0, a: 1 },
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
+      colorAttachments: [
+        {
+          view: ctx.renderTargets.dofCompositeView,
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: 'clear',
+          storeOp: 'store',
+        },
+      ],
     });
     pass.setViewport(0, 0, ctx.width, ctx.height, 0, 1);
     pass.setPipeline(ctx.pipelines.dofComposite);

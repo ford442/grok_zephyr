@@ -5,12 +5,6 @@
  * logic stay consistent.
  */
 
-export enum BeamPatternMode {
-  CHAOS = 0,
-  GROK = 1,
-  X_LOGO = 2,
-}
-
 export const BEAM_PATTERN_NAMES = ['CHAOS', 'GROK', '𝕏 LOGO'] as const;
 export const CONSTELLATION_NAMES = ['Entropy Net', 'Big Dipper', 'Orion'] as const;
 

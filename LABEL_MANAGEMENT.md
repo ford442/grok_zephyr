@@ -38,6 +38,7 @@ python3 scripts/update_labels.py
 ## Label Configuration
 
 The label configuration is stored in `scripts/label-config.json`. This file defines:
+
 - Label name
 - Color (hex format)
 - Description
@@ -47,6 +48,7 @@ To add or modify labels, edit this file and then run the update script or the Gi
 ## Integration with GitHub Actions
 
 The repository includes a GitHub Actions workflow (`.github/workflows/manage-labels.yml`) that can:
+
 - Be manually triggered via `workflow_dispatch`
 - Automatically run when the workflow file or label configuration changes
 

@@ -12,7 +12,9 @@
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
 
-export const VOLUMETRIC_BEAM_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+export const VOLUMETRIC_BEAM_SHADER =
+  UNIFORM_STRUCT +
+  /* wgsl */ `
 
 // ─── Volumetric configuration uniform ────────────────────────────────────────
 struct VolumetricBeamConfig {

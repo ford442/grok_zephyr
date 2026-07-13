@@ -1,4 +1,5 @@
 <!-- From: /root/grok_zephyr/AGENTS.md -->
+
 # AGENTS.md - Grok Zephyr / Colossus Fleet
 
 ## Project Overview
@@ -9,17 +10,17 @@ The simulation renders a real-time light show with RGB beam projections from sat
 
 ## Technology Stack
 
-| Component | Technology |
-|-----------|------------|
-| Graphics API | WebGPU |
-| Shading Language | WGSL (WebGPU Shading Language) |
-| Frontend | TypeScript 5.9+ |
-| Build Tool | Vite 5.0+ |
-| Math Utilities | Custom column-major matrix implementation |
-| Physics | satellite.js 5.0+ (SGP4 dependency, but GPU propagation is custom Keplerian) |
-| Package Manager | npm |
-| Deployment | Python 3 + Paramiko (SFTP) |
-| Testing | Vitest (`npm run test`) with initial coverage for math + TLE parsing |
+| Component        | Technology                                                                   |
+| ---------------- | ---------------------------------------------------------------------------- |
+| Graphics API     | WebGPU                                                                       |
+| Shading Language | WGSL (WebGPU Shading Language)                                               |
+| Frontend         | TypeScript 5.9+                                                              |
+| Build Tool       | Vite 5.0+                                                                    |
+| Math Utilities   | Custom column-major matrix implementation                                    |
+| Physics          | satellite.js 5.0+ (SGP4 dependency, but GPU propagation is custom Keplerian) |
+| Package Manager  | npm                                                                          |
+| Deployment       | Python 3 + Paramiko (SFTP)                                                   |
+| Testing          | Vitest (`npm run test`) with initial coverage for math + TLE parsing         |
 
 ## Project Structure
 
@@ -29,7 +30,6 @@ grok_zephyr/
 ├── package.json                  # npm dependencies and scripts
 ├── tsconfig.json                 # TypeScript configuration (strict mode)
 ├── vite.config.ts                # Vite build configuration with custom plugins
-├── deploy.py                     # SFTP deployment script (expects dist/ directory)
 ├── git.sh                        # Git helper script
 ├── README.md                     # Human-readable project description
 ├── AGENTS.md                     # This file
@@ -149,8 +149,8 @@ npm run preview
 # Type check without emitting
 npm run type-check
 
-# Deploy (builds and prints gh-pages instructions)
-npm run deploy
+# Lint (ESLint + Knip)
+npm run lint
 ```
 
 ## Architecture Details
@@ -173,13 +173,13 @@ The frame is rendered through the following passes:
 ### Simulation Constants
 
 ```typescript
-const NUM_SATELLITES = 1048576;    // 2^20 satellites
-const EARTH_RADIUS_KM = 6371.0;    // km - Earth radius
-const ORBIT_RADIUS_KM = 6921.0;    // km - 550km altitude orbit
-const CAMERA_RADIUS_KM = 7091.0;   // km - 720km altitude camera
+const NUM_SATELLITES = 1048576; // 2^20 satellites
+const EARTH_RADIUS_KM = 6371.0; // km - Earth radius
+const ORBIT_RADIUS_KM = 6921.0; // km - 550km altitude orbit
+const CAMERA_RADIUS_KM = 7091.0; // km - 720km altitude camera
 const MOON_DISTANCE_KM = 384400.0; // km - average Earth-Moon distance
-const MEAN_MOTION = 0.001097;      // rad/s - orbital angular velocity
-const NUM_PLANES = 1024;           // orbital planes
+const MEAN_MOTION = 0.001097; // rad/s - orbital angular velocity
+const NUM_PLANES = 1024; // orbital planes
 const SATELLITES_PER_PLANE = 1024; // satellites per plane
 ```
 
@@ -203,17 +203,18 @@ const SATELLITES_PER_PLANE = 1024; // satellites per plane
 
 ### View Modes
 
-| Mode | ID | Description |
-|------|-----|-------------|
-| 720km Horizon | 0 | Camera at 720km altitude on +X axis, looking along constellation |
-| God View | 1 | Orbiting free camera with mouse controls (drag to rotate, scroll to zoom) |
-| Fleet POV | 2 | Camera follows satellite #0 in first-person; WASD for micro-drift |
-| Ground View | 3 | Surface observer looking up at the constellation; includes environmental overlays |
-| Moon View | 4 | Camera positioned at Earth-Moon distance viewing the near-side constellation |
+| Mode          | ID  | Description                                                                       |
+| ------------- | --- | --------------------------------------------------------------------------------- |
+| 720km Horizon | 0   | Camera at 720km altitude on +X axis, looking along constellation                  |
+| God View      | 1   | Orbiting free camera with mouse controls (drag to rotate, scroll to zoom)         |
+| Fleet POV     | 2   | Camera follows satellite #0 in first-person; WASD for micro-drift                 |
+| Ground View   | 3   | Surface observer looking up at the constellation; includes environmental overlays |
+| Moon View     | 4   | Camera positioned at Earth-Moon distance viewing the near-side constellation      |
 
 ### Ground Observer Presets
 
 When in Ground View, the following presets are available via UI buttons:
+
 - **House** (`houseWindow`) — View from a house window
 - **Car** (`carWindshield`) — View from a car windshield
 - **Beach** (`beachNight`) — Night beach perspective
@@ -225,6 +226,7 @@ Each preset applies a different CSS overlay class to `#ground-observer-overlay`.
 ### Beam Patterns
 
 Controlled by the "BEAM PATTERN" UI buttons:
+
 - **CHAOS** (`0`) — Random/unstructured beam pattern
 - **GROK** (`1`) — Grok-branded structured pattern (default)
 - **𝕏 LOGO** (`2`) — X logo projection pattern
@@ -232,6 +234,7 @@ Controlled by the "BEAM PATTERN" UI buttons:
 ### Animation Patterns
 
 Controlled by the "CONSTELLATION PATTERNS" UI buttons:
+
 - **SMILE** (`3`) — Smile face constellation animation
 - **DIGITAL RAIN** (`4`) — Matrix-style digital rain effect
 - **HEARTBEAT** (`5`) — Pulsing heartbeat pattern
@@ -239,6 +242,7 @@ Controlled by the "CONSTELLATION PATTERNS" UI buttons:
 ### Physics Modes
 
 Controlled by the "PHYSICS MODE" UI buttons:
+
 - **Simple** (`0`) — Basic circular orbits (implemented)
 - **Keplerian** (`1`) — Elliptical orbits with mean anomaly (implemented)
 - **J2 Perturbed** (`2`) — Oblateness corrections (UI placeholder; not fully implemented in compute shader)
@@ -246,6 +250,7 @@ Controlled by the "PHYSICS MODE" UI buttons:
 ### Constellation Configuration
 
 The default procedural mode uses a Walker constellation pattern with multiple inclination shells:
+
 - 53° — main Starlink-like shell
 - 70° — polar coverage
 - 97.6° — sun-synchronous
@@ -256,6 +261,7 @@ The default procedural mode uses a Walker constellation pattern with multiple in
 ### Core Application
 
 **src/main.ts**: Main application class `GrokZephyrApp` that orchestrates:
+
 - WebGPU initialization
 - Buffer management
 - Render loop
@@ -265,12 +271,14 @@ The default procedural mode uses a Walker constellation pattern with multiple in
 - Time scale control
 
 **src/core/WebGPUContext.ts**: WebGPU abstraction layer handling:
+
 - Adapter and device creation
 - Canvas context configuration
 - Buffer creation helpers
 - Error handling with `WebGPUError` class
 
 **src/core/SatelliteGPUBuffer.ts**: GPU memory manager for:
+
 - 16MB orbital elements buffer (read-only)
 - 32MB extended elements buffer (for J2 propagation)
 - 16MB position buffer (read-write storage)
@@ -286,6 +294,7 @@ The default procedural mode uses a Walker constellation pattern with multiple in
 ### Rendering
 
 **src/render/RenderPipeline.ts**: Complete rendering system with:
+
 - Pipeline creation for all shader stages
 - Render target management (HDR, depth, bloom)
 - Bind group setup
@@ -298,6 +307,7 @@ The default procedural mode uses a Walker constellation pattern with multiple in
 ### Camera System
 
 **src/camera/CameraController.ts**: Camera management:
+
 - Five view modes with smooth transitions
 - God view mouse controls (orbit + zoom)
 - Fleet POV satellite tracking with WASD micro-movement
@@ -309,6 +319,7 @@ The default procedural mode uses a Walker constellation pattern with multiple in
 ### Shader Organization
 
 Shaders are organized into three domains under `src/shaders/`:
+
 - **compute/** — Compute shaders (orbital mechanics, beams)
 - **render/** — Render shaders (stars, Earth, atmosphere, satellites, ground, post-process)
 - **animations/** — Animation shaders (Smile V2, Sky Strips, digital rain, heartbeat, etc.)
@@ -323,6 +334,7 @@ The `vite.config.ts` includes two custom plugins:
 2. **standalonePlugin**: Generates `grok-zephyr.standalone.html` (single-file build with inlined JS/CSS) when `mode === 'standalone'` (triggered by `npm run build:standalone`)
 
 Path aliases configured:
+
 - `@/*` → `src/*`
 - `@/shaders/*` → `src/shaders/*`
 - `@/core/*` → `src/core/*`
@@ -337,6 +349,7 @@ Path aliases configured:
 ## Code Style Guidelines
 
 ### TypeScript
+
 - Strict mode enabled with full type checking (`strict: true`)
 - `noUnusedLocals` and `noUnusedParameters` are enforced
 - `noFallthroughCasesInSwitch` is enforced
@@ -349,6 +362,7 @@ Path aliases configured:
 - Import paths use `.js` extensions (e.g., `@/core/WebGPUContext.js`) — Vite resolves these to `.ts` source files
 
 ### Naming Conventions
+
 - Classes: `PascalCase`
 - Methods/Variables: `camelCase`
 - Constants: `UPPER_SNAKE_CASE`
@@ -356,6 +370,7 @@ Path aliases configured:
 - File names: `PascalCase.ts` for classes, `camelCase.ts` for utilities
 
 ### WGSL Shaders
+
 - Uniform struct shared across shaders via string concatenation
 - Workgroup size of 64 for compute shaders
 - Explicit binding layouts with proper visibility flags
@@ -374,7 +389,7 @@ WebGPU requires a secure context (HTTPS or localhost).
 ## Renderer Backends (WebGPU + WebGL2 fallback)
 
 The app is WebGPU-first but ships a **toggleable WebGL2 fallback renderer**. Use
-it whenever you need to *see* what the simulation renders — WebGPU output is not
+it whenever you need to _see_ what the simulation renders — WebGPU output is not
 readable in headless Chromium, but the WebGL2 canvas is (`gl.readPixels` /
 `canvas.toDataURL` work; `preserveDrawingBuffer` is on).
 
@@ -400,6 +415,7 @@ Integration points in `src/main.ts`: `initializeWebGL()`, `renderWebGL`, and the
 The project uses **Vitest** (Node environment) with colocated `*.test.ts` files.
 
 Current covered modules:
+
 1. `src/utils/math.ts` — matrix/vector operations and frustum extraction
 2. `src/data/TLELoader.ts` — parsing, line2 orbital extraction, and fetch handling
 3. `src/core/OrbitalElements.ts` — Keplerian propagation invariants (shell radius, determinism)
@@ -408,23 +424,22 @@ Current covered modules:
 6. **Visual regression** — `npm run test:visual` (Playwright + SwiftShader, golden PNGs under `tests/visual/baselines/`; see `docs/WEBGL_FALLBACK.md`)
 
 Recommended next targets:
+
 1. `src/camera/CameraController.ts` — camera state calculations for each view mode
 
 ## Deployment
 
-The `deploy.py` script expects a `dist/` directory (created by `npm run build`):
+Production hosting uses **GitHub Pages** via [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
+
+- **Automatic**: merge to `main` → [Test](.github/workflows/test.yml) runs → on success, Deploy builds `dist/` and publishes.
+- **Manual**: GitHub **Actions → Deploy → Run workflow**.
+- **Prerequisite**: repo **Settings → Pages → Source** must be **GitHub Actions**.
+
+Local production verification:
 
 ```bash
-npm run build
-python deploy.py
+npm run build && npm run preview
 ```
-
-**Security Note**: The deploy script contains hardcoded credentials (username `ford442`, password `GoogleBez12!`, host `1ink.us`) and should be refactored to use environment variables or a separate secrets file.
-
-Target configuration:
-- Host: `1ink.us`
-- Remote path: `test.1ink.us/zephyr`
-- Username: `ford442`
 
 ## Performance Considerations
 
@@ -503,13 +518,13 @@ If TLE fetch/parse fails (network error, CORS, invalid format), the app logs a w
 
 ## Security Considerations
 
-- **deploy.py contains hardcoded credentials** (`GoogleBez12!`) — Must be refactored to use environment variables before any production use
-- No sensitive data in frontend code
+- No sensitive credentials in frontend code or deploy scripts
 - WebGPU requires secure context (HTTPS or localhost)
 
 ## Development Tips
 
 ### Adding New View Modes
+
 1. Add entry to `VIEW_MODES` array in `src/types/constants.ts`
 2. Add button to `#controls` div in `index.html`
 3. Update `setViewMode()` method in `CameraController.ts`
@@ -517,28 +532,33 @@ If TLE fetch/parse fails (network error, CORS, invalid format), the app logs a w
 5. Update `estimateVisibleSatellites()` in `main.ts` if needed
 
 ### Modifying Orbital Mechanics
+
 - Orbital elements generated in `SatelliteGPUBuffer.generateOrbitalElements()`
 - Compute shader in `src/shaders/compute/orbital.ts`
 - CPU-side position calculation in `calculateSatellitePosition()` for camera tracking
 
 ### Shader Development
+
 - Shaders are defined in domain subdirectories under `src/shaders/`
 - Entry point is `src/shaders/index.ts` which exports `SHADERS.compute`, `SHADERS.render`, and `SHADERS.animations`
 - Check browser console for shader compilation errors
 - The Vite WGSL plugin supports `#import "relative/path.wgsl"` for shader includes
 
 ### Adding New Beam Patterns
+
 1. Update the beam compute shader in `src/shaders/compute/beam.ts`
 2. Add UI button in `index.html` with `data-pattern` attribute
 3. Update `setPatternMode()` in `main.ts` if pattern param semantics change
 
 ### Adding New Animation Patterns
+
 1. Create WGSL shader in `src/shaders/animations/`
 2. Export from `src/shaders/animations/index.ts`
 3. Add UI button in `index.html` under `#animation-controls`
 4. Wire up in `UIManager.ts` and `main.ts`
 
 ### Ground Observer Development
+
 1. Presets are defined in `GroundObserverCamera.ts`
 2. Overlay CSS classes are in `src/styles/ground-observer.css`
 3. Preset buttons are in `index.html` inside `#ground-preset-selector`

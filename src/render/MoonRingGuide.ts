@@ -5,7 +5,7 @@
  * Dev toggle boosts brightness for geometry debugging.
  */
 
-import type WebGPUContext from '@/core/WebGPUContext.js';
+import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import { CONSTANTS } from '@/types/constants.js';
 
 const SEGMENTS = 192;
@@ -65,7 +65,7 @@ export class MoonRingGuide {
       });
       pass.setPipeline(this.pipeline!);
       pass.setBindGroup(0, bindGroup);
-      pass.setVertexBuffer(0, this.vertexBuffer!);
+      pass.setVertexBuffer(0, this.vertexBuffer);
       pass.draw(this.vertexCount);
     };
 
@@ -98,7 +98,7 @@ export class MoonRingGuide {
     device.queue.writeBuffer(
       this.vertexBuffer,
       0,
-      vertices.buffer as ArrayBuffer,
+      vertices.buffer,
       vertices.byteOffset,
       vertices.byteLength,
     );
@@ -180,21 +180,25 @@ export class MoonRingGuide {
       vertex: {
         module: shader,
         entryPoint: 'vs',
-        buffers: [{
-          arrayStride: 12,
-          attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }],
-        }],
+        buffers: [
+          {
+            arrayStride: 12,
+            attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }],
+          },
+        ],
       },
       fragment: {
         module: shader,
         entryPoint: 'fs',
-        targets: [{
-          format: 'rgba16float',
-          blend: {
-            color: { srcFactor: 'src-alpha', dstFactor: 'one', operation: 'add' },
-            alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+        targets: [
+          {
+            format: 'rgba16float',
+            blend: {
+              color: { srcFactor: 'src-alpha', dstFactor: 'one', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+            },
           },
-        }],
+        ],
       },
       primitive: { topology: 'line-list' },
     });
@@ -216,8 +220,8 @@ export class MoonRingGuide {
 
     const verts: number[] = [];
     for (let i = 0; i < SEGMENTS; i++) {
-      const a = pts[i]!;
-      const b = pts[i + 1]!;
+      const a = pts[i];
+      const b = pts[i + 1];
       verts.push(a[0], a[1], a[2], b[0], b[1], b[2]);
     }
 

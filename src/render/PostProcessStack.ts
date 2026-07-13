@@ -1,6 +1,6 @@
 /**
  * Grok Zephyr - Post-Process Stack
- * 
+ *
  * Ordered effect pipeline with:
  * - TAA (Temporal Anti-Aliasing)
  * - Lens effects
@@ -11,16 +11,20 @@
  * - Auto-exposure
  */
 
-import type WebGPUContext from '@/core/WebGPUContext.js';
-import type { 
-  PostProcessConfig, 
+import type { WebGPUContext } from '@/core/WebGPUContext.js';
+import type {
+  PostProcessConfig,
   ColorGrading,
   TAAConfig,
   AdaptiveQuality,
   QualityPreset,
-  LensEffectsConfig
+  LensEffectsConfig,
 } from '@/types/animation.js';
-import { DEFAULT_POSTPROCESS_CONFIG, DEFAULT_TAA_CONFIG, QUALITY_PRESETS } from '@/types/animation.js';
+import {
+  DEFAULT_POSTPROCESS_CONFIG,
+  DEFAULT_TAA_CONFIG,
+  QUALITY_PRESETS,
+} from '@/types/animation.js';
 import {
   createPostProcessPipelines,
   type PassType,
@@ -29,7 +33,7 @@ import {
 
 /**
  * Post-Process Stack
- * 
+ *
  * Manages the complete post-processing pipeline with
  * automatic quality scaling based on performance.
  */
@@ -45,16 +49,16 @@ export class PostProcessStack {
    * frame was piped through the existing composite pass first).
    */
   private readonly skipFinalTonemap: boolean;
-  
+
   // Render targets
   private historyBuffer: GPUTexture[] = []; // For TAA
   private taaOutput: GPUTexture | null = null;
   private pingPongBuffers: GPUTexture[] = [];
-  
+
   // Pipelines
   private passes: Map<PassType, PostProcessPass> = new Map();
   private currentPass = 0;
-  
+
   // Uniform buffers
   private gradingUniformBuffer: GPUBuffer;
   private taaUniformBuffer: GPUBuffer;
@@ -68,11 +72,11 @@ export class PostProcessStack {
 
   // Shared linear sampler
   private linearSampler: GPUSampler;
-  
+
   // Halton sequence for TAA jitter
   private haltonSequence: Float32Array;
   private frameIndex = 0;
-  
+
   // Performance tracking
   private fpsHistory: number[] = [];
   private lastQualityAdjustment = 0;
@@ -82,23 +86,23 @@ export class PostProcessStack {
     context: WebGPUContext,
     config: Partial<PostProcessConfig> = {},
     taaConfig: Partial<TAAConfig> = {},
-    skipFinalTonemap = false
+    skipFinalTonemap = false,
   ) {
     this.skipFinalTonemap = skipFinalTonemap;
     this.context = context;
     this.config = { ...DEFAULT_POSTPROCESS_CONFIG, ...config };
     this.taaConfig = { ...DEFAULT_TAA_CONFIG, ...taaConfig };
-    
+
     // Generate Halton sequence (base 2 and 3)
     this.haltonSequence = this.generateHaltonSequence(16);
-    
+
     // Initialize uniform buffers
     const device = context.getDevice();
     this.gradingUniformBuffer = device.createBuffer({
       size: 128,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
-    
+
     this.taaUniformBuffer = device.createBuffer({
       size: 32,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -124,7 +128,7 @@ export class PostProcessStack {
       magFilter: 'linear',
       minFilter: 'linear',
     });
-    
+
     this.adaptiveQuality = {
       enabled: true,
       targetFPS: 60,
@@ -162,11 +166,11 @@ export class PostProcessStack {
     outputView: GPUTextureView,
     width: number,
     height: number,
-    deltaTime: number
+    deltaTime: number,
   ): void {
     // Update TAA jitter
     this.updateTAAJitter(width, height);
-    
+
     // Adaptive quality
     if (this.adaptiveQuality.enabled) {
       this.updateAdaptiveQuality(deltaTime);
@@ -176,16 +180,16 @@ export class PostProcessStack {
     if (this.config.filmGrain.enabled) {
       this.updateGrainUniforms();
     }
-    
+
     // Execute passes in order
     let currentInput = inputView;
-    
+
     // TAA pass (if enabled)
     if (this.taaConfig.enabled && this.passes.has('taa')) {
       this.executeTAAPass(encoder, currentInput, width, height);
       currentInput = this.taaOutput!.createView();
     }
-    
+
     // Lens effects (CA, flare, starburst, vignette)
     if (this.isLensEnabled() && this.passes.has('lens')) {
       this.updateLensUniforms(width, height);
@@ -193,28 +197,28 @@ export class PostProcessStack {
       this.executePass(encoder, 'lens', currentInput, output);
       currentInput = output;
     }
-    
+
     // Color grading
     if (this.passes.has('grading')) {
       const output = this.getPingPongOutput();
       this.executePass(encoder, 'grading', currentInput, output);
       currentInput = output;
     }
-    
+
     // Film grain
     if (this.config.filmGrain.enabled && this.passes.has('grain')) {
       const output = this.getPingPongOutput();
       this.executePass(encoder, 'grain', currentInput, output);
       currentInput = output;
     }
-    
+
     // Sharpness
     if (this.config.sharpness.enabled && this.passes.has('sharpness')) {
       const output = this.getPingPongOutput();
       this.executePass(encoder, 'sharpness', currentInput, output);
       currentInput = output;
     }
-    
+
     // Final tonemapping to output
     this.executeTonemapPass(encoder, currentInput, outputView);
   }
@@ -240,7 +244,7 @@ export class PostProcessStack {
   setQualityPreset(preset: QualityPreset): void {
     this.currentPreset = preset;
     const settings = QUALITY_PRESETS[preset];
-    
+
     if (settings.taa) {
       this.taaConfig = { ...this.taaConfig, ...settings.taa };
     }
@@ -248,7 +252,7 @@ export class PostProcessStack {
     if (settings.lens) {
       this.config.lensEffects = { ...this.config.lensEffects, ...settings.lens };
     }
-    
+
     // Update enabled passes
     this.updatePassStates();
   }
@@ -326,39 +330,49 @@ export class PostProcessStack {
 
   private createRenderTargets(width: number, height: number): void {
     const device = this.context.getDevice();
-    
+
     // TAA history buffers (double buffered)
     for (let i = 0; i < 2; i++) {
-      this.historyBuffer.push(device.createTexture({
-        size: [width, height],
-        format: 'rgba16float',
-        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
-      }));
+      this.historyBuffer.push(
+        device.createTexture({
+          size: [width, height],
+          format: 'rgba16float',
+          usage:
+            GPUTextureUsage.TEXTURE_BINDING |
+            GPUTextureUsage.RENDER_ATTACHMENT |
+            GPUTextureUsage.COPY_DST,
+        }),
+      );
     }
-    
+
     // TAA output
     this.taaOutput = device.createTexture({
       size: [width, height],
       format: 'rgba16float',
-      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+      usage:
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.RENDER_ATTACHMENT |
+        GPUTextureUsage.COPY_SRC,
     });
-    
+
     // Ping-pong buffers for intermediate passes
     for (let i = 0; i < 2; i++) {
-      this.pingPongBuffers.push(device.createTexture({
-        size: [width, height],
-        format: 'rgba16float',
-        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
-      }));
+      this.pingPongBuffers.push(
+        device.createTexture({
+          size: [width, height],
+          format: 'rgba16float',
+          usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+        }),
+      );
     }
   }
 
   private destroyRenderTargets(): void {
-    this.historyBuffer.forEach(t => t.destroy());
+    this.historyBuffer.forEach((t) => t.destroy());
     this.historyBuffer = [];
     this.taaOutput?.destroy();
     this.taaOutput = null;
-    this.pingPongBuffers.forEach(t => t.destroy());
+    this.pingPongBuffers.forEach((t) => t.destroy());
     this.pingPongBuffers = [];
   }
 
@@ -388,7 +402,8 @@ export class PostProcessStack {
     const data = new Float32Array([
       this.config.filmGrain.intensity,
       performance.now() * 0.001,
-      0, 0,
+      0,
+      0,
     ]);
     device.queue.writeBuffer(this.grainUniformBuffer, 0, data);
   }
@@ -408,16 +423,16 @@ export class PostProcessStack {
     const u32 = new Uint32Array(buf);
     const f32 = new Float32Array(buf);
 
-    u32[0]  = lens.chromaticAberration.enabled ? 1 : 0;
-    f32[1]  = lens.chromaticAberration.strength;
-    u32[2]  = lens.lensFlare.enabled ? 1 : 0;
-    f32[3]  = lens.lensFlare.intensity;
-    u32[4]  = lens.lensFlare.anamorphic ? 1 : 0;
-    u32[5]  = lens.starburst.enabled ? 1 : 0;
-    u32[6]  = lens.starburst.points;
-    f32[7]  = lens.starburst.intensity;
-    u32[8]  = lens.vignetting.enabled ? 1 : 0;
-    f32[9]  = lens.vignetting.intensity;
+    u32[0] = lens.chromaticAberration.enabled ? 1 : 0;
+    f32[1] = lens.chromaticAberration.strength;
+    u32[2] = lens.lensFlare.enabled ? 1 : 0;
+    f32[3] = lens.lensFlare.intensity;
+    u32[4] = lens.lensFlare.anamorphic ? 1 : 0;
+    u32[5] = lens.starburst.enabled ? 1 : 0;
+    u32[6] = lens.starburst.points;
+    f32[7] = lens.starburst.intensity;
+    u32[8] = lens.vignetting.enabled ? 1 : 0;
+    f32[9] = lens.vignetting.intensity;
     f32[10] = lens.vignetting.smoothness;
     f32[11] = lens.vignetting.roundness;
     f32[12] = this.sunScreenPos[0];
@@ -446,27 +461,35 @@ export class PostProcessStack {
   private updateUniforms(): void {
     const device = this.context.getDevice();
     const g = this.config.colorGrading;
-    
+
     const gradingData = new Float32Array([
-      ...g.lift, 0,
-      ...g.gamma, 0,
-      ...g.gain, g.saturation,
-      g.contrast, g.brightness, 0, 0,
+      ...g.lift,
+      0,
+      ...g.gamma,
+      0,
+      ...g.gain,
+      g.saturation,
+      g.contrast,
+      g.brightness,
+      0,
+      0,
     ]);
-    
+
     device.queue.writeBuffer(this.gradingUniformBuffer, 0, gradingData);
   }
 
   private updateTAAJitter(width: number, height: number): void {
     const device = this.context.getDevice();
     const idx = (this.frameIndex % 16) * 2;
-    
-    const jitterX = (this.haltonSequence[idx] - 0.5) * 2.0 * this.taaConfig.jitterStrength / width;
-    const jitterY = (this.haltonSequence[idx + 1] - 0.5) * 2.0 * this.taaConfig.jitterStrength / height;
-    
+
+    const jitterX =
+      ((this.haltonSequence[idx] - 0.5) * 2.0 * this.taaConfig.jitterStrength) / width;
+    const jitterY =
+      ((this.haltonSequence[idx + 1] - 0.5) * 2.0 * this.taaConfig.jitterStrength) / height;
+
     const taaData = new Float32Array([jitterX, jitterY, this.taaConfig.historyWeight, 0]);
     device.queue.writeBuffer(this.taaUniformBuffer, 0, taaData);
-    
+
     this.frameIndex++;
   }
 
@@ -476,10 +499,10 @@ export class PostProcessStack {
 
     const lensPass = this.passes.get('lens');
     if (lensPass) lensPass.enabled = this.isLensEnabled();
-    
+
     const grainPass = this.passes.get('grain');
     if (grainPass) grainPass.enabled = this.config.filmGrain.enabled;
-    
+
     const sharpnessPass = this.passes.get('sharpness');
     if (sharpnessPass) sharpnessPass.enabled = this.config.sharpness.enabled;
   }
@@ -488,7 +511,7 @@ export class PostProcessStack {
     encoder: GPUCommandEncoder,
     inputView: GPUTextureView,
     _width: number,
-    _height: number
+    _height: number,
   ): void {
     const device = this.context.getDevice();
     const historyIdx = this.frameIndex % 2;
@@ -503,14 +526,16 @@ export class PostProcessStack {
     });
 
     const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: this.taaOutput!.createView(),
-        loadOp: 'clear',
-        storeOp: 'store',
-        clearValue: { r: 0, g: 0, b: 0, a: 1 },
-      }],
+      colorAttachments: [
+        {
+          view: this.taaOutput!.createView(),
+          loadOp: 'clear',
+          storeOp: 'store',
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        },
+      ],
     });
-    
+
     pass.setPipeline(this.passes.get('taa')!.pipeline);
     pass.setBindGroup(0, bindGroup);
     pass.draw(3);
@@ -521,7 +546,7 @@ export class PostProcessStack {
     encoder.copyTextureToTexture(
       { texture: this.taaOutput! },
       { texture: this.historyBuffer[1 - historyIdx] },
-      [this.taaOutput!.width, this.taaOutput!.height]
+      [this.taaOutput!.width, this.taaOutput!.height],
     );
   }
 
@@ -529,7 +554,7 @@ export class PostProcessStack {
     encoder: GPUCommandEncoder,
     type: PassType,
     inputView: GPUTextureView,
-    outputView: GPUTextureView
+    outputView: GPUTextureView,
   ): void {
     const device = this.context.getDevice();
     const pipeline = this.passes.get(type)!.pipeline;
@@ -584,14 +609,16 @@ export class PostProcessStack {
     }
 
     const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: outputView,
-        loadOp: 'clear',
-        storeOp: 'store',
-        clearValue: { r: 0, g: 0, b: 0, a: 1 },
-      }],
+      colorAttachments: [
+        {
+          view: outputView,
+          loadOp: 'clear',
+          storeOp: 'store',
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        },
+      ],
     });
-    
+
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bindGroup);
     pass.draw(3);
@@ -601,7 +628,7 @@ export class PostProcessStack {
   private executeTonemapPass(
     encoder: GPUCommandEncoder,
     inputView: GPUTextureView,
-    outputView: GPUTextureView
+    outputView: GPUTextureView,
   ): void {
     const device = this.context.getDevice();
     const pipeline = this.passes.get('tonemap')!.pipeline;
@@ -614,14 +641,16 @@ export class PostProcessStack {
     });
 
     const pass = encoder.beginRenderPass({
-      colorAttachments: [{
-        view: outputView,
-        loadOp: 'clear',
-        storeOp: 'store',
-        clearValue: { r: 0, g: 0, b: 0, a: 1 },
-      }],
+      colorAttachments: [
+        {
+          view: outputView,
+          loadOp: 'clear',
+          storeOp: 'store',
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        },
+      ],
     });
-    
+
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bindGroup);
     pass.draw(3);
@@ -635,14 +664,14 @@ export class PostProcessStack {
 
   private updateAdaptiveQuality(deltaTime: number): void {
     this.lastQualityAdjustment += deltaTime;
-    
+
     // Adjust quality every 2 seconds
     if (this.lastQualityAdjustment < 2.0) return;
     this.lastQualityAdjustment = 0;
-    
+
     // Calculate average FPS
     const avgFPS = this.fpsHistory.reduce((a, b) => a + b, 0) / this.fpsHistory.length;
-    
+
     if (avgFPS < this.adaptiveQuality.targetFPS * 0.9) {
       // Drop quality
       const presets: QualityPreset[] = ['low', 'medium', 'high', 'ultra'];
@@ -658,13 +687,13 @@ export class PostProcessStack {
         this.setQualityPreset(presets[currentIdx + 1]);
       }
     }
-    
+
     this.fpsHistory = [];
   }
 
   private generateHaltonSequence(count: number): Float32Array {
     const result = new Float32Array(count * 2);
-    
+
     for (let i = 0; i < count; i++) {
       // Halton base 2
       let n = i + 1;
@@ -676,7 +705,7 @@ export class PostProcessStack {
         n = Math.floor(n / 2);
       }
       result[i * 2] = r;
-      
+
       // Halton base 3
       n = i + 1;
       f = 1.0;
@@ -688,9 +717,7 @@ export class PostProcessStack {
       }
       result[i * 2 + 1] = r;
     }
-    
+
     return result;
   }
 }
-
-export default PostProcessStack;

@@ -17,7 +17,9 @@
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
 
-export const SKYLINE_BUILDINGS = UNIFORM_STRUCT + /* wgsl */ `
+export const SKYLINE_BUILDINGS =
+  UNIFORM_STRUCT +
+  /* wgsl */ `
 struct Building {
   posXZ      : vec2f, // local ENU position: x = east (km), y = north (km)
   size       : vec2f, // footprint: width (east-west), depth (north-south), km

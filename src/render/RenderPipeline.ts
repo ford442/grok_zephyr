@@ -5,7 +5,7 @@
  * render targets, and modular pass encoders.
  */
 
-import type WebGPUContext from '@/core/WebGPUContext.js';
+import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
 import type { BloomConfig } from '@/types/animation.js';
 import type { ImageTuningSettings } from '@/core/ImageTuning.js';
@@ -37,7 +37,7 @@ import {
   encodeScenePass,
   encodeSkylinePass,
   encodeTrailPass,
-  type PassContext,
+  type FrameContext,
 } from './passes/index.js';
 
 export type {
@@ -135,7 +135,7 @@ export class RenderPipeline {
     });
   }
 
-  private getPassContext(): PassContext | null {
+  private getFrameContext(): FrameContext | null {
     if (
       !this.pipelines ||
       !this.bindGroups ||
@@ -176,6 +176,11 @@ export class RenderPipeline {
     };
   }
 
+  private withFrameContext(run: (ctx: FrameContext) => void): void {
+    const ctx = this.getFrameContext();
+    if (ctx) run(ctx);
+  }
+
   resize(width: number, height: number): void {
     if (width === this.width && height === this.height) return;
 
@@ -192,15 +197,11 @@ export class RenderPipeline {
   }
 
   encodeComputePass(encoder: GPUCommandEncoder): void {
-    const ctx = this.getPassContext();
-    if (!ctx) return;
-    encodeComputePass(encoder, ctx);
+    this.withFrameContext((ctx) => encodeComputePass(encoder, ctx));
   }
 
   encodeBeamComputePass(encoder: GPUCommandEncoder): void {
-    const ctx = this.getPassContext();
-    if (!ctx) return;
-    encodeBeamComputePass(encoder, ctx);
+    this.withFrameContext((ctx) => encodeBeamComputePass(encoder, ctx));
   }
 
   encodeSmileV2Pass(encoder: GPUCommandEncoder): void {
@@ -219,39 +220,42 @@ export class RenderPipeline {
     earthIndexCount: number,
     moonView = false,
   ): void {
-    const ctx = this.getPassContext();
-    if (!ctx) return;
-    encodeScenePass(encoder, ctx, earthVertexBuffer, earthIndexBuffer, earthIndexCount, moonView);
+    this.withFrameContext((ctx) =>
+      encodeScenePass(encoder, ctx, earthVertexBuffer, earthIndexBuffer, earthIndexCount, moonView),
+    );
   }
 
   encodeTrailPass(
     encoder: GPUCommandEncoder,
-    trailRenderer: { encodeRenderPass(pass: GPURenderPassEncoder, uniformBuffer: GPUBuffer): void } | null,
+    trailRenderer: {
+      encodeRenderPass(pass: GPURenderPassEncoder, uniformBuffer: GPUBuffer): void;
+    } | null,
   ): void {
-    const ctx = this.getPassContext();
-    if (!ctx) return;
-    encodeTrailPass(encoder, ctx, trailRenderer);
+    this.withFrameContext((ctx) => encodeTrailPass(encoder, ctx, trailRenderer));
   }
 
   encodeConstellationGuidesPass(
     encoder: GPUCommandEncoder,
     guides: { encodeRenderPass(pass: GPURenderPassEncoder, uniformBuffer: GPUBuffer): void } | null,
   ): void {
-    const ctx = this.getPassContext();
-    if (!ctx) return;
-    encodeConstellationGuidesPass(encoder, ctx, guides);
+    this.withFrameContext((ctx) => encodeConstellationGuidesPass(encoder, ctx, guides));
   }
 
   encodeMoonOverlayPass(
     encoder: GPUCommandEncoder,
-    ringGuide: { encodeRenderPass(pass: GPURenderPassEncoder, uniformBuffer: GPUBuffer): void } | null,
+    ringGuide: {
+      encodeRenderPass(pass: GPURenderPassEncoder, uniformBuffer: GPUBuffer): void;
+    } | null,
   ): void {
-    const ctx = this.getPassContext();
-    if (!ctx) return;
-    encodeMoonOverlayPass(encoder, ctx, ringGuide);
+    this.withFrameContext((ctx) => encodeMoonOverlayPass(encoder, ctx, ringGuide));
   }
 
-  setGroundViewParams(oceanBias: number, urbanGlow: number, overlayFade: number, hazeBoost: number): void {
+  setGroundViewParams(
+    oceanBias: number,
+    urbanGlow: number,
+    overlayFade: number,
+    hazeBoost: number,
+  ): void {
     const [o, u, f, h] = this.uniforms.groundViewParams;
     if (o === oceanBias && u === urbanGlow && f === overlayFade && h === hazeBoost) return;
     this.uniforms.groundViewParams = [oceanBias, urbanGlow, overlayFade, hazeBoost];
@@ -263,9 +267,7 @@ export class RenderPipeline {
   }
 
   encodeGroundScenePass(encoder: GPUCommandEncoder): void {
-    const ctx = this.getPassContext();
-    if (!ctx) return;
-    encodeGroundScenePass(encoder, ctx);
+    this.withFrameContext((ctx) => encodeGroundScenePass(encoder, ctx));
   }
 
   setSkylineResources(cityUniformBuffer: GPUBuffer, instanceBuffer: GPUBuffer): void {
@@ -280,15 +282,11 @@ export class RenderPipeline {
   }
 
   encodeSkylinePass(encoder: GPUCommandEncoder, buildingCount: number): void {
-    const ctx = this.getPassContext();
-    if (!ctx) return;
-    encodeSkylinePass(encoder, ctx, buildingCount);
+    this.withFrameContext((ctx) => encodeSkylinePass(encoder, ctx, buildingCount));
   }
 
   encodeBloomPasses(encoder: GPUCommandEncoder, sceneSourceView?: GPUTextureView): void {
-    const ctx = this.getPassContext();
-    if (!ctx) return;
-    encodeBloomPasses(encoder, ctx, sceneSourceView);
+    this.withFrameContext((ctx) => encodeBloomPasses(encoder, ctx, sceneSourceView));
   }
 
   encodeAutoExposurePasses(
@@ -296,9 +294,9 @@ export class RenderPipeline {
     sceneSourceView: GPUTextureView,
     deltaTime: number,
   ): void {
-    const ctx = this.getPassContext();
-    if (!ctx) return;
-    encodeAutoExposurePasses(encoder, ctx, sceneSourceView, deltaTime);
+    this.withFrameContext((ctx) =>
+      encodeAutoExposurePasses(encoder, ctx, sceneSourceView, deltaTime),
+    );
   }
 
   encodeCompositePass(
@@ -308,9 +306,9 @@ export class RenderPipeline {
     outputHeight?: number,
     sceneSourceView?: GPUTextureView,
   ): void {
-    const ctx = this.getPassContext();
-    if (!ctx) return;
-    encodeCompositePass(encoder, ctx, outputView, outputWidth, outputHeight, sceneSourceView);
+    this.withFrameContext((ctx) =>
+      encodeCompositePass(encoder, ctx, outputView, outputWidth, outputHeight, sceneSourceView),
+    );
   }
 
   getCompositeIntermediateView(): GPUTextureView {
@@ -328,7 +326,7 @@ export class RenderPipeline {
   }
 
   encodeDepthOfFieldPasses(encoder: GPUCommandEncoder): GPUTextureView {
-    const ctx = this.getPassContext();
+    const ctx = this.getFrameContext();
     if (!ctx) {
       if (!this.renderTargets) throw new Error('RenderPipeline not initialized');
       return this.renderTargets.hdrView;
@@ -337,7 +335,7 @@ export class RenderPipeline {
   }
 
   encodeMotionBlurPass(encoder: GPUCommandEncoder, sourceView: GPUTextureView): GPUTextureView {
-    const ctx = this.getPassContext();
+    const ctx = this.getFrameContext();
     if (!ctx) return sourceView;
     return encodeMotionBlurPass(encoder, ctx, sourceView);
   }
@@ -366,7 +364,7 @@ export class RenderPipeline {
   ): void {
     if (!this.uniforms.dofConfig.enabled) return;
 
-    let target = this.uniforms.dofFocusDistanceKm;
+    let target: number;
     switch (this.uniforms.dofConfig.focusMode) {
       case 'satellite-track':
         if (selectedSatelliteIndex >= 0) {
@@ -387,8 +385,8 @@ export class RenderPipeline {
           1,
           Math.sqrt(
             cameraPosition[0] * cameraPosition[0] +
-            cameraPosition[1] * cameraPosition[1] +
-            cameraPosition[2] * cameraPosition[2],
+              cameraPosition[1] * cameraPosition[1] +
+              cameraPosition[2] * cameraPosition[2],
           ),
         );
         break;
@@ -398,7 +396,9 @@ export class RenderPipeline {
         break;
     }
 
-    const blend = 1.0 - Math.exp(-Math.max(0.1, this.uniforms.dofConfig.transitionRate) * Math.max(deltaTime, 0.0));
+    const blend =
+      1.0 -
+      Math.exp(-Math.max(0.1, this.uniforms.dofConfig.transitionRate) * Math.max(deltaTime, 0.0));
     this.uniforms.dofFocusDistanceKm += (target - this.uniforms.dofFocusDistanceKm) * blend;
     this.uniforms.writeDofUniform();
   }
@@ -407,9 +407,18 @@ export class RenderPipeline {
     this.uniforms.motionBlurConfig = {
       ...this.uniforms.motionBlurConfig,
       ...config,
-      cameraStrength: Math.max(0.0, Math.min(2.0, config.cameraStrength ?? this.uniforms.motionBlurConfig.cameraStrength)),
-      satelliteStretch: Math.max(0.0, Math.min(2.0, config.satelliteStretch ?? this.uniforms.motionBlurConfig.satelliteStretch)),
-      tapCount: Math.max(1, Math.min(16, Math.floor(config.tapCount ?? this.uniforms.motionBlurConfig.tapCount))),
+      cameraStrength: Math.max(
+        0.0,
+        Math.min(2.0, config.cameraStrength ?? this.uniforms.motionBlurConfig.cameraStrength),
+      ),
+      satelliteStretch: Math.max(
+        0.0,
+        Math.min(2.0, config.satelliteStretch ?? this.uniforms.motionBlurConfig.satelliteStretch),
+      ),
+      tapCount: Math.max(
+        1,
+        Math.min(16, Math.floor(config.tapCount ?? this.uniforms.motionBlurConfig.tapCount)),
+      ),
     };
   }
 
@@ -478,10 +487,22 @@ export class RenderPipeline {
     this.uniforms.exposureSettings = {
       ...this.uniforms.exposureSettings,
       ...config,
-      manualExposure: Math.max(0.1, Math.min(10.0, config.manualExposure ?? this.uniforms.exposureSettings.manualExposure)),
-      adaptationSpeed: Math.max(0.1, Math.min(5.0, config.adaptationSpeed ?? this.uniforms.exposureSettings.adaptationSpeed)),
-      minExposure: Math.max(0.01, Math.min(10.0, config.minExposure ?? this.uniforms.exposureSettings.minExposure)),
-      maxExposure: Math.max(0.05, Math.min(20.0, config.maxExposure ?? this.uniforms.exposureSettings.maxExposure)),
+      manualExposure: Math.max(
+        0.1,
+        Math.min(10.0, config.manualExposure ?? this.uniforms.exposureSettings.manualExposure),
+      ),
+      adaptationSpeed: Math.max(
+        0.1,
+        Math.min(5.0, config.adaptationSpeed ?? this.uniforms.exposureSettings.adaptationSpeed),
+      ),
+      minExposure: Math.max(
+        0.01,
+        Math.min(10.0, config.minExposure ?? this.uniforms.exposureSettings.minExposure),
+      ),
+      maxExposure: Math.max(
+        0.05,
+        Math.min(20.0, config.maxExposure ?? this.uniforms.exposureSettings.maxExposure),
+      ),
     };
     if (this.uniforms.exposureSettings.maxExposure < this.uniforms.exposureSettings.minExposure) {
       this.uniforms.exposureSettings.maxExposure = this.uniforms.exposureSettings.minExposure;
@@ -494,5 +515,3 @@ export class RenderPipeline {
     return { ...this.uniforms.exposureSettings };
   }
 }
-
-export default RenderPipeline;

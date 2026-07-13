@@ -1,11 +1,43 @@
 /**
  * Grok Zephyr - WebGPU Context Manager
- * 
+ *
  * Handles WebGPU adapter and device initialization,
  * canvas context setup, and error handling.
  */
 
 import { CONSTANTS, RENDER } from '@/types/constants.js';
+import {
+  WebGPUErrorReporter,
+  type WebGPUErrorReportHandler,
+} from '@/core/WebGPUErrorReporter.js';
+
+/** Deprecated pre-spec adapter.info fallback. */
+type GPUAdapterWithLegacyInfo = GPUAdapter & {
+  requestAdapterInfo?: () => Promise<GPUAdapterInfo>;
+};
+
+async function readAdapterInfo(adapter: GPUAdapter): Promise<GPUAdapterInfo | undefined> {
+  if (adapter.info) {
+    return adapter.info;
+  }
+
+  const legacyAdapter = adapter as GPUAdapterWithLegacyInfo;
+  if (typeof legacyAdapter.requestAdapterInfo !== 'function') {
+    return undefined;
+  }
+
+  try {
+    return await legacyAdapter.requestAdapterInfo();
+  } catch {
+    return undefined;
+  }
+}
+
+function getAdapterLimitValue(adapter: GPUAdapter, limit: string): number | undefined {
+  const limits = adapter.limits as unknown as Readonly<Record<string, number>>;
+  const supportedValue = limits[limit];
+  return typeof supportedValue === 'number' ? supportedValue : undefined;
+}
 
 /** WebGPU context initialization result */
 export interface WebGPUInitResult {
@@ -24,6 +56,10 @@ export interface WebGPUContextOptions {
   requiredFeatures?: GPUFeatureName[];
   optionalFeatures?: GPUFeatureName[];
   requiredLimits?: Record<string, number>;
+  /** App-owned handler for device loss (recovery). */
+  onDeviceLost?: (info: GPUDeviceLostInfo) => void;
+  /** Structured GPU error reports (validation, OOM, shaders, uncaptured). */
+  onErrorReport?: WebGPUErrorReportHandler;
 }
 
 const MAX_BEAMS = 65536;
@@ -32,7 +68,7 @@ const ORBITAL_COMPUTE_WORKGROUP_SIZE = 64;
 
 /**
  * WebGPU Context Manager
- * 
+ *
  * Handles initialization of the WebGPU environment including:
  * - Adapter and device creation
  * - Canvas context configuration
@@ -46,6 +82,8 @@ export class WebGPUContext {
   private canvas: HTMLCanvasElement;
   private options: WebGPUContextOptions;
   private lostHandler: ((info: GPUDeviceLostInfo) => void) | null = null;
+  private suppressDeviceLostCallback = false;
+  private readonly errorReporter: WebGPUErrorReporter;
 
   constructor(canvas: HTMLCanvasElement, options: WebGPUContextOptions = {}) {
     this.canvas = canvas;
@@ -55,6 +93,13 @@ export class WebGPUContext {
       optionalFeatures: ['timestamp-query'],
       ...options,
     };
+    this.errorReporter = new WebGPUErrorReporter((report) => {
+      this.options.onErrorReport?.(report);
+    });
+  }
+
+  getErrorReporter(): WebGPUErrorReporter {
+    return this.errorReporter;
   }
 
   /**
@@ -72,7 +117,7 @@ export class WebGPUContext {
     if (!WebGPUContext.isSupported()) {
       throw new WebGPUError(
         'WebGPU is not supported in this browser. ' +
-        'Please use Chrome 113+, Edge 113+, or Firefox Nightly with WebGPU enabled.'
+          'Please use Chrome 113+, Edge 113+, or Firefox Nightly with WebGPU enabled.',
       );
     }
 
@@ -86,18 +131,7 @@ export class WebGPUContext {
         throw new WebGPUError('No WebGPU adapter found. Your GPU may not support WebGPU.');
       }
 
-      // Log adapter info for debugging
-      // Use adapter.info (new spec) with fallback to requestAdapterInfo (old spec)
-      let adapterInfo: GPUAdapterInfo | undefined;
-      if (this.adapter.info) {
-        adapterInfo = this.adapter.info;
-      } else if (typeof (this.adapter as any).requestAdapterInfo === 'function') {
-        try {
-          adapterInfo = await (this.adapter as any).requestAdapterInfo();
-        } catch {
-          // Ignore errors from deprecated API
-        }
-      }
+      const adapterInfo = await readAdapterInfo(this.adapter);
       if (adapterInfo) {
         console.log('[WebGPU] Adapter:', adapterInfo.vendor, adapterInfo.architecture);
       }
@@ -110,7 +144,7 @@ export class WebGPUContext {
 
       if (optionalFeatures.length !== (this.options.optionalFeatures?.length ?? 0)) {
         const unavailable = (this.options.optionalFeatures ?? []).filter(
-          (feature) => !optionalFeatures.includes(feature)
+          (feature) => !optionalFeatures.includes(feature),
         );
         console.warn('[WebGPU] Optional features unavailable:', unavailable.join(', '));
       }
@@ -121,18 +155,17 @@ export class WebGPUContext {
         requiredLimits,
       });
 
-      // Handle device loss
+      this.errorReporter.attachUncapturedErrorListener(this.device);
+
+      // Handle device loss — recovery is owned by the app layer via onDeviceLost.
       this.lostHandler = (info) => {
         console.error('[WebGPU] Device lost:', info.reason, info.message);
-        if (info.reason === 'destroyed') {
-          console.log('[WebGPU] Device was intentionally destroyed');
-        } else {
-          // Attempt recovery
-          console.log('[WebGPU] Attempting to reinitialize...');
-          this.initialize().catch(console.error);
+        if (this.suppressDeviceLostCallback) {
+          return;
         }
+        this.options.onDeviceLost?.(info);
       };
-      this.device.lost.then(this.lostHandler);
+      void this.device.lost.then(this.lostHandler);
 
       // Setup canvas context
       this.context = this.canvas.getContext('webgpu');
@@ -143,17 +176,20 @@ export class WebGPUContext {
       // Get preferred canvas format
       this.format = navigator.gpu.getPreferredCanvasFormat();
 
-      // Configure context
-      this.context.configure({
-        device: this.device,
-        format: this.format,
-        alphaMode: 'opaque',
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
+      await this.errorReporter.withScope(this.device, 'canvas-context', () => {
+        this.context!.configure({
+          device: this.device!,
+          format: this.format,
+          alphaMode: 'opaque',
+          usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
+        });
       });
 
       console.log('[WebGPU] Context initialized successfully');
       console.log(`[WebGPU] Format: ${this.format}`);
-      console.log(`[WebGPU] Max storage buffer: ${this.device.limits.maxStorageBufferBindingSize} bytes`);
+      console.log(
+        `[WebGPU] Max storage buffer: ${this.device.limits.maxStorageBufferBindingSize} bytes`,
+      );
       const enabledFeatures = Array.from(this.device.features) as GPUFeatureName[];
       console.log('[WebGPU] Enabled features:', enabledFeatures.join(', ') || 'none');
 
@@ -170,10 +206,32 @@ export class WebGPUContext {
       if (error instanceof WebGPUError) {
         throw error;
       }
+      this.errorReporter.report({
+        stage: 'initialization',
+        kind: 'initialization',
+        message: error instanceof Error ? error.message : String(error),
+      });
       throw new WebGPUError(
-        `Failed to initialize WebGPU: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to initialize WebGPU: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  /**
+   * Recreate adapter/device/context after device loss or intentional teardown.
+   */
+  async recoverContext(): Promise<WebGPUInitResult> {
+    this.device = null;
+    this.adapter = null;
+    this.context = null;
+    this.lostHandler = null;
+    this.suppressDeviceLostCallback = false;
+    return this.initialize();
+  }
+
+  /** Test hook: simulates a GPU device loss (triggers onDeviceLost). */
+  loseDeviceForTesting(): void {
+    this.getDevice().destroy();
   }
 
   private buildRequiredLimits(): Record<string, number> {
@@ -185,10 +243,10 @@ export class WebGPUContext {
       perSatelliteBufferSize,
       extendedElementBufferSize,
       trailBufferSize,
-      beamBufferSize
+      beamBufferSize,
     );
     const requiredComputeWorkgroups = Math.ceil(
-      CONSTANTS.NUM_SATELLITES / ORBITAL_COMPUTE_WORKGROUP_SIZE
+      CONSTANTS.NUM_SATELLITES / ORBITAL_COMPUTE_WORKGROUP_SIZE,
     );
     const mergedLimits: Record<string, number> = {
       maxStorageBufferBindingSize: requiredStorageBufferSize,
@@ -213,14 +271,14 @@ export class WebGPUContext {
       return [];
     }
 
-    return [...new Set(this.options.optionalFeatures ?? [])].filter((feature) => (
-      adapter.features.has(feature)
-    ));
+    return [...new Set(this.options.optionalFeatures ?? [])].filter((feature) =>
+      adapter.features.has(feature),
+    );
   }
 
   private validateAdapterRequirements(
     requiredLimits: Record<string, number>,
-    requiredFeatures: GPUFeatureName[]
+    requiredFeatures: GPUFeatureName[],
   ): void {
     if (!this.adapter) {
       throw new WebGPUError('No WebGPU adapter found. Your GPU may not support WebGPU.');
@@ -230,29 +288,28 @@ export class WebGPUContext {
     const missingFeatures = requiredFeatures.filter((feature) => !adapter.features.has(feature));
     if (missingFeatures.length > 0) {
       throw new WebGPUError(
-        `This browser/GPU is missing required WebGPU features: ${missingFeatures.join(', ')}.`
+        `This browser/GPU is missing required WebGPU features: ${missingFeatures.join(', ')}.`,
       );
     }
 
     const limitFailures = Object.entries(requiredLimits).filter(([limit, value]) => {
-      const supportedValue = limit in adapter.limits ? Reflect.get(adapter.limits, limit) : undefined;
-      return typeof supportedValue !== 'number' || supportedValue < value;
+      const supportedValue = getAdapterLimitValue(adapter, limit);
+      return supportedValue === undefined || supportedValue < value;
     });
 
     if (limitFailures.length > 0) {
       const details = limitFailures
         .map(([limit, value]) => {
-          const supported = limit in adapter.limits ? Reflect.get(adapter.limits, limit) : undefined;
-          const supportedLabel = typeof supported === 'number'
-            ? supported.toLocaleString()
-            : 'unsupported';
+          const supported = getAdapterLimitValue(adapter, limit);
+          const supportedLabel =
+            supported === undefined ? 'unsupported' : supported.toLocaleString();
           return `${limit} requires ${value.toLocaleString()} but adapter reports ${supportedLabel}`;
         })
         .join('; ');
       throw new WebGPUError(
         'This GPU cannot run the full 1,048,576-satellite WebGPU path. ' +
-        'Grok Zephyr stopped before allocating large buffers. ' +
-        `${details}. Try a newer browser, a more capable GPU, or a device with fuller WebGPU support.`
+          'Grok Zephyr stopped before allocating large buffers. ' +
+          `${details}. Try a newer browser, a more capable GPU, or a device with fuller WebGPU support.`,
       );
     }
   }
@@ -299,32 +356,21 @@ export class WebGPUContext {
    */
   createShaderModule(code: string, label?: string): GPUShaderModule {
     const device = this.getDevice();
-    
+
     // Debug: Check if code is defined
     if (!code || code.trim() === '') {
       console.error(`❌ SHADER LOAD FAILED: ${label || 'unknown'} — code is undefined or empty!`);
       throw new Error(`Shader "${label || 'unknown'}" has no code`);
     }
     console.log(`✅ Loading shader: ${label || 'unknown'} (${code.length} chars)`);
-    
+
     const module = device.createShaderModule({
       code,
       label,
     });
 
-    // Check for compilation errors
-    module.getCompilationInfo().then((info) => {
-      for (const message of info.messages) {
-        const location = message.lineNum > 0 ? `:${message.lineNum}:${message.linePos}` : '';
-        const text = `[Shader${location}] ${message.message}`;
-        if (message.type === 'error') {
-          console.error(text);
-        } else if (message.type === 'warning') {
-          console.warn(text);
-        } else {
-          console.log(text);
-        }
-      }
+    void this.errorReporter.checkShaderModule(module, label ?? 'unknown').catch((error: unknown) => {
+      console.error(error);
     });
 
     return module;
@@ -333,17 +379,11 @@ export class WebGPUContext {
   /**
    * Create a buffer with proper alignment
    */
-  createBuffer(
-    size: number,
-    usage: GPUBufferUsageFlags,
-    mappedAtCreation = false
-  ): GPUBuffer {
+  createBuffer(size: number, usage: GPUBufferUsageFlags, mappedAtCreation = false): GPUBuffer {
     const device = this.getDevice();
     // Align to 256 bytes for uniform buffers
-    const alignedSize = usage & GPUBufferUsage.UNIFORM
-      ? Math.ceil(size / 256) * 256
-      : size;
-    
+    const alignedSize = usage & GPUBufferUsage.UNIFORM ? Math.ceil(size / 256) * 256 : size;
+
     return device.createBuffer({
       size: alignedSize,
       usage,
@@ -373,20 +413,14 @@ export class WebGPUContext {
    * Create a vertex buffer
    */
   createVertexBuffer(size: number): GPUBuffer {
-    return this.createBuffer(
-      size,
-      GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST
-    );
+    return this.createBuffer(size, GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST);
   }
 
   /**
    * Create an index buffer
    */
   createIndexBuffer(size: number): GPUBuffer {
-    return this.createBuffer(
-      size,
-      GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST
-    );
+    return this.createBuffer(size, GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST);
   }
 
   /**
@@ -394,8 +428,16 @@ export class WebGPUContext {
    */
   writeBuffer(
     buffer: GPUBuffer,
-    data: BufferSource | Float32Array | Uint32Array | Int32Array | Uint16Array | Int16Array | Uint8Array | Int8Array,
-    offset = 0
+    data:
+      | BufferSource
+      | Float32Array
+      | Uint32Array
+      | Int32Array
+      | Uint16Array
+      | Int16Array
+      | Uint8Array
+      | Int8Array,
+    offset = 0,
   ): void {
     this.getDevice().queue.writeBuffer(buffer, offset, data as BufferSource);
   }
@@ -408,7 +450,7 @@ export class WebGPUContext {
     height: number,
     format: GPUTextureFormat,
     usage: GPUTextureUsageFlags,
-    label?: string
+    label?: string,
   ): GPUTexture {
     return this.getDevice().createTexture({
       size: [width, height],
@@ -468,7 +510,7 @@ export class WebGPUContext {
   /**
    * Check if a feature is supported
    */
-  async isFeatureSupported(feature: GPUFeatureName): Promise<boolean> {
+  isFeatureSupported(feature: GPUFeatureName): boolean {
     if (!this.adapter) {
       throw new WebGPUError('WebGPU not initialized');
     }
@@ -479,6 +521,7 @@ export class WebGPUContext {
    * Destroy and cleanup resources
    */
   destroy(): void {
+    this.suppressDeviceLostCallback = true;
     if (this.device) {
       this.device.destroy();
       this.device = null;
@@ -498,5 +541,3 @@ export class WebGPUError extends Error {
     this.name = 'WebGPUError';
   }
 }
-
-export default WebGPUContext;

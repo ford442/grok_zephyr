@@ -1,7 +1,15 @@
 import { getBeamPatternTitle } from '@/patterns.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 
-const CAPTURE_UI_HIDE_IDS = ['ui', 'controls', 'horizon-indicator', 'horizon-limb-line', 'fleet-cockpit-hud', 'ground-preset-selector', 'capture-gallery'];
+const CAPTURE_UI_HIDE_IDS = [
+  'ui',
+  'controls',
+  'horizon-indicator',
+  'horizon-limb-line',
+  'fleet-cockpit-hud',
+  'ground-preset-selector',
+  'capture-gallery',
+];
 const CAPTURE_GALLERY_LIMIT = 6;
 const PREFERRED_VIDEO_MIME_TYPES = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
 
@@ -20,13 +28,17 @@ export class CaptureManager {
   setupCaptureControls(): void {
     this.captureStatus = document.getElementById('captureStatus');
     this.captureGallery = document.getElementById('capture-gallery');
-    this.captureOverlayToggle = document.getElementById('capOverlayToggle') as HTMLInputElement | null;
-    this.captureHideUIToggle = document.getElementById('capHideUIToggle') as HTMLInputElement | null;
+    this.captureOverlayToggle = document.getElementById(
+      'capOverlayToggle',
+    ) as HTMLInputElement | null;
+    this.captureHideUIToggle = document.getElementById(
+      'capHideUIToggle',
+    ) as HTMLInputElement | null;
     this.captureVideoLength = document.getElementById('capVideoLength') as HTMLSelectElement | null;
     this.captureVideoButton = document.getElementById('capVideoStart') as HTMLButtonElement | null;
-    this.captureHideElements = CAPTURE_UI_HIDE_IDS
-      .map((id) => document.getElementById(id))
-      .filter((el): el is HTMLElement => el !== null);
+    this.captureHideElements = CAPTURE_UI_HIDE_IDS.map((id) => document.getElementById(id)).filter(
+      (el): el is HTMLElement => el !== null,
+    );
 
     const still1x = document.getElementById('capStill1x');
     const still2x = document.getElementById('capStill2x');
@@ -45,12 +57,14 @@ export class CaptureManager {
 
   destroyGallery(): void {
     if (!this.captureGallery) return;
-    this.captureGallery.querySelectorAll<HTMLAnchorElement>('.capture-gallery-item').forEach((item) => {
-      const url = item.dataset.captureUrl;
-      if (url?.startsWith('blob:')) {
-        URL.revokeObjectURL(url);
-      }
-    });
+    this.captureGallery
+      .querySelectorAll<HTMLAnchorElement>('.capture-gallery-item')
+      .forEach((item) => {
+        const url = item.dataset.captureUrl;
+        if (url?.startsWith('blob:')) {
+          URL.revokeObjectURL(url);
+        }
+      });
   }
 
   private setCaptureStatus(text: string): void {
@@ -61,19 +75,28 @@ export class CaptureManager {
 
   private getCurrentViewDisplayName(): string {
     switch (this.rt.camera.getViewMode()) {
-      case 'horizon-720': return '720km Horizon';
-      case 'god': return 'God View';
-      case 'sat-pov': return 'Fleet POV';
-      case 'ground': return 'Ground View';
-      case 'moon': return 'Moon View';
-      case 'skyline': return 'Skyline View';
-      default: return 'Unknown';
+      case 'horizon-720':
+        return '720km Horizon';
+      case 'god':
+        return 'God View';
+      case 'sat-pov':
+        return 'Fleet POV';
+      case 'ground':
+        return 'Ground View';
+      case 'moon':
+        return 'Moon View';
+      case 'skyline':
+        return 'Skyline View';
+      default:
+        return 'Unknown';
     }
   }
 
   private getCaptureMeta() {
     const modeName = this.getCurrentViewDisplayName();
-    const patternName = this.rt.patternNameDisplay?.textContent?.trim() || getBeamPatternTitle(this.rt.currentPatternMode);
+    const patternName =
+      this.rt.patternNameDisplay?.textContent?.trim() ||
+      getBeamPatternTitle(this.rt.simulation.currentPatternMode);
     const timestamp = new Date().toISOString().replace('T', ' ').replace(/\..+$/, ' UTC');
     return { modeName, patternName, timestamp };
   }
@@ -101,7 +124,11 @@ export class CaptureManager {
     ctx.fillText(timestamp, pad + 10, height - cardHeight + 72 - pad);
   }
 
-  private drawGroundCaptureFrame(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+  private drawGroundCaptureFrame(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+  ): void {
     const gradient = ctx.createLinearGradient(0, 0, 0, height);
     gradient.addColorStop(0, 'rgba(0, 0, 0, 0.30)');
     gradient.addColorStop(1, 'rgba(0, 0, 0, 0.58)');
@@ -203,7 +230,11 @@ export class CaptureManager {
   }
 
   private getCaptureFilename(prefix: string, ext: string): string {
-    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+$/, '').replace('T', '-');
+    const stamp = new Date()
+      .toISOString()
+      .replace(/[-:]/g, '')
+      .replace(/\..+$/, '')
+      .replace('T', '-');
     return `grok-zephyr-${prefix}-${stamp}.${ext}`;
   }
 

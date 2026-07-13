@@ -32,7 +32,3 @@ export function resolveBackgroundMode(viewMode: ViewMode): BackgroundMode {
       return 'space';
   }
 }
-
-export function getBackgroundMode(): BackgroundMode {
-  return currentBackgroundMode;
-}

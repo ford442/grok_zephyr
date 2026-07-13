@@ -5,7 +5,9 @@
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
 
-export const BEAM_COMPUTE = UNIFORM_STRUCT + /* wgsl */ `
+export const BEAM_COMPUTE =
+  UNIFORM_STRUCT +
+  /* wgsl */ `
 @group(0) @binding(1) var<storage, read> sat_pos : array<vec4f>;
 @group(0) @binding(2) var<storage, read_write> beams : array<vec4f>;
 

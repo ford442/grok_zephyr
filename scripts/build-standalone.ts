@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Grok Zephyr - Standalone HTML Build Script
- * 
+ *
  * Builds a self-contained HTML file with all assets inlined.
- * 
+ *
  * Usage: npx tsx scripts/build-standalone.ts
  */
 
@@ -18,37 +18,37 @@ const OUT_FILE = resolve(SRC_DIR, 'grok-zephyr.standalone.html');
  */
 function buildStandalone(): void {
   console.log('[build-standalone] Starting...');
-  
+
   if (!existsSync(SRC_DIR)) {
     console.error('[build-standalone] dist/ directory not found. Run `npm run build` first.');
     process.exit(1);
   }
-  
+
   const assetsDir = resolve(SRC_DIR, 'assets');
-  
+
   if (!existsSync(assetsDir)) {
     console.error('[build-standalone] dist/assets/ directory not found.');
     process.exit(1);
   }
-  
+
   // Find JS and CSS files
   const files = readdirSync(assetsDir);
-  const jsFiles = files.filter(f => f.endsWith('.js') && !f.includes('polyfill'));
-  const cssFiles = files.filter(f => f.endsWith('.css'));
-  
+  const jsFiles = files.filter((f) => f.endsWith('.js') && !f.includes('polyfill'));
+  const cssFiles = files.filter((f) => f.endsWith('.css'));
+
   if (jsFiles.length === 0) {
     console.error('[build-standalone] No JS files found in dist/assets/');
     process.exit(1);
   }
-  
-  console.log(`[build-standalone] Found ${jsFiles.length} JS file(s), ${cssFiles.length} CSS file(s)`);
-  
+
+  console.log(
+    `[build-standalone] Found ${jsFiles.length} JS file(s), ${cssFiles.length} CSS file(s)`,
+  );
+
   // Read files
   const jsCode = readFileSync(resolve(assetsDir, jsFiles[0]), 'utf-8');
-  const cssCode = cssFiles.length > 0 
-    ? readFileSync(resolve(assetsDir, cssFiles[0]), 'utf-8')
-    : '';
-  
+  const cssCode = cssFiles.length > 0 ? readFileSync(resolve(assetsDir, cssFiles[0]), 'utf-8') : '';
+
   // Create standalone HTML
   const standaloneHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -92,10 +92,10 @@ ${jsCode}
   </script>
 </body>
 </html>`;
-  
+
   // Write output
   writeFileSync(OUT_FILE, standaloneHtml);
-  
+
   const sizeKB = (standaloneHtml.length / 1024).toFixed(2);
   console.log(`[build-standalone] ✓ Created grok-zephyr.standalone.html (${sizeKB} KB)`);
   console.log(`[build-standalone] Output: ${OUT_FILE}`);

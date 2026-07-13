@@ -6,7 +6,10 @@
 import { UNIFORM_STRUCT } from '../uniforms.js';
 import { TERRAIN_COMMON } from './terrainCommon.js';
 
-export const EARTH_SHADER = UNIFORM_STRUCT + TERRAIN_COMMON + /* wgsl */ `
+export const EARTH_SHADER =
+  UNIFORM_STRUCT +
+  TERRAIN_COMMON +
+  /* wgsl */ `
 struct VIn  { @location(0) pos:vec3f, @location(1) nrm:vec3f }
 struct VOut { @builtin(position) cp:vec4f, @location(0) wp:vec3f, @location(1) n:vec3f }
 

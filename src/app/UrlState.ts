@@ -47,11 +47,11 @@ export function parseInitialStateFromURL(search: string = window.location.search
 export function applyVisualHarnessParams(rt: AppRuntime): VisualHarnessParams {
   const harness = parseVisualHarnessParams();
   if (harness.demoAuto !== null) {
-    rt.demoAutoEnabled = harness.demoAuto;
+    rt.simulation.demoAutoEnabled = harness.demoAuto;
     rt.ui.setDemoAutoEnabled(harness.demoAuto);
   }
-  if (harness.simTime !== null) rt.simTime = harness.simTime;
-  if (harness.timeScale !== null) rt.timeScale = harness.timeScale;
+  if (harness.simTime !== null) rt.simulation.simTime = harness.simTime;
+  if (harness.timeScale !== null) rt.simulation.timeScale = harness.timeScale;
   if (harness.groundPreset !== null) {
     rt.groundObserver.setPreset(harness.groundPreset);
     rt.applyGroundOverlayClass(rt.groundObserver.getOverlayClass());

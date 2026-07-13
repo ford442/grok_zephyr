@@ -7,7 +7,9 @@ This implementation adds complete support for "Smile from the Moon v2" animation
 ## Files Modified/Created
 
 ### 1. src/core/SatelliteGPUBuffer.ts (Modified)
+
 **Changes:**
+
 - Added `smileV2Uniforms` buffer (64 bytes aligned) to `SatelliteBufferSet` interface
 - Added `trailBuffer` for phase 6 trails (4-second history at 60fps = 240 frames)
 - Buffer layout:
@@ -21,9 +23,11 @@ This implementation adds complete support for "Smile from the Moon v2" animation
 - Updated `getMemoryUsage()` to include new buffer sizes
 
 ### 2. src/render/SmileV2Pipeline.ts (Created)
+
 **Purpose:** Compute pipeline for smile_v2.wgsl shader
 
 **Features:**
+
 - Creates compute pipeline with proper bind group layout:
   - Binding 0: smileV2Uniforms (uniform)
   - Binding 1: sat_positions (storage, read)
@@ -37,14 +41,17 @@ This implementation adds complete support for "Smile from the Moon v2" animation
 - Debug logging for all major operations
 
 **Exports:**
+
 - `SmileV2Phase` enum (IDLE, EMERGE, GLOW, TWINKLE, FADE, MORPH, TRAILS)
 - `SmileV2Pipeline` class with full pipeline management
 - Supporting interfaces: `SmileV2Uniforms`, `SmileV2Config`, `SmileV2Timing`
 
 ### 3. src/render/SmileV2Controller.ts (Created)
+
 **Purpose:** High-level controller for the animation system
 
 **Features:**
+
 - Manages full 48-second animation cycle
 - Automatic phase transitions based on configured durations
 - Performance metrics tracking (avg/max frame time, frames over budget)
@@ -54,7 +61,9 @@ This implementation adds complete support for "Smile from the Moon v2" animation
 - Configurable durations for each phase
 
 ### 4. src/render/RenderPipeline.ts (Modified)
+
 **Changes:**
+
 - Imported `SmileV2Pipeline` from './SmileV2Pipeline.js'
 - Added `smileV2Pipeline` member
 - Initialized pipeline in `initialize()` method
@@ -63,7 +72,9 @@ This implementation adds complete support for "Smile from the Moon v2" animation
 - Updated `destroy()` to clean up smileV2Pipeline
 
 ### 5. src/shaders/index.ts (Modified)
+
 **Changes:**
+
 - Added `SMILE_V2_SHADER` constant with complete WGSL compute shader
 - Shader implements 7-phase animation:
   - Phase 1 (EMERGE): 3 seconds - satellites fade to smile colors
@@ -84,6 +95,7 @@ This implementation adds complete support for "Smile from the Moon v2" animation
 ## Integration Points
 
 ### Render Graph Order
+
 1. Compute orbital positions (`encodeComputePass`)
 2. **Smile V2 animation** (`encodeSmileV2Pass`) - only if active
 3. Scene pass (stars, Earth, atmosphere, satellites)
@@ -93,6 +105,7 @@ This implementation adds complete support for "Smile from the Moon v2" animation
 7. Composite + tonemapping
 
 ### Usage Example
+
 ```typescript
 import { RenderPipeline } from './render/RenderPipeline.js';
 import { SmileV2Controller } from './render/SmileV2Controller.js';

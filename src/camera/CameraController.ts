@@ -73,7 +73,8 @@ export class CameraController implements CameraInputDelegate {
   private orbitLockActive = false;
   private orbitLockSpeed = 8;
 
-  private modeChangeCallback: ((mode: ViewMode, name: string, altitude: string) => void) | null = null;
+  private modeChangeCallback: ((mode: ViewMode, name: string, altitude: string) => void) | null =
+    null;
   private angleChangeCallback: ((yaw: number, pitch: number) => void) | null = null;
   private userInteractionCallback: (() => void) | null = null;
   private touchDoubleTapCallback: ((x: number, y: number) => void) | null = null;
@@ -237,7 +238,10 @@ export class CameraController implements CameraInputDelegate {
     this.cameraAngles.yaw -= this.godVelocity.yaw * frames;
     this.cameraAngles.yaw = ((this.cameraAngles.yaw % 360) + 360) % 360;
     this.cameraAngles.pitch += this.godVelocity.pitch * frames;
-    this.cameraAngles.pitch = Math.max(-this.PITCH_LIMIT, Math.min(this.PITCH_LIMIT, this.cameraAngles.pitch));
+    this.cameraAngles.pitch = Math.max(
+      -this.PITCH_LIMIT,
+      Math.min(this.PITCH_LIMIT, this.cameraAngles.pitch),
+    );
 
     this.syncGodViewFromAngles();
 
@@ -333,7 +337,11 @@ export class CameraController implements CameraInputDelegate {
     return this.modeIndex;
   }
 
-  setFocusSatellite(index: number, distance: number, time: number = performance.now() / 1000): void {
+  setFocusSatellite(
+    index: number,
+    distance: number,
+    time: number = performance.now() / 1000,
+  ): void {
     if (this.focusSatelliteIndex === index) return;
     this.focusSatelliteIndex = index;
     this.focusDistance = distance;
@@ -507,7 +515,10 @@ export class CameraController implements CameraInputDelegate {
     return this.cinematic.isActive();
   }
 
-  buildViewProjection(camera: CameraState, aspect: number): {
+  buildViewProjection(
+    camera: CameraState,
+    aspect: number,
+  ): {
     view: Float32Array;
     projection: Float32Array;
     viewProjection: Float32Array;
@@ -572,5 +583,3 @@ export class CameraController implements CameraInputDelegate {
     return VIEW_MODES;
   }
 }
-
-export default CameraController;

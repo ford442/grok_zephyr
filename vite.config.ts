@@ -1,76 +1,29 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import { resolve } from 'path';
-import { readFileSync } from 'fs';
-
-/**
- * Custom plugin to handle WGSL shader imports
- * Allows importing .wgsl files as strings
- */
-function wgslPlugin() {
-  return {
-    name: 'vite-plugin-wgsl',
-    enforce: 'pre' as const,
-    
-    resolveId(id: string, importer?: string) {
-      if (!id.endsWith('.wgsl')) {
-        return null;
-      }
-      if (id.startsWith('.') && importer) {
-        return resolve(importer, '..', id);
-      }
-      return resolve(process.cwd(), id);
-    },
-    
-    load(id: string) {
-      if (id.endsWith('.wgsl')) {
-        const content = readFileSync(id, 'utf-8');
-        // Process imports
-        const processed = content.replace(
-          /#import\s+["']([^"']+)["']/g,
-          (_match, importPath: string) => {
-            const fullPath = resolve(id, '..', importPath);
-            try {
-              return readFileSync(fullPath, 'utf-8');
-            } catch {
-              console.warn(`[WGSL] Could not import: ${importPath}`);
-              return '';
-            }
-          }
-        );
-        
-        return {
-          code: `export default ${JSON.stringify(processed)};`,
-          map: null,
-        };
-      }
-      return null;
-    },
-  };
-}
 
 /**
  * Plugin to generate standalone HTML build
  */
-function standalonePlugin() {
+function standalonePlugin(): Plugin {
   return {
     name: 'vite-plugin-standalone',
     enforce: 'post' as const,
     apply: 'build' as const,
-    
+
     generateBundle(_options: unknown, bundle: Record<string, { code?: string; source?: string }>) {
       // Only run in standalone mode
       if (process.env.VITE_STANDALONE !== 'true') return;
-      
+
       // Find main entry
-      const htmlEntry = Object.keys(bundle).find(k => k.endsWith('.html'));
-      const jsEntry = Object.keys(bundle).find(k => k.endsWith('.js') && !k.includes('polyfill'));
-      const cssEntry = Object.keys(bundle).find(k => k.endsWith('.css'));
-      
+      const htmlEntry = Object.keys(bundle).find((k) => k.endsWith('.html'));
+      const jsEntry = Object.keys(bundle).find((k) => k.endsWith('.js') && !k.includes('polyfill'));
+      const cssEntry = Object.keys(bundle).find((k) => k.endsWith('.css'));
+
       if (!htmlEntry || !jsEntry) return;
-      
+
       const jsCode = bundle[jsEntry].code || '';
-      const cssCode = cssEntry ? (bundle[cssEntry].source as string || '') : '';
-      
+      const cssCode = cssEntry ? (bundle[cssEntry].source as string) || '' : '';
+
       // Create standalone HTML
       const standaloneHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -110,14 +63,14 @@ function standalonePlugin() {
   <script type="module">${jsCode}</script>
 </body>
 </html>`;
-      
+
       // Add standalone HTML to bundle
       this.emitFile({
         type: 'asset',
         fileName: 'grok-zephyr.standalone.html',
         source: standaloneHtml,
       });
-      
+
       console.log('[standalone] Generated grok-zephyr.standalone.html');
     },
   };
@@ -125,12 +78,12 @@ function standalonePlugin() {
 
 export default defineConfig(({ mode }) => {
   const isStandalone = mode === 'standalone';
-  
+
   return {
     root: '.',
     publicDir: 'public',
     base: './',
-    
+
     build: {
       outDir: 'dist',
       sourcemap: !isStandalone,
@@ -142,21 +95,23 @@ export default defineConfig(({ mode }) => {
         output: {
           chunkFileNames: 'assets/[name]-[hash].js',
           entryFileNames: 'assets/[name]-[hash].js',
-          manualChunks: isStandalone ? undefined : {
-            'webgpu-core': ['./src/core/WebGPUContext.ts', './src/core/SatelliteGPUBuffer.ts'],
-            'render': ['./src/render/RenderPipeline.ts'],
-            'math': ['./src/utils/math.ts'],
-          },
+          manualChunks: isStandalone
+            ? undefined
+            : {
+                'webgpu-core': ['./src/core/WebGPUContext.ts', './src/core/SatelliteGPUBuffer.ts'],
+                render: ['./src/render/RenderPipeline.ts'],
+                math: ['./src/utils/math.ts'],
+              },
         },
       },
     },
-    
+
     server: {
       host: true,
       port: 5173,
       open: true,
     },
-    
+
     resolve: {
       alias: {
         '@': resolve(__dirname, 'src'),
@@ -165,16 +120,12 @@ export default defineConfig(({ mode }) => {
         '@/physics': resolve(__dirname, 'src/physics'),
         '@/render': resolve(__dirname, 'src/render'),
         '@/camera': resolve(__dirname, 'src/camera'),
-        '@/matrix': resolve(__dirname, 'src/matrix'),
         '@/ui': resolve(__dirname, 'src/ui'),
         '@/utils': resolve(__dirname, 'src/utils'),
         '@/types': resolve(__dirname, 'src/types'),
       },
     },
-    
-    plugins: [
-      wgslPlugin(),
-      standalonePlugin(),
-    ],
+
+    plugins: [standalonePlugin()],
   };
 });

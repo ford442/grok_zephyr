@@ -5,7 +5,9 @@
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
 
-export const ATM_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+export const ATM_SHADER =
+  UNIFORM_STRUCT +
+  /* wgsl */ `
 struct VIn  { @location(0) pos:vec3f, @location(1) nrm:vec3f }
 struct VOut { @builtin(position) cp:vec4f, @location(0) wp:vec3f, @location(1) n:vec3f }
 

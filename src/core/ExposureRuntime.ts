@@ -27,7 +27,9 @@ export function parseSavedExposureSettings(): ExposureRuntimeSettings {
     const parsed = JSON.parse(raw) as Partial<ExposureRuntimeSettings>;
     const mode: ExposureMode = parsed.mode === 'manual' ? 'manual' : 'auto';
     const tonemapCandidate = Number(parsed.tonemapMode);
-    const tonemapMode: TonemapMode = (tonemapCandidate >= 0 && tonemapCandidate <= 3 ? tonemapCandidate : 0) as TonemapMode;
+    const tonemapMode: TonemapMode = (
+      tonemapCandidate >= 0 && tonemapCandidate <= 3 ? tonemapCandidate : 0
+    ) as TonemapMode;
     return {
       mode,
       manualExposure: clamp(Number(parsed.manualExposure) || 1.0, 0.1, 10.0),

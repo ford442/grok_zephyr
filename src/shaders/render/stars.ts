@@ -13,7 +13,9 @@
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
 
-export const STARS_SHADER = UNIFORM_STRUCT + /* wgsl */ `
+export const STARS_SHADER =
+  UNIFORM_STRUCT +
+  /* wgsl */ `
 struct VSOut { @builtin(position) pos:vec4f, @location(0) uv:vec2f };
 
 struct AtmosphereSettings {
