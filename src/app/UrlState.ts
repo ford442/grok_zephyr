@@ -1,5 +1,6 @@
 import { parseQualityParam, type QualityLevel } from '@/core/QualityPresets.js';
 import { parseVisualHarnessParams, type VisualHarnessParams } from '@/visualHarness.js';
+import { applySimClockFromUrl } from '@/app/SimClockController.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 
 export interface InitialUrlState {
@@ -8,6 +9,7 @@ export interface InitialUrlState {
   physicsMode: number | null;
   patternMode: number | null;
   animationMode: number | null;
+  realismMode: boolean | null;
 }
 
 /**
@@ -19,6 +21,9 @@ export interface InitialUrlState {
  *   ?physics=0-2         physics mode
  *   ?pattern=0-2         beam pattern mode
  *   ?animation=3-5       constellation animation pattern (smile/rain/heartbeat)
+ *   ?realism=0|1         SGP4 catalog vs art-directed shells (requires ?tle=)
+ *   ?t=ISO8601           initial simulated UTC (shareable moment)
+ *   ?rate=<n>            sim rate multiplier (0 = paused, up to 10000)
  */
 export function parseInitialStateFromURL(search: string = window.location.search): InitialUrlState {
   const params = new URLSearchParams(search);
@@ -31,12 +36,21 @@ export function parseInitialStateFromURL(search: string = window.location.search
     return val;
   };
 
+  const parseBoolParam = (key: string): boolean | null => {
+    const raw = params.get(key)?.toLowerCase();
+    if (raw === null || raw === '') return null;
+    if (raw === '0' || raw === 'false' || raw === 'off') return false;
+    if (raw === '1' || raw === 'true' || raw === 'on') return true;
+    return null;
+  };
+
   return {
     viewMode: parseIntParam('mode', 0, 5),
     qualityLevel: parseQualityParam(params.get('preset')),
     physicsMode: parseIntParam('physics', 0, 2),
     patternMode: parseIntParam('pattern', 0, 2),
     animationMode: parseIntParam('animation', 3, 5),
+    realismMode: parseBoolParam('realism'),
   };
 }
 
@@ -50,8 +64,9 @@ export function applyVisualHarnessParams(rt: AppRuntime): VisualHarnessParams {
     rt.simulation.demoAutoEnabled = harness.demoAuto;
     rt.ui.setDemoAutoEnabled(harness.demoAuto);
   }
-  if (harness.simTime !== null) rt.simulation.simTime = harness.simTime;
-  if (harness.timeScale !== null) rt.simulation.timeScale = harness.timeScale;
+  if (harness.simTime !== null) rt.simulation.clock.setSimTime(harness.simTime, 'scrub');
+  if (harness.timeScale !== null) rt.simulation.clock.setRate(harness.timeScale);
+  applySimClockFromUrl(rt);
   if (harness.groundPreset !== null) {
     rt.groundObserver.setPreset(harness.groundPreset);
     rt.applyGroundOverlayClass(rt.groundObserver.getOverlayClass());

@@ -6,10 +6,13 @@
  */
 
 import { CONSTANTS, RENDER } from '@/types/constants.js';
+import type { CanvasPresentationOptions, PresentationMode } from '@/core/HdrPresentation.js';
 import {
   WebGPUErrorReporter,
   type WebGPUErrorReportHandler,
 } from '@/core/WebGPUErrorReporter.js';
+
+export type { CanvasPresentationOptions, PresentationMode } from '@/core/HdrPresentation.js';
 
 /** Deprecated pre-spec adapter.info fallback. */
 type GPUAdapterWithLegacyInfo = GPUAdapter & {
@@ -46,6 +49,8 @@ export interface WebGPUInitResult {
   context: GPUCanvasContext;
   format: GPUTextureFormat;
   presentationFormat: GPUTextureFormat;
+  presentationMode: PresentationMode;
+  hdrPresentationActive: boolean;
   enabledFeatures: GPUFeatureName[];
   optionalFeatures: GPUFeatureName[];
 }
@@ -60,6 +65,8 @@ export interface WebGPUContextOptions {
   onDeviceLost?: (info: GPUDeviceLostInfo) => void;
   /** Structured GPU error reports (validation, OOM, shaders, uncaptured). */
   onErrorReport?: WebGPUErrorReportHandler;
+  /** Swapchain / canvas presentation (format, tone mapping, color space). */
+  canvas?: CanvasPresentationOptions;
 }
 
 const MAX_BEAMS = 65536;
@@ -79,6 +86,7 @@ export class WebGPUContext {
   private adapter: GPUAdapter | null = null;
   private context: GPUCanvasContext | null = null;
   private format: GPUTextureFormat = RENDER.SWAPCHAIN_FORMAT;
+  private presentationMode: PresentationMode = 'sdr';
   private canvas: HTMLCanvasElement;
   private options: WebGPUContextOptions;
   private lostHandler: ((info: GPUDeviceLostInfo) => void) | null = null;
@@ -173,20 +181,11 @@ export class WebGPUContext {
         throw new WebGPUError('Failed to create WebGPU canvas context');
       }
 
-      // Get preferred canvas format
-      this.format = navigator.gpu.getPreferredCanvasFormat();
-
-      await this.errorReporter.withScope(this.device, 'canvas-context', () => {
-        this.context!.configure({
-          device: this.device!,
-          format: this.format,
-          alphaMode: 'opaque',
-          usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST,
-        });
-      });
+      await this.configureCanvasContext();
 
       console.log('[WebGPU] Context initialized successfully');
       console.log(`[WebGPU] Format: ${this.format}`);
+      console.log(`[WebGPU] Presentation: ${this.presentationMode}`);
       console.log(
         `[WebGPU] Max storage buffer: ${this.device.limits.maxStorageBufferBindingSize} bytes`,
       );
@@ -199,6 +198,8 @@ export class WebGPUContext {
         context: this.context,
         format: this.format,
         presentationFormat: this.format,
+        presentationMode: this.presentationMode,
+        hdrPresentationActive: this.presentationMode === 'hdr',
         enabledFeatures,
         optionalFeatures,
       };
@@ -349,6 +350,92 @@ export class WebGPUContext {
    */
   getFormat(): GPUTextureFormat {
     return this.format;
+  }
+
+  /** Active canvas presentation mode after feature detection / fallback. */
+  getPresentationMode(): PresentationMode {
+    return this.presentationMode;
+  }
+
+  /** True when the swapchain is configured for extended-range HDR output. */
+  isHdrPresentationActive(): boolean {
+    return this.presentationMode === 'hdr';
+  }
+
+  private canvasUsage(): GPUTextureUsageFlags {
+    return GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST;
+  }
+
+  private buildSdrCanvasConfiguration(): GPUCanvasConfiguration {
+    const canvasOpts = this.options.canvas;
+    this.format = navigator.gpu.getPreferredCanvasFormat();
+
+    return {
+      device: this.device!,
+      format: this.format,
+      alphaMode: canvasOpts?.alphaMode ?? 'opaque',
+      usage: this.canvasUsage(),
+      toneMapping: { mode: 'standard' },
+    };
+  }
+
+  private buildHdrCanvasConfiguration(): GPUCanvasConfiguration {
+    const canvasOpts = this.options.canvas;
+    return {
+      device: this.device!,
+      format: canvasOpts?.format ?? 'rgba16float',
+      alphaMode: canvasOpts?.alphaMode ?? 'opaque',
+      usage: this.canvasUsage(),
+      colorSpace: canvasOpts?.colorSpace ?? 'display-p3',
+      toneMapping: canvasOpts?.toneMapping ?? { mode: 'extended' },
+    };
+  }
+
+  private isHdrCanvasRequest(): boolean {
+    const canvasOpts = this.options.canvas;
+    if (!canvasOpts) return false;
+    return (
+      canvasOpts.format === 'rgba16float' && canvasOpts.toneMapping?.mode === 'extended'
+    );
+  }
+
+  private readActivePresentationMode(): PresentationMode {
+    const active = this.context?.getConfiguration();
+    if (
+      active?.format === 'rgba16float' &&
+      active.toneMapping?.mode === 'extended'
+    ) {
+      return 'hdr';
+    }
+    return 'sdr';
+  }
+
+  private async configureCanvasContext(): Promise<void> {
+    if (this.isHdrCanvasRequest()) {
+      const hdrConfig = this.buildHdrCanvasConfiguration();
+      try {
+        await this.errorReporter.withScope(this.device!, 'canvas-context-hdr', () => {
+          this.context!.configure(hdrConfig);
+        });
+        this.format = this.context!.getConfiguration()?.format ?? hdrConfig.format;
+        this.presentationMode = this.readActivePresentationMode();
+        if (this.presentationMode === 'hdr') {
+          return;
+        }
+        console.warn(
+          '[WebGPU] HDR canvas requested but browser reported standard presentation; falling back to SDR',
+        );
+      } catch (error) {
+        console.warn('[WebGPU] HDR canvas configuration failed, falling back to SDR:', error);
+      }
+    }
+
+    const sdrConfig = this.buildSdrCanvasConfiguration();
+    await this.errorReporter.withScope(this.device!, 'canvas-context', () => {
+      this.context!.configure(sdrConfig);
+    });
+    this.format = this.context!.getConfiguration()?.format ?? sdrConfig.format;
+    this.presentationMode = this.readActivePresentationMode();
   }
 
   /**

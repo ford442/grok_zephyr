@@ -46,6 +46,7 @@ export function packTonemapUni(
   autoEnabled: boolean,
   tonemapMode: number,
   manualExposure: number,
+  extendedOutput = false,
 ): ArrayBuffer {
   const ab = new ArrayBuffer(TONEMAP_UNI_BYTE_SIZE);
   const f32 = new Float32Array(ab);
@@ -53,7 +54,7 @@ export function packTonemapUni(
   u32[0] = autoEnabled ? 1 : 0;
   u32[1] = tonemapMode;
   f32[2] = manualExposure;
-  f32[3] = 0.0;
+  u32[3] = extendedOutput ? 1 : 0;
   return ab;
 }
 

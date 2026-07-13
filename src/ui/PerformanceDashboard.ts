@@ -7,7 +7,10 @@
 
 import type { PerformanceStats } from '@/types/index.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
+import type { PresentationMode } from '@/core/HdrPresentation.js';
+import type { Sgp4BenchmarkResult } from '@/physics/Sgp4Benchmark.js';
 import { QUALITY_PRESETS } from '@/core/QualityPresets.js';
+import { formatPresentationModeLabel } from '@/core/HdrPresentation.js';
 import type { PerformanceProfiler, DetailedTimings } from '@/utils/PerformanceProfiler.js';
 import { MAX_FPS_HISTORY_LENGTH } from '@/utils/PerformanceProfiler.js';
 
@@ -29,8 +32,11 @@ interface DashboardElements {
   postTime: HTMLElement;
   totalTime: HTMLElement;
   presetLabel: HTMLElement;
+  presentationLabel: HTMLElement;
   headroom: HTMLElement;
   timingSource: HTMLElement;
+  sgp4Backend: HTMLElement;
+  sgp4Benchmark: HTMLElement;
 }
 
 /**
@@ -122,8 +128,18 @@ export class PerformanceDashboard {
             <div class="perf-section-title">Quality Preset</div>
             <div class="perf-preset-info">
               <div class="perf-preset-label" id="perf-preset">HIGH</div>
+              <div class="perf-preset-label" id="perf-presentation">SDR (standard)</div>
               <div class="perf-preset-headroom" id="perf-headroom">--</div>
               <div class="perf-timing-source" id="perf-source">CPU Timing</div>
+            </div>
+          </div>
+
+          <!-- SGP4 propagation benchmark -->
+          <div class="perf-section">
+            <div class="perf-section-title">SGP4 Engine</div>
+            <div class="perf-preset-info">
+              <div class="perf-preset-label" id="perf-sgp4-backend">satellite.js</div>
+              <div class="perf-preset-headroom" id="perf-sgp4-bench">--</div>
             </div>
           </div>
         </div>
@@ -144,8 +160,11 @@ export class PerformanceDashboard {
       postTime: container.querySelector('#perf-post') as HTMLElement,
       totalTime: container.querySelector('#perf-total') as HTMLElement,
       presetLabel: container.querySelector('#perf-preset') as HTMLElement,
+      presentationLabel: container.querySelector('#perf-presentation') as HTMLElement,
       headroom: container.querySelector('#perf-headroom') as HTMLElement,
       timingSource: container.querySelector('#perf-source') as HTMLElement,
+      sgp4Backend: container.querySelector('#perf-sgp4-backend') as HTMLElement,
+      sgp4Benchmark: container.querySelector('#perf-sgp4-bench') as HTMLElement,
     };
 
     // Update timing source indicator
@@ -339,6 +358,37 @@ export class PerformanceDashboard {
     setTimeout(() => {
       presetEl.classList.remove('perf-preset-changing');
     }, 600);
+  }
+
+  /** Show active HDR / SDR canvas presentation mode. */
+  updatePresentationMode(mode: PresentationMode): void {
+    if (!this.elements) return;
+
+    this.elements.presentationLabel.textContent = formatPresentationModeLabel(mode);
+    this.elements.presentationLabel.style.color = mode === 'hdr' ? '#7fd4ff' : '#c8c8c8';
+  }
+
+  /** Show active SGP4 backend and WASM vs JS benchmark (full catalog). */
+  updateSgp4Benchmark(result: Sgp4BenchmarkResult | null, backend: 'wasm' | 'js'): void {
+    if (!this.elements) return;
+
+    this.elements.sgp4Backend.textContent =
+      backend === 'wasm' ? 'WASM (Vallado)' : 'satellite.js fallback';
+    this.elements.sgp4Backend.style.color = backend === 'wasm' ? '#00ff88' : '#ffaa00';
+
+    if (!result) {
+      this.elements.sgp4Benchmark.textContent = 'No TLE catalog loaded';
+      this.elements.sgp4Benchmark.style.color = '#888888';
+      return;
+    }
+
+    const speedupText =
+      result.activeBackend === 'wasm'
+        ? `${result.speedup.toFixed(1)}× vs JS (${result.catalogCount.toLocaleString()} sats, ${result.wasmMs.toFixed(1)} ms)`
+        : `JS only (${result.jsMs.toFixed(1)} ms)`;
+    const meetsTarget = result.activeBackend === 'wasm' && result.speedup >= 5;
+    this.elements.sgp4Benchmark.textContent = speedupText;
+    this.elements.sgp4Benchmark.style.color = meetsTarget ? '#00ff88' : '#ffff00';
   }
 
   /**

@@ -1,15 +1,17 @@
 import { OrbitalElements } from '@/core/OrbitalElements.js';
-import { TLELoader } from '@/data/TLELoader.js';
-import { getTLESource } from '@/data/tleSource.js';
+import { acquireTLECatalog, acquireCustomTLEUrl, resolveActiveCatalogId, resolveCustomTLEUrl } from '@/data/TLESource.js';
 import { buildEarthMesh } from '@/core/EarthGeometry.js';
 import { WebGLRenderer } from '@/webgl/WebGLRenderer.js';
 import { WebGLDebugOverlay, parseDebugFlags } from '@/webgl/WebGLDebug.js';
 import { resolveSatelliteCount } from '@/webgl/rendererSelection.js';
 import { parseVisualHarnessParams } from '@/visualHarness.js';
-import { parseInitialStateFromURL, applyVisualHarnessParams } from '@/app/UrlState.js';
+import { applyVisualHarnessParams, parseInitialStateFromURL } from '@/app/UrlState.js';
+import { syncSimClockFromTleEpoch } from '@/app/SimClockController.js';
 import { setupImageTuning } from '@/app/ViewModeCoordinator.js';
 import { getDrawableSize, setupMobileOrientationSupport } from '@/app/MobilePresentation.js';
 import { setPatternMode, setAnimationPattern } from '@/app/PatternController.js';
+import { FocusManager, type FocusBufferSource } from '@/focus.js';
+import { rebuildSatelliteCatalog } from '@/app/SatelliteSelection.js';
 import { startWebGLLoop } from '@/app/FrameLoop.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 
@@ -25,26 +27,36 @@ export async function bootWebGL(
   rt.webglOrbital = orbital;
 
   const harness = parseVisualHarnessParams();
-  const tleSource = getTLESource();
+  const catalogId = resolveActiveCatalogId();
+  const customUrl = resolveCustomTLEUrl();
+  const catalogResult = customUrl
+    ? await acquireCustomTLEUrl(customUrl)
+    : await acquireTLECatalog(catalogId);
+
   let dataSourceLabel = 'Procedural Walker';
-  if (tleSource) {
-    try {
-      console.log(`[GrokZephyr] Loading TLE data from: ${tleSource}`);
-      const tles = await TLELoader.fromFile(tleSource);
-      if (tles.length > 0) {
-        const realCount = orbital.loadFromTLE(tles);
-        dataSourceLabel = `TLE (${realCount.toLocaleString()} real)`;
-      } else {
-        orbital.generate(harness.seed ?? undefined);
-      }
-    } catch (err) {
-      console.warn('[GrokZephyr] TLE load failed, using procedural generation:', err);
-      orbital.generate(harness.seed ?? undefined);
-    }
+  let tleRealCount = 0;
+  if (catalogResult.tles.length > 0) {
+    tleRealCount = orbital.loadFromTLE(catalogResult.tles);
+    dataSourceLabel = `TLE · ${catalogResult.meta.label} (${tleRealCount.toLocaleString()} real)`;
+    rt.simulation.hasTleCatalog = true;
   } else {
     orbital.generate(harness.seed ?? undefined);
   }
 
+  rt.loadedTles = catalogResult.tles;
+  rt.tleRealCount = tleRealCount;
+  const focusSource: FocusBufferSource = {
+    getOrbitalElementData: () => orbital.data,
+    calculateSatellitePosition: (index, time) => orbital.calculatePosition(index, time),
+    calculateSatelliteVelocity: (index, time) => orbital.calculateVelocity(index, time),
+  };
+  rt.focusManager = new FocusManager(rt.canvas, rt.camera, focusSource, (selection) =>
+    rt.handleFocusSelectionChange(selection),
+  );
+  rebuildSatelliteCatalog(rt);
+
+  rt.tleCatalogMeta = catalogResult.meta;
+  syncSimClockFromTleEpoch(rt, catalogResult.meta.epoch);
   rt.camera.attachToCanvas(rt.canvas);
   setupMobileOrientationSupport(rt, orientationChangeListener, orientationLockGestureListener);
 
@@ -63,6 +75,9 @@ export async function bootWebGL(
 
   rt.ui.setFleetCount(satCount);
   rt.ui.setDataSource(`${dataSourceLabel} · WebGL2`);
+  rt.ui.setTleCatalogMeta(catalogResult.meta);
+  rt.ui.setActiveTleCatalog(catalogId, catalogResult.meta);
+  rt.ui.setRealismControls(false, rt.simulation.hasTleCatalog);
   rt.dataSourceLabel = dataSourceLabel;
   rt.ui.hideError();
 
@@ -75,10 +90,9 @@ export async function bootWebGL(
     setAnimationPattern(rt, urlParams.animationMode);
   }
   applyVisualHarnessParams(rt);
+  rt.ui.updateSimClock(rt.simulation.clock);
   setupImageTuning(rt);
 
   window.addEventListener('resize', resizeListener);
-
   startWebGLLoop(rt);
-  console.log('[GrokZephyr] WebGL2 renderer ready.');
 }

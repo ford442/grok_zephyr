@@ -1,9 +1,10 @@
 import type { QualityLevel } from '@/core/QualityPresets.js';
+import { SimClock } from '@/app/SimClock.js';
 
 /** Simulation timing, quality, and pattern mode — single source of truth. */
 export class SimulationState {
-  timeScale = 1.0;
-  simTime = 0.0;
+  readonly clock = new SimClock();
+
   demoAutoEnabled = true;
   lastUserActivityTime = performance.now() * 0.001;
 
@@ -15,6 +16,26 @@ export class SimulationState {
   currentPatternMode = 1;
   currentAnimationPattern = 0;
   currentPhysicsMode = 0;
+  realismMode = false;
+  hasTleCatalog = false;
   patternSeed = 0;
   patternAnimationStart = 0;
+
+  /** Seconds since epoch — prefer `clock.simTime`. */
+  get simTime(): number {
+    return this.clock.simTime;
+  }
+
+  set simTime(value: number) {
+    this.clock.setSimTime(value, 'scrub');
+  }
+
+  /** Sim seconds per wall second (0 = paused) — prefer `clock.rate`. */
+  get timeScale(): number {
+    return this.clock.rate;
+  }
+
+  set timeScale(value: number) {
+    this.clock.setRate(value);
+  }
 }

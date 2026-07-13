@@ -5,7 +5,7 @@ import {
   computeEarthLimbScreenYNormalized,
 } from '@/camera/HorizonLimb.js';
 import { applyGodZoomBloomTuning } from '@/camera/GodFraming.js';
-import { computeFleetCockpitTelemetry, FLEET_COCKPIT } from '@/camera/FleetCockpit.js';
+import { computeFleetCockpitTelemetry } from '@/camera/FleetCockpit.js';
 import type { CameraState } from '@/camera/CameraController.js';
 import {
   resolveImageTuning,
@@ -237,7 +237,7 @@ export function applyFleetViewEffects(rt: AppRuntime, simTime: number): void {
 
   const orbital = rt.buffers?.getOrbitalElements() ?? rt.webglOrbital;
   if (orbital) {
-    const hostIdx = FLEET_COCKPIT.HOST_SATELLITE_INDEX;
+    const hostIdx = rt.fleetHostIndex;
     const hostPos = orbital.calculatePosition(hostIdx, simTime);
     const velDir = orbital.calculateVelocity(hostIdx, simTime);
     const telem = computeFleetCockpitTelemetry(orbital, hostIdx, hostPos, velDir, simTime);

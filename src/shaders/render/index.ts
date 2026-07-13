@@ -6,6 +6,7 @@ export { STARS_SHADER as stars } from './stars.js';
 export { EARTH_SHADER as earth } from './earth.js';
 export { ATM_SHADER as atmosphere } from './atmosphere.js';
 export { SATELLITE_SHADER as satellites } from './satellites.js';
+export { SATELLITE_PICK_SHADER as satellitesPick } from './satellitesPick.js';
 export { BEAM_SHADER as beam } from './beam.js';
 export { GROUND_TERRAIN as ground } from './ground.js';
 export { SKYLINE_BUILDINGS as skyline } from './skyline.js';

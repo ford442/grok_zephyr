@@ -3,6 +3,12 @@ import { parseVisualHarnessParams } from '@/visualHarness.js';
 import { GroundObserverPreset } from '@/camera/GroundObserverCamera.js';
 
 describe('parseVisualHarnessParams', () => {
+  it('parses hdr override via harness params', () => {
+    const p = parseVisualHarnessParams('?hdr=0');
+    expect(p.hdr).toBe(false);
+    expect(parseVisualHarnessParams('?hdr=1').hdr).toBe(true);
+  });
+
   it('parses deterministic harness flags', () => {
     const p = parseVisualHarnessParams(
       '?demo=0&simTime=180&timescale=0&ground=houseWindow&seed=42',

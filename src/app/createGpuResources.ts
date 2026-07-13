@@ -15,6 +15,7 @@ import { applyExposureSettings } from '@/app/AppCallbackBinder.js';
 import { setupImageTuning } from '@/app/ViewModeCoordinator.js';
 import { setPatternMode, setAnimationPattern, setPhysicsMode } from '@/app/PatternController.js';
 import { loadSatelliteOrbitalData } from '@/app/loadSatelliteOrbitalData.js';
+import { applyVisualHarnessParams } from '@/app/UrlState.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 
 export type GpuResourceBootMode = 'boot' | 'recovery';
@@ -61,7 +62,18 @@ export async function createGpuResources(
     rt.handleFocusSelectionChange(selection),
   );
 
+  if (options.mode === 'boot') {
+    const earlyUrl = parseInitialStateFromURL();
+    if (earlyUrl.realismMode !== null) {
+      rt.simulation.realismMode = earlyUrl.realismMode;
+    }
+  }
+
   await loadSatelliteOrbitalData(rt);
+  if (options.mode === 'boot') {
+    applyVisualHarnessParams(rt);
+    rt.ui.updateSimClock(rt.simulation.clock);
+  }
 
   const earthGeom = await reporter.withScope(device, 'earth-geometry', () =>
     createEarthGeometry(rt.context!),
@@ -161,6 +173,9 @@ export async function createGpuResources(
     }
 
     await rt.ui.initializeDashboard(rt.profiler);
+    if (rt.context) {
+      rt.ui.setPresentationMode(rt.context.getPresentationMode());
+    }
     return;
   }
 

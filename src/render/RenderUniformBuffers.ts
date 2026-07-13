@@ -235,6 +235,7 @@ export class RenderUniformBuffers {
       this.exposureSettings.autoEnabled,
       this.exposureSettings.tonemapMode,
       this.exposureSettings.manualExposure,
+      this.context.isHdrPresentationActive(),
     );
     this.context.getDevice().queue.writeBuffer(this.tonemapUniformBuffer, 0, data);
   }

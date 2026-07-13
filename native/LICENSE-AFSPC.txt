@@ -1,0 +1,9 @@
+Air Force Space Command (AFSPC) Open Source Agreement for SGP4
+
+The SGP4 source code in native/vallado/ is from David Vallado's
+"Fundamentals of Astrodynamics and Applications" companion software
+(https://celestrak.com/software/vallado-sw.php).
+
+Use and modification are permitted provided copyright notices and this
+agreement accompany distributions. Do not use AFSPC or contributor names
+for endorsement.

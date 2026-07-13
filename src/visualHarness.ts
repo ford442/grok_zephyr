@@ -6,9 +6,11 @@
  *   ?timescale=<n>     simulation time multiplier (0 freezes orbital motion)
  *   ?ground=<preset>   ground observer preset id (e.g. houseWindow)
  *   ?seed=<n>          seeded procedural orbital layout
+ *   ?hdr=0|1           force HDR canvas off/on (WebGPU only)
  */
 
 import { GroundObserverPreset } from '@/camera/GroundObserverCamera.js';
+import { resolveHdrOverride } from '@/core/HdrPresentation.js';
 
 export interface VisualHarnessParams {
   demoAuto: boolean | null;
@@ -16,6 +18,8 @@ export interface VisualHarnessParams {
   timeScale: number | null;
   groundPreset: GroundObserverPreset | null;
   seed: number | null;
+  /** Force HDR canvas on/off for deterministic captures (`?hdr=0|1`). */
+  hdr: boolean | null;
 }
 
 const GROUND_PRESET_IDS = new Set<string>(Object.values(GroundObserverPreset));
@@ -56,5 +60,6 @@ export function parseVisualHarnessParams(
     timeScale: parseFloatParam(params.get('timescale'), 0, 100_000),
     groundPreset,
     seed: parseIntParam(params.get('seed'), 0, 0x7fffffff),
+    hdr: resolveHdrOverride(search),
   };
 }

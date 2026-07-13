@@ -7,6 +7,9 @@
 import type { PerformanceStats } from '@/types/index.js';
 import type { AnimationPattern } from '@/types/animation.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
+import type { PresentationMode } from '@/core/HdrPresentation.js';
+import type { Sgp4BenchmarkResult } from '@/physics/Sgp4Benchmark.js';
+import type { TLECatalogId, TLECatalogMeta } from '@/data/TLESource.js';
 import { QUALITY_PRESETS } from '@/core/QualityPresets.js';
 import type { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
 import type { ImageTuningSettings } from '@/core/ImageTuning.js';
@@ -22,15 +25,21 @@ export type { AnimationUIState, ExposureMode, TonemapMode, UIElements } from '@/
 import {
   createAnimationControls,
   getElements,
+  populateTleCatalogPicker,
   setupEventListeners,
   setupMobileMenu,
+  updateTleCatalogMetaPanel,
+  updateTleCatalogPickerOption,
   type UIManagerSetupCallbacks,
 } from '@/ui/uiManagerSetup.js';
+import { formatTleHudEpoch, formatTleHudFetchAge } from '@/app/loadSatelliteOrbitalData.js';
+import { resolveActiveCatalogId } from '@/data/TLESource.js';
 import {
-  createTimeScaleControl,
-  updateSimTimeDisplay,
-  type TimeScaleControlState,
+  createSimTransportControl,
+  syncTransportUi,
+  updateSimClockHud,
 } from '@/ui/timeScaleControl.js';
+import type { SimClock } from '@/app/SimClock.js';
 
 /**
  * UI Manager
@@ -49,6 +58,8 @@ export class UIManager {
     onPatternChange: null,
     onAnimationChange: null,
     onPhysicsChange: null,
+    onRealismChange: null,
+    onTleCatalogChange: null,
     onQualityChange: null,
     onSpeedChange: null,
     onLoopToggle: null,
@@ -80,16 +91,10 @@ export class UIManager {
   private dashboard: IDashboard | null = null;
   private currentQualityLevel: QualityLevel = 'high';
   private demoAutoEnabled = true;
-
-  private timeScaleState: TimeScaleControlState;
+  private getClock: (() => SimClock) | null = null;
 
   constructor() {
     this.elements = getElements();
-    this.timeScaleState = {
-      elements: this.elements,
-      currentTimeScale: 1.0,
-      onTimeScaleChange: null,
-    };
     setupEventListeners({
       elements: this.elements,
       animationState: this.animationState,
@@ -101,6 +106,7 @@ export class UIManager {
     });
     createAnimationControls(this.elements, this.animationState, this.callbacks);
     setupMobileMenu(this.elements);
+    populateTleCatalogPicker(this.elements, resolveActiveCatalogId());
   }
 
   setActiveButton(index: number): void {
@@ -139,6 +145,23 @@ export class UIManager {
       const btnMode = parseInt(btn?.dataset.physics || '-1');
       btn?.classList.toggle('active', btnMode === mode);
     });
+  }
+
+  setActiveRealismButton(enabled: boolean): void {
+    this.elements.realismButtons.forEach((btn) => {
+      const btnEnabled = btn?.dataset.realism === '1';
+      btn?.classList.toggle('active', btnEnabled === enabled);
+    });
+  }
+
+  setRealismControls(enabled: boolean, catalogAvailable: boolean): void {
+    this.setActiveRealismButton(enabled);
+    const sgp4Btn = this.elements.realismButtons[1];
+    if (sgp4Btn) {
+      sgp4Btn.disabled = !catalogAvailable;
+      sgp4Btn.setAttribute('aria-disabled', catalogAvailable ? 'false' : 'true');
+      sgp4Btn.classList.toggle('disabled', !catalogAvailable);
+    }
   }
 
   setActiveQualityButton(level: QualityLevel): void {
@@ -268,6 +291,20 @@ export class UIManager {
     el.textContent = `Source   : ${label}`;
   }
 
+  setTleCatalogMeta(meta: TLECatalogMeta | null): void {
+    this.elements.tleEpoch.textContent = `TLE Epoch: ${formatTleHudEpoch(meta)}`;
+    this.elements.tleAge.textContent = `TLE Age  : ${formatTleHudFetchAge(meta)}`;
+    updateTleCatalogMetaPanel(this.elements, meta);
+  }
+
+  setActiveTleCatalog(catalogId: TLECatalogId, meta: TLECatalogMeta | null): void {
+    if (this.elements.tleCatalogPicker) {
+      this.elements.tleCatalogPicker.value = catalogId;
+    }
+    updateTleCatalogPickerOption(this.elements, catalogId, meta);
+    updateTleCatalogMetaPanel(this.elements, meta);
+  }
+
   setAnimationState(state: Partial<AnimationUIState>): void {
     this.animationState = { ...this.animationState, ...state };
 
@@ -303,6 +340,18 @@ export class UIManager {
     }
   }
 
+  setPresentationMode(mode: PresentationMode): void {
+    if (this.dashboard) {
+      this.dashboard.updatePresentationMode(mode);
+    }
+  }
+
+  updateSgp4Benchmark(result: Sgp4BenchmarkResult | null, backend: 'wasm' | 'js'): void {
+    if (this.dashboard) {
+      this.dashboard.updateSgp4Benchmark(result, backend);
+    }
+  }
+
   destroyDashboard(): void {
     if (this.dashboard) {
       this.dashboard.destroy();
@@ -333,6 +382,14 @@ export class UIManager {
 
   onPhysicsChange(callback: (mode: number) => void): void {
     this.callbacks.onPhysicsChange = callback;
+  }
+
+  onRealismChange(callback: (enabled: boolean) => void): void {
+    this.callbacks.onRealismChange = callback;
+  }
+
+  onTleCatalogChange(callback: (catalogId: TLECatalogId) => void): void {
+    this.callbacks.onTleCatalogChange = callback;
   }
 
   onQualityChange(callback: (level: QualityLevel) => void): void {
@@ -520,16 +577,31 @@ export class UIManager {
     }
   }
 
-  createTimeScaleControl(): void {
-    createTimeScaleControl(this.timeScaleState);
+  createSimTransport(getClock: () => SimClock): void {
+    this.getClock = getClock;
+    createSimTransportControl({
+      elements: this.elements,
+      getClock,
+    });
   }
 
-  updateSimTime(simTime: number): void {
-    updateSimTimeDisplay(this.elements, simTime);
+  updateSimClock(clock: SimClock): void {
+    updateSimClockHud(this.elements, clock);
+    if (this.getClock) {
+      syncTransportUi({ elements: this.elements, getClock: this.getClock });
+    }
   }
 
-  onTimeScaleChange(callback: (scale: number) => void): void {
-    this.timeScaleState.onTimeScaleChange = callback;
+  /** @deprecated Use updateSimClock */
+  updateSimTime(_simTime: number): void {
+    if (this.getClock) {
+      this.updateSimClock(this.getClock());
+    }
+  }
+
+  /** @deprecated SimClock is the source of truth; kept for API compatibility. */
+  onTimeScaleChange(_callback: (scale: number) => void): void {
+    // Rate changes flow through SimClock transport UI.
   }
 
   getButtons(): HTMLButtonElement[] {

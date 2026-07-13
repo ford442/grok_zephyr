@@ -25,6 +25,9 @@ import type { CaptureManager } from '@/capture/CaptureManager.js';
 import type { SimulationState } from '@/app/SimulationState.js';
 import type { ViewModeState } from '@/app/ViewModeCoordinator.js';
 import type { FrameLoopState } from '@/app/FrameLoop.js';
+import type { TLECatalogMeta } from '@/data/TLESource.js';
+import type { SatelliteCatalog } from '@/data/SatelliteCatalog.js';
+import type { TLEData } from '@/types/index.js';
 
 /**
  * Shared runtime dependencies and mutable application state accessed by
@@ -72,7 +75,12 @@ export interface AppRuntime {
   exposureSettings: ExposureRuntimeSettings;
   patternNameDisplay: HTMLElement | null;
   selectedSatelliteIndex: number;
+  satelliteCatalog: SatelliteCatalog;
+  fleetHostIndex: number;
   dataSourceLabel: string;
+  tleCatalogMeta: TLECatalogMeta | null;
+  loadedTles: readonly TLEData[];
+  tleRealCount: number;
   lastVisibleCount: number;
   moonScaleHudEnabled: boolean;
   volumetricBeamQuality: VolumetricBeamQualitySettings | null;
@@ -83,6 +91,7 @@ export interface AppRuntime {
   setPatternMode(mode: number): void;
   setAnimationPattern(mode: number): void;
   setPhysicsMode(mode: number): void;
+  setRealismMode(enabled: boolean): void;
   applyQualityPreset(level: QualityLevel): void;
   applyExposureSettings(): void;
   applyViewTuning(time: number): void;

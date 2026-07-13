@@ -7,6 +7,7 @@ export default tseslint.config(
     ignores: [
       'dist/**',
       'node_modules/**',
+      'public/sgp4.js',
       'playwright-report/**',
       'test-results/**',
       'scripts/manage-labels.js',

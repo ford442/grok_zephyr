@@ -79,14 +79,15 @@ export interface FleetPOVOptions {
 export function calculateFleetPOV(
   getPosition: (index: number, time: number) => Vec3,
   getVelocity: (index: number, time: number) => Vec3,
+  hostIndex: number,
   time: number,
   cameraAngles: CameraAngles,
   state: FleetPOVState,
   keys: Record<string, boolean>,
   options: FleetPOVOptions,
 ): { camera: CameraState; state: FleetPOVState } {
-  const satPos = getPosition(0, time);
-  const satVel = getVelocity(0, time);
+  const satPos = getPosition(hostIndex, time);
+  const satVel = getVelocity(hostIndex, time);
 
   const radial = v3norm(satPos);
   const forward = v3norm(satVel);

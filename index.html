@@ -70,6 +70,10 @@
       <div class="stat" id="s-tuning" aria-label="Active View Tuning Profile">Tuning : Horizon</div>
       <div class="stat" id="s-visible" aria-label="Visible Satellites">Visible : --</div>
       <div class="stat" id="s-quality" aria-label="Rendering Quality">Quality : HIGH</div>
+      <div class="stat" id="s-sim-utc" aria-label="Simulation UTC">Sim UTC : —</div>
+      <div class="stat" id="s-sim-rate" aria-label="Simulation Rate">Sim Rate : 1×</div>
+      <div class="stat" id="s-tle-epoch" aria-label="TLE Data Epoch">TLE Epoch: —</div>
+      <div class="stat" id="s-tle-age" aria-label="TLE Data Age">TLE Age  : —</div>
 
       <div id="camera-controls">
         <div class="angle-display">
@@ -210,6 +214,30 @@
         </button>
       </section>
 
+      <section id="tle-catalog-controls" class="control-group" aria-label="Satellite Catalog">
+        <div class="physics-label">SATELLITE CATALOG</div>
+        <select id="tleCatalogPicker" aria-label="Select satellite TLE catalog">
+          <option value="starlink">Starlink</option>
+          <option value="oneweb">OneWeb</option>
+          <option value="gnss">GNSS</option>
+          <option value="active">Active Catalog</option>
+          <option value="sample">Bundled Sample</option>
+        </select>
+        <label class="satellite-search-label" for="satelliteSearch">FIND SATELLITE</label>
+        <div class="satellite-search-wrap">
+          <input
+            type="search"
+            id="satelliteSearch"
+            placeholder="Name or NORAD ID…"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Search satellites by name or NORAD catalog number"
+          />
+          <ul id="satelliteSearchResults" class="satellite-search-results" hidden></ul>
+        </div>
+        <div id="tleCatalogMeta" class="catalog-meta" aria-live="polite"></div>
+      </section>
+
       <section id="physics-controls" class="control-group" aria-label="Physics Mode">
         <div class="physics-label">PHYSICS MODE</div>
         <button
@@ -240,6 +268,28 @@
           J2
         </button>
         <span id="j2-note" class="sr-only">Not yet implemented</span>
+      </section>
+
+      <section id="realism-controls" class="control-group" aria-label="Orbit Realism">
+        <div class="physics-label">ORBIT REALISM</div>
+        <button
+          class="physics-btn active"
+          id="realism0"
+          data-realism="0"
+          aria-label="Art-directed orbital shells"
+        >
+          SHELLS
+        </button>
+        <button
+          class="physics-btn"
+          id="realism1"
+          data-realism="1"
+          disabled
+          aria-disabled="true"
+          aria-label="SGP4 TLE catalog realism"
+        >
+          SGP4
+        </button>
       </section>
 
       <section id="quality-controls" class="control-group" aria-label="Rendering Quality">

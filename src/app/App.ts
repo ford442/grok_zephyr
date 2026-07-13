@@ -13,7 +13,10 @@ import { parseSavedExposureSettings } from '@/core/ExposureRuntime.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
 import type { FocusManager, FocusSelection } from '@/focus.js';
 import type { CaptureManager } from '@/capture/CaptureManager.js';
+import type { TLEData } from '@/types/index.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
+import { SatelliteCatalog } from '@/data/SatelliteCatalog.js';
+import { pickAndSelectAtScreen } from '@/app/SatelliteSelection.js';
 import { SimulationState } from '@/app/SimulationState.js';
 import { ViewModeState } from '@/app/ViewModeCoordinator.js';
 import {
@@ -41,6 +44,7 @@ import {
   handleFocusSelectionChange as handleFocusSelectionChangeImpl,
   setGroundViewEnabled as setGroundViewEnabledImpl,
 } from '@/app/PatternController.js';
+import { setRealismMode as setRealismModeImpl } from '@/app/RealismController.js';
 import {
   detectMobileDevice,
   detectMobileDefaultQuality,
@@ -100,7 +104,12 @@ export class App implements AppRuntime {
   exposureSettings = parseSavedExposureSettings();
   patternNameDisplay: HTMLElement | null = null;
   selectedSatelliteIndex = -1;
+  readonly satelliteCatalog = new SatelliteCatalog();
+  fleetHostIndex = 0;
   dataSourceLabel = 'Procedural Walker';
+  tleCatalogMeta = null;
+  loadedTles: readonly TLEData[] = [];
+  tleRealCount = 0;
   lastVisibleCount = 0;
   moonScaleHudEnabled = false;
   volumetricBeamQuality = null as AppRuntime['volumetricBeamQuality'];
@@ -153,6 +162,10 @@ export class App implements AppRuntime {
 
   setPhysicsMode(mode: number): void {
     setPhysicsModeImpl(this, mode);
+  }
+
+  setRealismMode(enabled: boolean): void {
+    setRealismModeImpl(this, enabled);
   }
 
   applyQualityPreset(level: QualityLevel): void {
@@ -212,25 +225,7 @@ export class App implements AppRuntime {
   }
 
   focusSatelliteAtScreenPoint(clientX: number, clientY: number): void {
-    if (!this.focusManager || !this.buffers || !this.context) return;
-    const time = this.loop.lastTime || performance.now() / 1000;
-    const cameraState = this.camera.calculateCamera(
-      (idx, t) => this.buffers!.calculateSatellitePosition(idx, t),
-      (idx, t) => this.buffers!.calculateSatelliteVelocity(idx, t),
-      time,
-    );
-    const aspect = this.canvas.clientWidth / this.canvas.clientHeight;
-    const { viewProjection } = this.camera.buildViewProjection(cameraState, aspect);
-    const selection = this.focusManager.raycast(
-      clientX,
-      clientY,
-      cameraState,
-      viewProjection,
-      time,
-    );
-    if (selection) {
-      this.focusManager.selectSatellite(selection);
-    }
+    void pickAndSelectAtScreen(this, clientX, clientY);
   }
 
   syncVolumetricBeamConfig(): void {
@@ -246,12 +241,12 @@ export class App implements AppRuntime {
   }
 
   setTimeScale(scale: number): void {
-    this.simulation.timeScale = Math.max(1, Math.min(100000, scale));
-    console.log(`⏱️ Time scale: ${this.simulation.timeScale}x`);
+    this.simulation.clock.setRate(scale);
+    console.log(`⏱️ Time scale: ${this.simulation.clock.rate}x`);
   }
 
   getTimeScale(): number {
-    return this.simulation.timeScale;
+    return this.simulation.clock.rate;
   }
 
   async initialize(): Promise<void> {

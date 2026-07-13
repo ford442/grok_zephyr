@@ -17,7 +17,7 @@ The simulation renders a real-time light show with RGB beam projections from sat
 | Frontend         | TypeScript 5.9+                                                              |
 | Build Tool       | Vite 5.0+                                                                    |
 | Math Utilities   | Custom column-major matrix implementation                                    |
-| Physics          | satellite.js 5.0+ (SGP4 dependency, but GPU propagation is custom Keplerian) |
+| Physics          | satellite.js 5.0+ (fallback) + Vallado SGP4 WASM (`native/` → `public/sgp4.wasm`) |
 | Package Manager  | npm                                                                          |
 | Deployment       | Python 3 + Paramiko (SFTP)                                                   |
 | Testing          | Vitest (`npm run test`) with initial coverage for math + TLE parsing         |
@@ -84,8 +84,9 @@ grok_zephyr/
     │   ├── math.ts               # 3D math utilities (vectors, matrices)
     │   └── PerformanceProfiler.ts # FPS and timing metrics
     ├── physics/
-    │   ├── OrbitalPropagator.ts  # Keplerian propagation (simplified, CPU-side stub)
-    │   ├── Propagator.ts         # Advanced propagation (SGP4/J2)
+    │   ├── TlePropagator.ts      # SGP4 CPU anchor (WASM Vallado + satellite.js fallback)
+    │   ├── Sgp4WasmEngine.ts     # Emscripten batch API wrapper (public/sgp4.wasm)
+    │   ├── keplerianFromState.ts # ECI → Keplerian for GPU extended elements
     │   └── index.ts
     ├── data/
     │   ├── ConstellationLoader.ts  # Walker constellation generation
@@ -142,6 +143,9 @@ npm run build
 
 # Build standalone single-file version (grok-zephyr.standalone.html)
 npm run build:standalone
+
+# Build Vallado SGP4 WASM module (public/sgp4.wasm + public/sgp4.js)
+npm run build:wasm
 
 # Preview production build locally
 npm run preview
@@ -409,6 +413,16 @@ and WebGL→WebGPU porting notes are in **`docs/WEBGL_FALLBACK.md`**.
 WebGL module layout: `src/webgl/{rendererSelection,glUtils,shaders,WebGLRenderer,WebGLDebug}.ts`.
 Integration points in `src/main.ts`: `initializeWebGL()`, `renderWebGL`, and the
 `backend` branches in `initialize()` / `handleResize()` / `destroy()`.
+
+## WASM SGP4 Engine
+
+Vallado reference SGP4 is compiled to `public/sgp4.wasm` via Emscripten (`npm run build:wasm`).
+Prebuilt artifacts are committed; CI rebuilds on `native/**` changes (`.github/workflows/build-wasm.yml`).
+
+- **Runtime**: `TlePropagator` loads WASM when available; falls back to `satellite.js` on failure.
+- **Batch API**: `propagateBatchEci()` / `applyKeplerianBatch()` feed GPU extended-element re-anchoring.
+- **Benchmark**: Performance dashboard shows WASM vs JS speedup after TLE catalog load.
+- **Tests**: `Sgp4WasmEngine.test.ts` checks 1e-3 km agreement over 24h; `Sgp4Benchmark.test.ts` checks speedup.
 
 ## Testing
 

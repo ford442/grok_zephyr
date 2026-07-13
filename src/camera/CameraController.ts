@@ -64,6 +64,7 @@ export class CameraController implements CameraInputDelegate {
     fleetIdleTime: 0,
     lastFleetTime: 0,
   };
+  private fleetHostIndex = 0;
 
   private godVelocity: { yaw: number; pitch: number } = { yaw: 0, pitch: 0 };
 
@@ -444,6 +445,7 @@ export class CameraController implements CameraInputDelegate {
         const result = calculateFleetPOV(
           satellitePosition,
           satelliteVelocity,
+          this.fleetHostIndex,
           time,
           this.cameraAngles,
           this.fleetState,
@@ -501,6 +503,33 @@ export class CameraController implements CameraInputDelegate {
     this.godVelocity.pitch = 0;
     this.pan.reset();
     this.angleChangeCallback?.(this.cameraAngles.yaw, this.cameraAngles.pitch);
+  }
+
+  /** Point God View at a satellite and pull back to a readable framing distance. */
+  frameSatelliteInGodView(position: Vec3): void {
+    if (this.currentMode !== 'god') {
+      this.setViewMode(1);
+    }
+    this.clearFocus();
+
+    const r = Math.hypot(position[0], position[1], position[2]) || 1;
+    const yawDeg = (Math.atan2(position[1], position[0]) * 180) / Math.PI;
+    const pitchDeg = (Math.asin(position[2] / r) * 180) / Math.PI;
+    const distance = Math.max(
+      CAMERA.GOD_VIEW_MIN_DISTANCE,
+      Math.min(CAMERA.GOD_VIEW_MAX_DISTANCE, r * 1.35),
+    );
+
+    this.cameraAngles.yaw = yawDeg;
+    this.cameraAngles.pitch = pitchDeg;
+    this.cameraAngles.distance = distance;
+    this.godView.yaw = yawDeg * MATH.DEG_TO_RAD;
+    this.godView.pitch = pitchDeg * MATH.DEG_TO_RAD;
+    this.godView.distance = distance;
+    this.godIdleYawDeg = 0;
+    this.godInteractionUntil = performance.now() * 0.001 + GOD_FRAMING.IDLE_PAUSE_SEC;
+    this.pan.reset();
+    this.angleChangeCallback?.(yawDeg, pitchDeg);
   }
 
   startCinematic(time: number = performance.now() / 1000): void {
@@ -577,6 +606,14 @@ export class CameraController implements CameraInputDelegate {
 
   getFleetDriftOffset(): Readonly<Vec3> {
     return this.fleetState.fleetOffset;
+  }
+
+  setFleetHostIndex(index: number): void {
+    this.fleetHostIndex = Math.max(0, index);
+  }
+
+  getFleetHostIndex(): number {
+    return this.fleetHostIndex;
   }
 
   getViewModes(): typeof VIEW_MODES {

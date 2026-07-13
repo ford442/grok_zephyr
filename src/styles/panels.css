@@ -167,6 +167,89 @@
   letter-spacing: 0.5px;
 }
 
+.inspector-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px 4px;
+}
+
+.inspector-follow-btn,
+.inspector-frame-btn {
+  flex: 1;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  padding: 6px 8px;
+  border: 1px solid rgba(0, 217, 255, 0.35);
+  border-radius: 4px;
+  background: rgba(0, 40, 60, 0.55);
+  color: var(--hud-accent-2);
+  cursor: pointer;
+}
+
+.inspector-follow-btn:hover,
+.inspector-frame-btn:hover {
+  background: rgba(0, 80, 110, 0.65);
+  border-color: rgba(0, 217, 255, 0.65);
+}
+
+.satellite-search-label {
+  margin-top: 8px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--hud-accent-2);
+}
+
+.satellite-search-wrap {
+  position: relative;
+  margin-top: 4px;
+}
+
+#satelliteSearch {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font-size: 12px;
+  border: 1px solid rgba(0, 217, 255, 0.25);
+  border-radius: 4px;
+  background: rgba(0, 20, 35, 0.75);
+  color: #e8f4ff;
+}
+
+.satellite-search-results {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  z-index: 50;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid rgba(0, 217, 255, 0.3);
+  border-radius: 4px;
+  background: rgba(4, 16, 28, 0.96);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.satellite-search-item {
+  padding: 6px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  color: #d0e8ff;
+}
+
+.satellite-search-item:hover {
+  background: rgba(0, 120, 160, 0.35);
+}
+
+.satellite-search-empty {
+  padding: 8px 10px;
+  font-size: 11px;
+  color: rgba(180, 210, 230, 0.6);
+}
+
 /* Loading Indicator */
 #loading {
   position: fixed;
@@ -374,6 +457,27 @@
   margin-left: 0;
   padding-left: 10px;
   border-left: 0;
+}
+
+#tle-catalog-controls select {
+  width: 100%;
+  background: rgba(255, 170, 0, 0.06);
+  border: 1px solid rgba(255, 170, 0, 0.35);
+  color: #ffaa00;
+  padding: 7px 10px;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  border-radius: 8px;
+  min-height: 32px;
+}
+
+#tle-catalog-controls .catalog-meta {
+  font-size: 9px;
+  color: rgba(255, 170, 0, 0.75);
+  letter-spacing: 0.5px;
+  line-height: 1.35;
+  min-height: 1.2em;
 }
 
 .physics-label {

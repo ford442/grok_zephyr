@@ -1,68 +1,66 @@
 import type { UIElements } from '@/ui/uiTypes.js';
+import type { SimClock } from '@/app/SimClock.js';
+import {
+  formatSimRate,
+  formatSimUtc,
+  SIM_RATE_PRESETS,
+  SIM_STEP_SEC,
+  TIMELINE_HALF_RANGE_MS,
+} from '@/app/SimClock.js';
 
-export function formatTimeScale(scale: number): string {
-  if (scale >= 604800) {
-    return `${(scale / 604800).toFixed(1)}w/s`;
-  } else if (scale >= 86400) {
-    return `${(scale / 86400).toFixed(1)}d/s`;
-  } else if (scale >= 3600) {
-    return `${(scale / 3600).toFixed(1)}h/s`;
-  } else if (scale >= 60) {
-    return `${(scale / 60).toFixed(1)}m/s`;
-  } else {
-    return `${Math.round(scale)}x`;
-  }
-}
-
-export function formatSimTime(seconds: number): string {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-
-  if (days > 365) {
-    const years = (days / 365.25).toFixed(1);
-    return `Year ${years}`;
-  } else if (days > 30) {
-    const months = Math.floor(days / 30);
-    const remDays = days % 30;
-    return `${months}mo ${remDays}d`;
-  } else if (days > 0) {
-    return `Day ${days} ${hours}h`;
-  } else if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  } else {
-    return `${Math.floor(seconds / 60)}m`;
-  }
-}
-
-export interface TimeScaleControlState {
+export interface SimTransportState {
   elements: UIElements;
-  currentTimeScale: number;
-  onTimeScaleChange: ((scale: number) => void) | null;
+  getClock(): SimClock;
+  onScrubStart?: () => void;
+  onScrubEnd?: () => void;
 }
 
-export function createTimeScaleControl(state: TimeScaleControlState): void {
+function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
+
+function timelineUtcFromValue(value: number, wallNowMs: number): number {
+  return wallNowMs - TIMELINE_HALF_RANGE_MS + value * TIMELINE_HALF_RANGE_MS * 2;
+}
+
+function timelineValueFromUtc(simUtcMs: number, wallNowMs: number): number {
+  const min = wallNowMs - TIMELINE_HALF_RANGE_MS;
+  const max = wallNowMs + TIMELINE_HALF_RANGE_MS;
+  const clamped = Math.max(min, Math.min(max, simUtcMs));
+  return (clamped - min) / (max - min);
+}
+
+export function createSimTransportControl(state: SimTransportState): void {
   const container = document.createElement('div');
   container.id = 'time-controls';
   container.className = 'time-controls';
 
   container.innerHTML = `
-      <div class="time-label">⏱ TIME SCALE</div>
-      <div class="time-display" id="sim-time-display">Sim Time: 0h</div>
-      <div class="time-slider-row">
-        <input type="range" id="timeScaleSlider" min="0" max="4" step="0.1" value="0">
-        <span id="timeScaleValue">1x</span>
+      <div class="time-label">⏱ SIM TIME</div>
+      <div class="time-display" id="sim-time-display">Sim UTC: —</div>
+      <div class="sim-transport-row">
+        <button class="time-preset-btn sim-transport-btn" id="simPlayPause" type="button" aria-label="Play or pause simulation" title="Space">▶</button>
+        <button class="time-preset-btn sim-transport-btn" id="simNowBtn" type="button" title="Jump to current UTC">NOW</button>
       </div>
-      <div class="time-presets">
-        <button class="time-preset-btn active" data-scale="1">1x</button>
-        <button class="time-preset-btn" data-scale="3600">1h/s</button>
-        <button class="time-preset-btn" data-scale="86400">1d/s</button>
-        <button class="time-preset-btn" data-scale="604800">1w/s</button>
+      <div class="time-presets sim-rate-presets">
+        ${SIM_RATE_PRESETS.map(
+          (rate) =>
+            `<button class="time-preset-btn sim-rate-btn" data-rate="${rate}" type="button">${formatSimRate(rate)}</button>`,
+        ).join('')}
       </div>
+      <div class="sim-timeline-row">
+        <span class="sim-timeline-label">−12h</span>
+        <input type="range" id="simTimeline" min="0" max="1" step="0.0001" value="0.5" aria-label="Scrub simulation time ±12 hours around now">
+        <span class="sim-timeline-label">+12h</span>
+      </div>
+      <div class="sim-timeline-now-marker" aria-hidden="true">now</div>
     `;
 
   const animationControls = document.getElementById('animation-controls');
-  if (animationControls && animationControls.parentElement) {
+  if (animationControls?.parentElement) {
     animationControls.parentElement.insertBefore(container, animationControls.nextSibling);
   } else {
     document.body.appendChild(container);
@@ -70,70 +68,116 @@ export function createTimeScaleControl(state: TimeScaleControlState): void {
 
   state.elements.timeControls = container;
   state.elements.simTimeDisplay = document.getElementById('sim-time-display')!;
-  state.elements.timeScaleSlider = document.getElementById('timeScaleSlider') as HTMLInputElement;
-  state.elements.timeScaleValue = document.getElementById('timeScaleValue')!;
+  state.elements.simPlayPauseButton = document.getElementById('simPlayPause') as HTMLButtonElement;
+  state.elements.simNowButton = document.getElementById('simNowBtn') as HTMLButtonElement;
+  state.elements.simTimelineSlider = document.getElementById('simTimeline') as HTMLInputElement;
 
-  state.elements.timeScaleSlider.addEventListener('input', (e) => {
-    const sliderValue = parseFloat((e.target as HTMLInputElement).value);
-    const scale = Math.pow(10, sliderValue);
-    applyTimeScale(state, scale);
+  const playPauseBtn = state.elements.simPlayPauseButton;
+  const nowBtn = state.elements.simNowButton;
+  const timeline = state.elements.simTimelineSlider;
+  const rateButtons = container.querySelectorAll<HTMLButtonElement>('.sim-rate-btn');
+
+  playPauseBtn?.addEventListener('click', () => {
+    state.getClock().togglePause();
+    syncTransportUi(state);
   });
 
-  const presetButtons = container.querySelectorAll('.time-preset-btn');
-  presetButtons.forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const target = e.target as HTMLButtonElement;
-      const scale = parseInt(target.dataset.scale || '1');
-      applyTimeScale(state, scale);
+  nowBtn?.addEventListener('click', () => {
+    state.getClock().jumpToNow();
+    syncTransportUi(state);
+  });
 
-      presetButtons.forEach((b) => b.classList.remove('active'));
-      target.classList.add('active');
+  rateButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const rate = Number(btn.dataset.rate ?? '1');
+      state.getClock().setRate(rate);
+      syncTransportUi(state);
     });
   });
 
+  let scrubbing = false;
+  timeline?.addEventListener('pointerdown', () => {
+    scrubbing = true;
+    state.onScrubStart?.();
+  });
+  timeline?.addEventListener('pointerup', () => {
+    scrubbing = false;
+    state.onScrubEnd?.();
+  });
+  timeline?.addEventListener('input', () => {
+    if (!timeline) return;
+    const wallNowMs = Date.now();
+    const utcMs = timelineUtcFromValue(Number(timeline.value), wallNowMs);
+    state.getClock().setSimUtc(utcMs, 'scrub');
+    syncTransportUi(state, { skipTimeline: true });
+  });
+
   document.addEventListener('keydown', (e) => {
-    if (e.key === '+' || e.key === '=') {
+    if (isTypingTarget(e.target)) return;
+    const clock = state.getClock();
+
+    if (e.code === 'Space') {
       e.preventDefault();
-      adjustTimeScale(state, 1.5);
-    } else if (e.key === '-' || e.key === '_') {
+      clock.togglePause();
+      syncTransportUi(state);
+    } else if (e.key === ',') {
       e.preventDefault();
-      adjustTimeScale(state, 0.67);
-    } else if (e.key === '0') {
+      clock.stepSimTime(-SIM_STEP_SEC);
+      syncTransportUi(state);
+    } else if (e.key === '.') {
       e.preventDefault();
-      applyTimeScale(state, 1);
+      clock.stepSimTime(SIM_STEP_SEC);
+      syncTransportUi(state);
     }
   });
+
+  syncTransportUi(state);
+
+  // Keep timeline centered on wall-clock "now" while playing unless the user is scrubbing.
+  window.setInterval(() => {
+    if (scrubbing) return;
+    syncTransportUi(state, { refreshTimelineAnchor: true });
+  }, 1000);
 }
 
-export function applyTimeScale(state: TimeScaleControlState, scale: number): void {
-  state.currentTimeScale = Math.max(1, Math.min(10000, Math.round(scale)));
+export function syncTransportUi(
+  state: SimTransportState,
+  options: { skipTimeline?: boolean; refreshTimelineAnchor?: boolean } = {},
+): void {
+  const clock = state.getClock();
+  const wallNowMs = Date.now();
 
-  if (state.elements.timeScaleSlider) {
-    const sliderValue = Math.log10(state.currentTimeScale);
-    state.elements.timeScaleSlider.value = Math.max(0, Math.min(4, sliderValue)).toString();
+  if (state.elements.simTimeDisplay) {
+    state.elements.simTimeDisplay.textContent = `Sim UTC: ${formatSimUtc(clock.simUtc)} · ${formatSimRate(clock.rate)}`;
   }
 
-  if (state.elements.timeScaleValue) {
-    state.elements.timeScaleValue.textContent = formatTimeScale(state.currentTimeScale);
+  if (state.elements.simPlayPauseButton) {
+    state.elements.simPlayPauseButton.textContent = clock.isPaused() ? '▶' : '⏸';
+    state.elements.simPlayPauseButton.classList.toggle('active', !clock.isPaused());
   }
 
-  const presetButtons = document.querySelectorAll('.time-preset-btn');
-  presetButtons.forEach((btn) => {
-    const btnScale = parseInt((btn as HTMLButtonElement).dataset.scale || '0');
-    btn.classList.toggle('active', btnScale === state.currentTimeScale);
+  const rateButtons = state.elements.timeControls?.querySelectorAll<HTMLButtonElement>('.sim-rate-btn');
+  rateButtons?.forEach((btn) => {
+    const rate = Number(btn.dataset.rate ?? '0');
+    btn.classList.toggle('active', clock.rate === rate);
   });
 
-  if (state.onTimeScaleChange) {
-    state.onTimeScaleChange(state.currentTimeScale);
+  if (!options.skipTimeline && state.elements.simTimelineSlider) {
+    state.elements.simTimelineSlider.value = timelineValueFromUtc(
+      clock.simUtcMs,
+      options.refreshTimelineAnchor ? wallNowMs : wallNowMs,
+    ).toString();
   }
 }
 
-export function adjustTimeScale(state: TimeScaleControlState, multiplier: number): void {
-  applyTimeScale(state, state.currentTimeScale * multiplier);
-}
-
-export function updateSimTimeDisplay(elements: UIElements, simTime: number): void {
+export function updateSimClockHud(elements: UIElements, clock: SimClock): void {
+  if (elements.simUtc) {
+    elements.simUtc.textContent = `Sim UTC : ${formatSimUtc(clock.simUtc)}`;
+  }
+  if (elements.simRate) {
+    elements.simRate.textContent = `Sim Rate : ${formatSimRate(clock.rate)}`;
+  }
   if (elements.simTimeDisplay) {
-    elements.simTimeDisplay.textContent = `Sim Time: ${formatSimTime(simTime)}`;
+    elements.simTimeDisplay.textContent = `Sim UTC: ${formatSimUtc(clock.simUtc)} · ${formatSimRate(clock.rate)}`;
   }
 }

@@ -1,6 +1,8 @@
 import type { PerformanceStats } from '@/types/index.js';
 import type { AnimationPattern } from '@/types/animation.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
+import type { PresentationMode } from '@/core/HdrPresentation.js';
+import type { Sgp4BenchmarkResult } from '@/physics/Sgp4Benchmark.js';
 
 export type ExposureMode = 'auto' | 'manual';
 export type TonemapMode = 0 | 1 | 2 | 3;
@@ -14,6 +16,10 @@ export interface UIElements {
   tuningProfile: HTMLElement;
   visible: HTMLElement;
   quality: HTMLElement;
+  tleEpoch: HTMLElement;
+  tleAge: HTMLElement;
+  simUtc: HTMLElement;
+  simRate: HTMLElement;
   error: HTMLElement;
   controls: HTMLElement;
   buttons: HTMLButtonElement[];
@@ -22,6 +28,7 @@ export interface UIElements {
   patternButtons: HTMLButtonElement[];
   animationButtons: HTMLButtonElement[];
   physicsButtons: HTMLButtonElement[];
+  realismButtons: HTMLButtonElement[];
   qualityButtons: HTMLButtonElement[];
   audioToggleButton?: HTMLButtonElement;
   trailsToggleButton?: HTMLButtonElement;
@@ -66,6 +73,11 @@ export interface UIElements {
   simTimeDisplay?: HTMLElement;
   timeScaleSlider?: HTMLInputElement;
   timeScaleValue?: HTMLElement;
+  tleCatalogPicker?: HTMLSelectElement;
+  tleCatalogMeta?: HTMLElement;
+  simPlayPauseButton?: HTMLButtonElement;
+  simNowButton?: HTMLButtonElement;
+  simTimelineSlider?: HTMLInputElement;
 }
 
 /** Animation control options */
@@ -81,5 +93,7 @@ export interface IDashboard {
   initialize(): void;
   updateStats(stats: PerformanceStats): void;
   updateQualityPreset(level: QualityLevel): void;
+  updatePresentationMode(mode: PresentationMode): void;
+  updateSgp4Benchmark(result: Sgp4BenchmarkResult | null, backend: 'wasm' | 'js'): void;
   destroy(): void;
 }

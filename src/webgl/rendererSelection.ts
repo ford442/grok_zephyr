@@ -6,9 +6,13 @@
  *
  * Precedence: `?renderer=webgl|webgpu` → localStorage('zephyr.renderer') → webgpu.
  * A value supplied via URL is persisted so a manual toggle survives reload.
+ *
+ * HDR canvas overrides live in `@/core/HdrPresentation.js` (`?hdr=0|1`).
  */
 
 import { CONSTANTS } from '@/types/constants.js';
+
+export { resolveHdrOverride } from '@/core/HdrPresentation.js';
 
 export type RendererBackend = 'webgpu' | 'webgl';
 

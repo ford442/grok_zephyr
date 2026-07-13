@@ -39,6 +39,7 @@ import {
   encodeTrailPass,
   type FrameContext,
 } from './passes/index.js';
+import { SatellitePicker } from './SatellitePicker.js';
 
 export type {
   RenderTargets,
@@ -67,6 +68,7 @@ export class RenderPipeline {
   private renderTargets: RenderTargets | null = null;
   private smileV2Pipeline: SmileV2Pipeline | null = null;
   private atmosphereLUT: AtmosphereLUTResources | null = null;
+  private readonly satellitePicker: SatellitePicker;
 
   private width = 0;
   private height = 0;
@@ -79,6 +81,7 @@ export class RenderPipeline {
     this.linearSampler = context.createLinearSampler();
     this.uniforms = new RenderUniformBuffers(context);
     this.renderTargetManager = new RenderTargetManager(context);
+    this.satellitePicker = new SatellitePicker(context);
   }
 
   initialize(width: number, height: number): void {
@@ -96,8 +99,24 @@ export class RenderPipeline {
 
     this.smileV2Pipeline = new SmileV2Pipeline(this.context, this.buffers);
     this.smileV2Pipeline.initialize();
+    this.satellitePicker.initialize();
 
     console.log('[RenderPipeline] Initialization complete');
+  }
+
+  async pickSatelliteAt(
+    clientX: number,
+    clientY: number,
+    canvas: HTMLCanvasElement,
+  ): Promise<number> {
+    if (!this.uniforms.satelliteVisualUniformBuffer) return -1;
+    return this.satellitePicker.pickAt(
+      this.buffers,
+      this.uniforms.satelliteVisualUniformBuffer,
+      clientX,
+      clientY,
+      canvas,
+    );
   }
 
   private createBindGroups(): void {
@@ -454,6 +473,7 @@ export class RenderPipeline {
       this.smileV2Pipeline.destroy();
       this.smileV2Pipeline = null;
     }
+    this.satellitePicker.destroy();
   }
 
   setBloomConfig(config: Partial<BloomConfig>): void {

@@ -5,7 +5,7 @@
 
 import type { Vec3 } from '@/types/index.js';
 import type { CameraController } from '@/camera/CameraController.js';
-import type { SatelliteGPUBuffer } from '@/core/SatelliteGPUBuffer.js';
+import type { SatelliteCatalog } from '@/data/SatelliteCatalog.js';
 import { mat4inv, v3dot, v3len, v3norm, v3scale, v3sub } from '@/utils/math.js';
 import { CONSTANTS } from '@/types/constants.js';
 
@@ -34,6 +34,13 @@ const SHELL_NAMES = ['340 km', '550 km', '1,150 km'];
 /** Threshold above which time-scale labels use the k× abbreviation (e.g. 1000× → 1.0k×) */
 const TIME_SCALE_K_THRESHOLD = 1000;
 
+/** Orbital data used for inspector live updates and legacy raycast. */
+export interface FocusBufferSource {
+  getOrbitalElementData(): Float32Array;
+  calculateSatellitePosition(index: number, time: number): Vec3;
+  calculateSatelliteVelocity(index: number, time: number): Vec3;
+}
+
 export class FocusManager {
   private selectedIndex = -1;
   private focusOverlay: HTMLDivElement;
@@ -48,11 +55,13 @@ export class FocusManager {
     visibleCount: 0,
     animationPattern: 'None',
   };
+  private catalog: SatelliteCatalog | null = null;
+  private catalogSimTime = 0;
 
   constructor(
     private canvas: HTMLCanvasElement,
     private camera: CameraController,
-    private buffers: SatelliteGPUBuffer,
+    private buffers: FocusBufferSource,
     private selectionChanged: FocusSelectionCallback,
   ) {
     this.focusOverlay = this.createOverlay();
@@ -77,21 +86,45 @@ export class FocusManager {
     this.constellationStats = stats;
   }
 
-  selectSatellite(selection: FocusSelection): void {
-    this.selectedIndex = selection.index;
-    this.previousModeIndex = this.camera.getViewModeIndex();
-    this.camera.setFocusSatellite(selection.index, 70, this.currentTime);
+  setCatalog(catalog: SatelliteCatalog): void {
+    this.catalog = catalog;
+  }
 
+  /** Highlight + inspector without changing camera mode. */
+  showSelection(
+    selection: FocusSelection,
+    catalog: SatelliteCatalog,
+    simTime: number,
+  ): void {
+    this.selectedIndex = selection.index;
+    this.catalog = catalog;
+    this.catalogSimTime = simTime;
     this.selectionChanged(selection);
     this.showOverlay(selection);
   }
 
+  /** Camera follow / Fleet POV ride — uses FocusManager orbit lock. */
+  followSelection(selection: FocusSelection): void {
+    this.selectedIndex = selection.index;
+    this.previousModeIndex = this.camera.getViewModeIndex();
+    this.camera.setFocusSatellite(selection.index, 70, this.currentTime);
+    this.selectionChanged(selection);
+    this.showOverlay(selection);
+  }
+
+  selectSatellite(selection: FocusSelection): void {
+    this.followSelection(selection);
+  }
+
   releaseFocus(): void {
     if (this.selectedIndex < 0) return;
+    const wasFollowing = this.camera.getFocusSatelliteIndex() !== null;
     this.selectedIndex = -1;
     this.hideOverlay();
-    this.camera.clearFocus();
-    this.camera.setViewMode(this.previousModeIndex);
+    if (wasFollowing) {
+      this.camera.clearFocus();
+      this.camera.setViewMode(this.previousModeIndex);
+    }
     this.selectionChanged(null);
   }
 
@@ -105,6 +138,7 @@ export class FocusManager {
     const velocity = v3scale(velocityDir, speed);
 
     const altitude = Math.max(0, v3len(position) - CONSTANTS.EARTH_RADIUS_KM);
+    this.catalogSimTime = time;
     this.updateOverlay({
       index: this.selectedIndex,
       position,
@@ -221,8 +255,13 @@ export class FocusManager {
     document.body.appendChild(overlay);
     // Use event delegation so the close button works regardless of innerHTML re-renders.
     overlay.addEventListener('click', (e) => {
-      if ((e.target as HTMLElement).closest('.inspector-close-btn')) {
+      const target = e.target as HTMLElement;
+      if (target.closest('.inspector-close-btn')) {
         this.releaseFocus();
+      } else if (target.closest('.inspector-follow-btn')) {
+        overlay.dispatchEvent(new CustomEvent('satellite-follow', { bubbles: true }));
+      } else if (target.closest('.inspector-frame-btn')) {
+        overlay.dispatchEvent(new CustomEvent('satellite-frame-god', { bubbles: true }));
       }
     });
     return overlay;
@@ -253,30 +292,65 @@ export class FocusManager {
 
     const shellIndex = this.getShellIndex(index);
     const shellName = SHELL_NAMES[shellIndex] ?? `Shell ${shellIndex}`;
+    const identity = this.catalog?.getIdentity(index);
+    const live = this.catalog?.buildLiveMetadata(
+      index,
+      position,
+      this.catalogSimTime,
+      this.buffers.getOrbitalElementData(),
+      speed,
+    );
 
     const distFromCamera = v3len(v3sub(position, this.cameraPosition));
-
-    const vx = velocity[0].toFixed(2);
-    const vy = velocity[1].toFixed(2);
-    const vz = velocity[2].toFixed(2);
-
-    const px = position[0].toFixed(1);
-    const py = position[1].toFixed(1);
-    const pz = position[2].toFixed(1);
-
     const stats = this.constellationStats;
     const timeScaleLabel =
       stats.timeScale >= TIME_SCALE_K_THRESHOLD
         ? `${(stats.timeScale / TIME_SCALE_K_THRESHOLD).toFixed(1)}k×`
         : `${stats.timeScale.toFixed(0)}×`;
 
+    const title = identity?.name ?? `SAT #${index.toLocaleString()}`;
+    const noradLine =
+      identity?.noradId !== null && identity?.noradId !== undefined
+        ? `<div class="inspector-row">
+            <span class="inspector-label">NORAD</span>
+            <span class="inspector-value inspector-accent">${identity.noradId}</span>
+          </div>`
+        : '';
+    const proceduralLine =
+      identity?.kind === 'procedural'
+        ? `<div class="inspector-row">
+            <span class="inspector-label">Walker</span>
+            <span class="inspector-value">plane ${identity.plane} · slot ${identity.slot}</span>
+          </div>`
+        : '';
+    const orbitLines = live
+      ? `<div class="inspector-row">
+          <span class="inspector-label">Inclination</span>
+          <span class="inspector-value">${live.inclinationDeg.toFixed(2)}°</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-label">Period</span>
+          <span class="inspector-value">${live.periodMin.toFixed(1)} min</span>
+        </div>
+        <div class="inspector-row">
+          <span class="inspector-label">Subpoint</span>
+          <span class="inspector-value inspector-mono">${live.latLonLabel}</span>
+        </div>`
+      : '';
+
     this.focusOverlay.innerHTML = `
       <div class="inspector-header">
-        <span class="inspector-title"><span aria-label="Satellite">🛰</span> SAT #${index.toLocaleString()}</span>
+        <span class="inspector-title"><span aria-label="Satellite">🛰</span> ${title}</span>
         <button class="inspector-close-btn" title="Close (Esc or double-click)">✕</button>
       </div>
       <div class="inspector-separator"></div>
       <div class="inspector-section">
+        <div class="inspector-row">
+          <span class="inspector-label">Index</span>
+          <span class="inspector-value">#${index.toLocaleString()}</span>
+        </div>
+        ${noradLine}
+        ${proceduralLine}
         <div class="inspector-row">
           <span class="inspector-label">Shell</span>
           <span class="inspector-value inspector-accent">${shellName} orbit</span>
@@ -289,22 +363,19 @@ export class FocusManager {
           <span class="inspector-label">Speed</span>
           <span class="inspector-value">${speed.toFixed(3)} km/s</span>
         </div>
+        ${orbitLines}
         <div class="inspector-row">
           <span class="inspector-label">Distance</span>
           <span class="inspector-value">${distFromCamera.toFixed(0)} km</span>
         </div>
         <div class="inspector-row inspector-row--secondary">
-          <span class="inspector-label">ECI Pos</span>
-          <span class="inspector-value inspector-mono">${px}, ${py}, ${pz}</span>
-        </div>
-        <div class="inspector-row inspector-row--secondary">
           <span class="inspector-label">Velocity</span>
-          <span class="inspector-value inspector-mono">${vx}, ${vy}, ${vz}</span>
+          <span class="inspector-value inspector-mono">${velocity[0].toFixed(2)}, ${velocity[1].toFixed(2)}, ${velocity[2].toFixed(2)}</span>
         </div>
-        <div class="inspector-row">
-          <span class="inspector-label">Pattern</span>
-          <span class="inspector-value">${stats.animationPattern}</span>
-        </div>
+      </div>
+      <div class="inspector-actions">
+        <button class="inspector-follow-btn" type="button">Follow</button>
+        <button class="inspector-frame-btn" type="button">Frame in God View</button>
       </div>
       <div class="inspector-divider">
         <span class="inspector-section-title">CONSTELLATION</span>
@@ -331,7 +402,7 @@ export class FocusManager {
           <span class="inspector-value">${stats.dataSource}</span>
         </div>
       </div>
-      <div class="inspector-hint">Esc / double-click to release focus</div>
+      <div class="inspector-hint">Esc / double-click to clear selection</div>
     `;
   }
 }

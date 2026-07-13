@@ -207,6 +207,50 @@ void main() {
 }
 `;
 
+export const SAT_PICK_VERT = /* glsl */ `#version 300 es
+precision highp float;
+layout(location = 0) in vec4 aElem;
+${SHELL_GLSL}
+uniform mat4 uViewProj;
+uniform vec3 uCameraPos;
+uniform float uSimTime;
+uniform float uDistanceCullKm;
+uniform int uViewMode;
+uniform vec2 uPickCenterNdc;
+uniform float uPickScale;
+flat out int vSatId;
+void main() {
+  vSatId = gl_VertexID;
+  vec3 pos = keplerPosition(aElem, uSimTime);
+  float dist = max(length(pos - uCameraPos), 1.0);
+  if (dist > uDistanceCullKm) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    gl_PointSize = 0.0;
+    return;
+  }
+  gl_Position = uViewProj * vec4(pos, 1.0);
+  vec2 ndc = gl_Position.xy / max(gl_Position.w, 1e-5);
+  vec2 local = (ndc - uPickCenterNdc) * uPickScale;
+  gl_Position = vec4(local * gl_Position.w, gl_Position.z, gl_Position.w);
+  gl_PointSize = clamp((800.0 * 4.0) / dist, 2.0, 40.0);
+}
+`;
+
+export const SAT_PICK_FRAG = /* glsl */ `#version 300 es
+precision highp float;
+flat in int vSatId;
+out vec4 fragColor;
+void main() {
+  vec2 uv = gl_PointCoord * 2.0 - 1.0;
+  if (dot(uv, uv) > 1.0) discard;
+  int id = vSatId;
+  float r = float((id >> 16) & 255) / 255.0;
+  float g = float((id >> 8) & 255) / 255.0;
+  float b = float(id & 255) / 255.0;
+  fragColor = vec4(r, g, b, 1.0);
+}
+`;
+
 /* ─────────────────────────────────── Earth ─────────────────────────────────── */
 
 export const EARTH_VERT = /* glsl */ `#version 300 es

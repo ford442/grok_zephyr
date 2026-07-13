@@ -1,6 +1,5 @@
 import { getBackgroundModeIndex } from '@/background.js';
 import { groundPresetMotionBlurWeight } from '@/camera/groundPresetEffects.js';
-import { FLEET_COCKPIT } from '@/camera/FleetCockpit.js';
 import type { CameraState } from '@/camera/CameraController.js';
 import type { ConstellationStats } from '@/focus.js';
 import { BUFFER_SIZES } from '@/types/constants.js';
@@ -30,7 +29,7 @@ export function buildConstellationStats(rt: AppRuntime): ConstellationStats {
   return {
     viewModeName: rt.camera.getViewMode(),
     physicsModeName: physicsNames[rt.simulation.currentPhysicsMode] ?? 'Simple',
-    timeScale: rt.simulation.timeScale,
+    timeScale: rt.simulation.clock.rate,
     dataSource: rt.dataSourceLabel,
     visibleCount: rt.lastVisibleCount,
     animationPattern: animNames[rt.simulation.currentAnimationPattern] ?? 'None',
@@ -85,9 +84,15 @@ export function writeUniforms(
   const viewMode = rt.camera.getViewModeIndex();
   const isGroundView = cameraRadius < CONSTANTS.EARTH_RADIUS_KM + 100.0 ? 1 : 0;
   const physicsMode = rt.simulation.currentPhysicsMode;
+  const realismMode =
+    rt.simulation.realismMode && (rt.buffers?.isRealismEnabled() ?? false) ? 1 : 0;
   const viewFlags =
-    (viewMode & 0xffff) | ((isGroundView & 0x1) << 16) | ((physicsMode & 0x7) << 17);
-  const sunPos = calculateSunPosition(rt.simulation.simTime);
+    (viewMode & 0xffff) |
+    ((isGroundView & 0x1) << 16) |
+    ((physicsMode & 0x7) << 17) |
+    ((realismMode & 0x1) << 20);
+  const simTime = rt.simulation.clock.simTime;
+  const sunPos = calculateSunPosition(simTime);
 
   const uniformData = new ArrayBuffer(BUFFER_SIZES.UNIFORM);
   const f32 = new Float32Array(uniformData);
@@ -109,7 +114,7 @@ export function writeUniforms(
   f32[28] = time;
   f32[29] = deltaTime;
   u32[30] = viewFlags;
-  f32[31] = rt.simulation.simTime;
+  f32[31] = simTime;
 
   for (let p = 0; p < 6; p++) {
     f32[32 + p * 4 + 0] = frustum[p][0];
@@ -120,7 +125,7 @@ export function writeUniforms(
 
   f32[56] = width;
   f32[57] = height;
-  f32[58] = rt.simulation.timeScale;
+  f32[58] = rt.simulation.clock.rate;
   u32[59] = getBackgroundModeIndex();
   f32[60] = sunPos[0];
   f32[61] = sunPos[1];
@@ -134,10 +139,7 @@ export function writeUniforms(
       : undefined;
   const fleetHostVel =
     viewMode === 2
-      ? rt.buffers.calculateSatelliteVelocity(
-          FLEET_COCKPIT.HOST_SATELLITE_INDEX,
-          rt.simulation.simTime,
-        )
+      ? rt.buffers.calculateSatelliteVelocity(rt.fleetHostIndex, simTime)
       : undefined;
   rt.pipeline?.setMotionBlurFrameData(
     viewProjection,

@@ -28,6 +28,8 @@ import {
 import {
   SAT_VERT,
   SAT_FRAG,
+  SAT_PICK_VERT,
+  SAT_PICK_FRAG,
   EARTH_VERT,
   EARTH_FRAG,
   STAR_VERT,
@@ -89,6 +91,11 @@ export class WebGLRenderer {
   // Programs + uniform caches
   private satProgram!: WebGLProgram;
   private satU!: UniformCache;
+  private satPickProgram!: WebGLProgram;
+  private satPickU!: UniformCache;
+  private pickFbo: WebGLFramebuffer | null = null;
+  private pickTexture: WebGLTexture | null = null;
+  private pickDepth: WebGLRenderbuffer | null = null;
   private earthProgram!: WebGLProgram;
   private earthU!: UniformCache;
   private starProgram!: WebGLProgram;
@@ -143,6 +150,8 @@ export class WebGLRenderer {
     // Compile all programs.
     this.satProgram = createProgram(gl, SAT_VERT, SAT_FRAG, 'satellites');
     this.satU = new UniformCache(gl, this.satProgram);
+    this.satPickProgram = createProgram(gl, SAT_PICK_VERT, SAT_PICK_FRAG, 'satellites-pick');
+    this.satPickU = new UniformCache(gl, this.satPickProgram);
     this.earthProgram = createProgram(gl, EARTH_VERT, EARTH_FRAG, 'earth');
     this.earthU = new UniformCache(gl, this.earthProgram);
     this.starProgram = createProgram(gl, STAR_VERT, STAR_FRAG, 'starfield');
@@ -237,6 +246,7 @@ export class WebGLRenderer {
     destroyRenderTarget(gl, this.hdr ?? null);
     destroyRenderTarget(gl, this.bloomA ?? null);
     destroyRenderTarget(gl, this.bloomB ?? null);
+    this.destroyPickTarget();
 
     const float = this.floatRenderable;
     this.hdr = createRenderTarget(gl, this.width, this.height, { float, depth: true });
@@ -245,6 +255,110 @@ export class WebGLRenderer {
     const bh = Math.max(1, this.height >> 1);
     this.bloomA = createRenderTarget(gl, bw, bh, { float, depth: false });
     this.bloomB = createRenderTarget(gl, bw, bh, { float, depth: false });
+    this.ensurePickTarget();
+  }
+
+  pickSatelliteAt(
+    frame: WebGLFrame,
+    clientX: number,
+    clientY: number,
+    pickSize = 16,
+  ): number {
+    const gl = this.gl;
+    this.ensurePickTarget();
+    if (!this.pickFbo) return -1;
+
+    const rect = this.canvas.getBoundingClientRect();
+    const scaleX = this.width / Math.max(1, rect.width);
+    const scaleY = this.height / Math.max(1, rect.height);
+    const px = (clientX - rect.left) * scaleX;
+    const py = (clientY - rect.top) * scaleY;
+    const centerNdcX = (px / this.width) * 2 - 1;
+    const centerNdcY = 1 - (py / this.height) * 2;
+    const pickScale = Math.max(this.width, this.height) / pickSize;
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.pickFbo);
+    gl.viewport(0, 0, pickSize, pickSize);
+    gl.scissor(0, 0, pickSize, pickSize);
+    gl.enable(gl.SCISSOR_TEST);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    gl.useProgram(this.satPickProgram);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(true);
+    gl.disable(gl.BLEND);
+    gl.uniformMatrix4fv(this.satPickU.loc('uViewProj'), false, frame.viewProj);
+    gl.uniform3fv(this.satPickU.loc('uCameraPos'), frame.cameraPos);
+    gl.uniform1f(this.satPickU.loc('uSimTime'), frame.simTime);
+    gl.uniform1f(this.satPickU.loc('uDistanceCullKm'), this.satVisualPacked[6]);
+    gl.uniform1i(this.satPickU.loc('uViewMode'), frame.viewMode | 0);
+    gl.uniform2f(this.satPickU.loc('uPickCenterNdc'), centerNdcX, centerNdcY);
+    gl.uniform1f(this.satPickU.loc('uPickScale'), pickScale);
+    gl.bindVertexArray(this.satVao);
+    gl.drawArrays(gl.POINTS, 0, this.satCount);
+    gl.bindVertexArray(null);
+
+    const pixels = new Uint8Array(pickSize * pickSize * 4);
+    gl.readPixels(0, 0, pickSize, pickSize, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    const cx = (pickSize - 1) / 2;
+    const cy = (pickSize - 1) / 2;
+    let bestId = -1;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let y = 0; y < pickSize; y++) {
+      for (let x = 0; x < pickSize; x++) {
+        const o = (y * pickSize + x) * 4;
+        const id = (pixels[o] << 16) | (pixels[o + 1] << 8) | pixels[o + 2];
+        if (id <= 0) continue;
+        const dx = x - cx;
+        const dy = y - cy;
+        const dist = dx * dx + dy * dy;
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestId = id;
+        }
+      }
+    }
+    return bestId;
+  }
+
+  private ensurePickTarget(): void {
+    if (this.pickFbo) return;
+    const gl = this.gl;
+    const size = 16;
+    this.pickTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.pickTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+    this.pickDepth = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, this.pickDepth);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, size, size);
+
+    this.pickFbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.pickFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.pickTexture, 0);
+    gl.framebufferRenderbuffer(
+      gl.FRAMEBUFFER,
+      gl.DEPTH_ATTACHMENT,
+      gl.RENDERBUFFER,
+      this.pickDepth,
+    );
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  private destroyPickTarget(): void {
+    const gl = this.gl;
+    if (this.pickTexture) gl.deleteTexture(this.pickTexture);
+    if (this.pickDepth) gl.deleteRenderbuffer(this.pickDepth);
+    if (this.pickFbo) gl.deleteFramebuffer(this.pickFbo);
+    this.pickTexture = null;
+    this.pickDepth = null;
+    this.pickFbo = null;
   }
 
   renderFrame(frame: WebGLFrame): void {

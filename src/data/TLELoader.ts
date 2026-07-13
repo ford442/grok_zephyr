@@ -109,6 +109,13 @@ export class TLELoader {
     return semiMajorKm - 6371.0;
   }
 
+  /** NORAD catalog number from TLE line 1 (columns 3–7). */
+  static parseNoradId(line1: string): number | null {
+    if (!line1.startsWith('1 ')) return null;
+    const id = Number.parseInt(line1.substring(2, 7).trim(), 10);
+    return Number.isFinite(id) ? id : null;
+  }
+
   /**
    * Fetch from CelesTrak API
    */

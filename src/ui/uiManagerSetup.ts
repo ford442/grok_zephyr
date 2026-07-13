@@ -1,5 +1,8 @@
+import { formatCatalogOptionLabel, getCatalogDef, TLE_CATALOGS } from '@/data/TLESource.js';
+import { formatTleHudFetchAge } from '@/app/loadSatelliteOrbitalData.js';
 import type { AnimationPattern } from '@/types/animation.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
+import type { TLECatalogId, TLECatalogMeta } from '@/data/TLESource.js';
 import type { ImageTuningSettings } from '@/core/ImageTuning.js';
 import type { AnimationUIState, ExposureMode, TonemapMode, UIElements } from '@/ui/uiTypes.js';
 
@@ -8,6 +11,8 @@ export interface UIManagerSetupCallbacks {
   onPatternChange: ((mode: number) => void) | null;
   onAnimationChange: ((pattern: AnimationPattern) => void) | null;
   onPhysicsChange: ((mode: number) => void) | null;
+  onRealismChange: ((enabled: boolean) => void) | null;
+  onTleCatalogChange: ((catalogId: TLECatalogId) => void) | null;
   onQualityChange: ((level: QualityLevel) => void) | null;
   onSpeedChange: ((speed: number) => void) | null;
   onLoopToggle: ((loop: boolean) => void) | null;
@@ -32,6 +37,7 @@ export interface UIManagerSetupActions {
   setActivePatternButton(mode: number): void;
   setActiveAnimationButton(patternIdx: number): void;
   setActivePhysicsButton(mode: number): void;
+  setActiveRealismButton(enabled: boolean): void;
   setActiveQualityButton(level: QualityLevel): void;
   setAudioMuted(muted: boolean): void;
   setTrailsEnabled(enabled: boolean): void;
@@ -59,6 +65,10 @@ export function getElements(): UIElements {
     tuningProfile: getEl('s-tuning'),
     visible: getEl('s-visible'),
     quality: getEl('s-quality'),
+    simUtc: getEl('s-sim-utc'),
+    simRate: getEl('s-sim-rate'),
+    tleEpoch: getEl('s-tle-epoch'),
+    tleAge: getEl('s-tle-age'),
     error: getEl('error'),
     controls: getEl('controls'),
     buttons: [
@@ -85,6 +95,10 @@ export function getElements(): UIElements {
       document.getElementById('phys0') as HTMLButtonElement,
       document.getElementById('phys1') as HTMLButtonElement,
       document.getElementById('phys2') as HTMLButtonElement,
+    ],
+    realismButtons: [
+      document.getElementById('realism0') as HTMLButtonElement,
+      document.getElementById('realism1') as HTMLButtonElement,
     ],
     qualityButtons: [
       document.getElementById('qlow') as HTMLButtonElement,
@@ -149,6 +163,9 @@ export function getElements(): UIElements {
     angleInfo: getEl('angleInfo'),
     resetAngleBtn: getEl('resetAngle'),
     animationControls: getEl('animation-controls'),
+    tleCatalogPicker:
+      (document.getElementById('tleCatalogPicker') as HTMLSelectElement | null) ?? undefined,
+    tleCatalogMeta: document.getElementById('tleCatalogMeta') ?? undefined,
   };
 }
 
@@ -245,6 +262,26 @@ export function setupEventListeners(ctx: UIManagerSetupContext): void {
         callbacks.onPhysicsChange(mode);
       }
     });
+  });
+
+  elements.realismButtons.forEach((btn) => {
+    btn?.addEventListener('click', (e) => {
+      const target = e.target as HTMLButtonElement;
+      if (target.disabled) return;
+
+      const enabled = target.dataset.realism === '1';
+      actions.setActiveRealismButton(enabled);
+      if (callbacks.onRealismChange) {
+        callbacks.onRealismChange(enabled);
+      }
+    });
+  });
+
+  elements.tleCatalogPicker?.addEventListener('change', () => {
+    const catalogId = elements.tleCatalogPicker?.value as TLECatalogId | undefined;
+    if (catalogId && callbacks.onTleCatalogChange) {
+      callbacks.onTleCatalogChange(catalogId);
+    }
   });
 
   elements.qualityButtons.forEach((btn) => {
@@ -454,4 +491,50 @@ export function createAnimationControls(
       callbacks.onLoopToggle(checked);
     }
   });
+}
+
+export function populateTleCatalogPicker(
+  elements: UIElements,
+  activeCatalogId: TLECatalogId,
+): void {
+  const picker = elements.tleCatalogPicker;
+  if (!picker) return;
+
+  picker.replaceChildren(
+    ...TLE_CATALOGS.map((def) => {
+      const option = document.createElement('option');
+      option.value = def.id;
+      option.textContent = def.label;
+      return option;
+    }),
+  );
+  picker.value = activeCatalogId;
+}
+
+export function updateTleCatalogPickerOption(
+  elements: UIElements,
+  catalogId: TLECatalogId,
+  meta: TLECatalogMeta | null,
+): void {
+  const picker = elements.tleCatalogPicker;
+  if (!picker) return;
+
+  const option = picker.querySelector(`option[value="${catalogId}"]`) as HTMLOptionElement | null;
+  if (option) {
+    option.textContent = formatCatalogOptionLabel(getCatalogDef(catalogId), meta);
+  }
+}
+
+export function updateTleCatalogMetaPanel(
+  elements: UIElements,
+  meta: TLECatalogMeta | null,
+): void {
+  if (!elements.tleCatalogMeta) return;
+  if (!meta) {
+    elements.tleCatalogMeta.textContent = '';
+    return;
+  }
+
+  const fetchAge = formatTleHudFetchAge(meta);
+  elements.tleCatalogMeta.textContent = `${meta.objectCount.toLocaleString()} objects · ${fetchAge}`;
 }

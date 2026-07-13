@@ -9,7 +9,7 @@ Grok Zephyr is a cutting-edge web application that brings large-scale satellite 
 - **Million-Satellite Scale**: Render and simulate 1,000,000+ satellites in real-time using GPU-accelerated compute shaders
 - **WebGPU First**: Modern, performant graphics API that puts the power of the GPU directly in your browser
 - **Multiple View Modes**: Experience satellites from the ground horizon, as a god-like observer, or from the perspective of a satellite itself
-- **Realistic Orbital Mechanics**: Powered by SGP4 propagation for accurate satellite positions
+- **Orbital Mechanics**: SGP4 (`satellite.js`) anchors real TLE orbits on CPU; GPU propagates osculating Keplerian elements. Art-directed Walker shells available via the Orbit Realism toggle.
 - **Beautiful Visuals**: Includes Earth rendering, atmospheric glow effects, starfield backgrounds, and post-processing bloom effects
 - **Zero Installation**: Runs directly in the browser—no native clients or heavy downloads required
 - **Production Ready**: Modular TypeScript architecture designed for maintainability and extensibility
@@ -114,7 +114,7 @@ Full architecture details are documented in [ARCHITECTURE.md](./ARCHITECTURE.md)
 - **Language**: TypeScript 5.3+ (strict mode)
 - **Graphics API**: WebGPU with WGSL shaders
 - **Build Tool**: Vite 5.0+ (lightning-fast builds)
-- **Physics**: satellite.js 5.0+ (SGP4 propagation)
+- **Physics**: satellite.js 5.0+ (SGP4 CPU anchor → GPU Keplerian propagation)
 - **Styling**: Modern CSS with responsive design
 
 ## 📊 Performance
@@ -178,7 +178,12 @@ mapping, and WebGL→WebGPU porting notes for large-scale simulations.
 
 ## 📝 Data & Configuration
 
-The project includes sample Starlink TLE (Two-Line Element) data in `/public/tle/`. You can:
+The project includes sample Starlink TLE (Two-Line Element) data in `/public/tle/`. Load a catalog with `?tle=starlink` (or any CelesTrak shorthand / direct URL). Toggle orbit realism in the UI (**ORBIT REALISM → SGP4**) or via `?realism=1`:
+
+- **SHELLS** (default): art-directed Walker shells — the cinematic 1M-satellite look
+- **SGP4**: CPU SGP4 (`satellite.js`) anchors osculating Keplerian elements; the GPU compute shader propagates real catalog orbits and re-anchors periodically to bound drift
+
+You can also:
 
 - Replace with real TLE data from space-track.org
 - Implement custom data loaders for different formats

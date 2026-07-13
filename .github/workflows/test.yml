@@ -31,3 +31,6 @@ jobs:
       - name: Run tests
         run: npm run test
 
+      - name: Verify prebuilt SGP4 WASM artifacts
+        run: test -f public/sgp4.wasm && test -f public/sgp4.js
+

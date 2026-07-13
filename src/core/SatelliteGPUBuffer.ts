@@ -14,6 +14,19 @@ import type { WebGPUContext } from './WebGPUContext.js';
 import { CONSTANTS, BUFFER_SIZES } from '@/types/constants.js';
 import type { TLEData } from '@/types/index.js';
 import { OrbitalElements } from './OrbitalElements.js';
+import {
+  EXTENDED_FLOATS_PER_SATELLITE,
+  TlePropagator,
+  propagateKeplerian,
+  readKeplerianExtended,
+  writeKeplerianExtended,
+  writeShellExtended,
+} from '@/physics/index.js';
+
+/** Re-anchor SGP4 elements every N simulation seconds. */
+const REANCHOR_INTERVAL_SIM_SEC = 180;
+/** Satellites re-anchored per frame to avoid main-thread spikes. */
+const REANCHOR_CHUNK_SIZE = 512;
 
 /** Buffer pair for double-buffering */
 export interface BufferPair {
@@ -132,6 +145,14 @@ export class SatelliteGPUBuffer {
   /** Shared, GPU-agnostic orbital element store (also used by the WebGL2 backend). */
   private orbital: OrbitalElements;
   private staging: StagingBuffer | null = null;
+  private readonly extendedElementData: Float32Array;
+  private tlePropagator: TlePropagator | null = null;
+  private tleRealCount = 0;
+  private realismEnabled = false;
+  private simEpochMs = Date.now();
+  private lastReanchorCycleSimTime = 0;
+  private reanchorCursor = 0;
+  private loadedTles: TLEData[] = [];
 
   /** Backing CPU array for orbital elements, owned by `this.orbital`. */
   private get orbitalElementData(): Float32Array {
@@ -160,6 +181,7 @@ export class SatelliteGPUBuffer {
 
     // Pre-allocate orbital element data on CPU (shared with the WebGL2 backend)
     this.orbital = new OrbitalElements(this.numSatellites);
+    this.extendedElementData = new Float32Array(this.numSatellites * EXTENDED_FLOATS_PER_SATELLITE);
   }
 
   /**
@@ -276,52 +298,18 @@ export class SatelliteGPUBuffer {
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     );
 
-    // Initialize extended orbital elements for J2 precession (compact 32-byte format)
-    // Layout: [semi_major_axis(f32), packed_angles(u32 as f32), mean_anomaly(f32), eccentricity(f32),
-    //          current_raan(f32), mean_motion(f32), position_xy(vec2f)]
-    const extElemData = new ArrayBuffer(numSats * 32);
-    const f32View = new Float32Array(extElemData);
-    const u32View = new Uint32Array(extElemData);
-
-    for (let i = 0; i < numSats; i++) {
-      const floatIdx = i * 8; // 8 floats per satellite
-      const uintIdx = i * 8; // Same index for uint32 view
-
-      // Get shell from existing orbitalElementData
-      const shellData = this.orbitalElementData[i * 4 + 3];
-      const shellIndex = (shellData >> 8) & 0xff;
-
-      // Shell radii (340km, 550km, 1150km altitudes)
-      const SHELL_RADII_KM = [6711.0, 6921.0, 7521.0];
-
-      const a = SHELL_RADII_KM[shellIndex] || 6921.0;
-      const inc = this.orbitalElementData[i * 4 + 1]; // inclination from elements
-      const raan = this.orbitalElementData[i * 4 + 0]; // RAAN from elements
-      const meanAnomaly = this.orbitalElementData[i * 4 + 2]; // M from elements
-
-      // Calculate mean motion from semi-major axis
-      const MU = 398600.4418; // km³/s²
-      const n = Math.sqrt(MU / (a * a * a));
-
-      // Pack angles into u32 (8 bits per angle): (inc_u8 << 16) | (raan_u8 << 8) | argPerigee_u8
-      const packAngle = (rad: number): number => {
-        return Math.floor(((rad % (2 * Math.PI)) / (2 * Math.PI)) * 255) & 0xff;
-      };
-      const packedAngles = (packAngle(inc) << 16) | (packAngle(raan) << 8) | 0; // argPerigee = 0
-
-      // Store data using views
-      f32View[floatIdx + 0] = a; // semi-major axis (km)
-      u32View[uintIdx + 1] = packedAngles; // packed angles (u32 stored at same offset)
-      f32View[floatIdx + 2] = meanAnomaly; // mean anomaly (rad)
-      f32View[floatIdx + 3] = 0.001; // eccentricity (nearly circular)
-      f32View[floatIdx + 4] = raan; // current_raan (updated by precession each frame)
-      f32View[floatIdx + 5] = n; // mean motion (rad/s)
-      f32View[floatIdx + 6] = 0.0; // position x (filled by compute)
-      f32View[floatIdx + 7] = 0.0; // position y (z computed or stored elsewhere)
-    }
-    this.context.writeBuffer(extendedElements, f32View);
+    // Initialize extended orbital elements (SGP4 Keplerian or shell fallback per satellite)
+    this.rebuildExtendedElements(0);
+    const extData = this.extendedElementData;
+    this.context.getDevice().queue.writeBuffer(
+      extendedElements,
+      0,
+      extData.buffer,
+      extData.byteOffset,
+      extData.byteLength,
+    );
     console.log(
-      `[SatelliteGPUBuffer] Extended elements buffer: ${(this.extendedElementBufferSize / 1024 / 1024).toFixed(2)} MB (J2 propagation, compact 32-byte)`,
+      `[SatelliteGPUBuffer] Extended elements buffer: ${(this.extendedElementBufferSize / 1024 / 1024).toFixed(2)} MB (Keplerian / shell)`,
     );
 
     // Create position buffer(s)
@@ -493,7 +481,13 @@ export class SatelliteGPUBuffer {
     console.log(`[SatelliteGPUBuffer] Generating multi-shell orbital elements...`);
     const startTime = performance.now();
 
+    this.tlePropagator = null;
+    this.tleRealCount = 0;
+    this.loadedTles = [];
+    this.realismEnabled = false;
+
     const data = this.orbital.generate();
+    this.rebuildExtendedElements(0);
 
     const elapsed = performance.now() - startTime;
     console.log(`[SatelliteGPUBuffer] Generated elements in ${elapsed.toFixed(2)}ms`);
@@ -502,7 +496,7 @@ export class SatelliteGPUBuffer {
   }
 
   /**
-   * Load orbital elements from parsed TLE data
+   * Load orbital elements from parsed TLE data (shell-classified, art-directed layout).
    */
   loadFromTLEData(tles: TLEData[]): number {
     const startTime = performance.now();
@@ -510,11 +504,137 @@ export class SatelliteGPUBuffer {
     console.log(
       `[SatelliteGPUBuffer] Loading ${Math.min(tles.length, this.numSatellites)} TLE satellites...`,
     );
+
+    this.loadedTles = tles;
+    this.tlePropagator = new TlePropagator();
+    this.tleRealCount = this.tlePropagator.load(tles, this.numSatellites);
+    void this.tlePropagator.initWasm();
     const tleCount = this.orbital.loadFromTLE(tles);
+    this.rebuildExtendedElements(0);
 
     const elapsed = performance.now() - startTime;
     console.log(`[SatelliteGPUBuffer] TLE load complete in ${elapsed.toFixed(2)}ms`);
     return tleCount;
+  }
+
+  /**
+   * Load TLE catalog and anchor osculating Keplerian elements via SGP4 for realism mode.
+   */
+  loadFromTLEDataWithSgp4(tles: TLEData[], anchorSimTime: number): number {
+    const count = this.loadFromTLEData(tles);
+    this.simEpochMs = Date.now();
+    this.realismEnabled = true;
+    this.rebuildExtendedElements(anchorSimTime);
+    this.lastReanchorCycleSimTime = anchorSimTime;
+    this.reanchorCursor = this.tleRealCount;
+    return count;
+  }
+
+  setRealismEnabled(enabled: boolean, simTime: number): void {
+    this.realismEnabled = enabled;
+    if (enabled && this.tlePropagator && this.tleRealCount > 0) {
+      this.rebuildExtendedElements(simTime);
+      this.lastReanchorCycleSimTime = simTime;
+      this.reanchorCursor = this.tleRealCount;
+    }
+    this.uploadExtendedElements();
+  }
+
+  isRealismEnabled(): boolean {
+    return this.realismEnabled;
+  }
+
+  hasTleCatalog(): boolean {
+    return this.tleRealCount > 0;
+  }
+
+  getTleRealCount(): number {
+    return this.tleRealCount;
+  }
+
+  getTlePropagator(): TlePropagator | null {
+    return this.tlePropagator;
+  }
+
+  getLoadedTles(): readonly TLEData[] {
+    return this.loadedTles;
+  }
+
+  /** Chunked SGP4 re-anchor to bound Keplerian drift without jank. */
+  tickSgp4Reanchor(simTime: number): void {
+    if (!this.realismEnabled || !this.tlePropagator || this.tleRealCount === 0 || !this.buffers) {
+      return;
+    }
+
+    if (this.reanchorCursor >= this.tleRealCount) {
+      if (simTime - this.lastReanchorCycleSimTime < REANCHOR_INTERVAL_SIM_SEC) {
+        return;
+      }
+      this.lastReanchorCycleSimTime = simTime;
+      this.reanchorCursor = 0;
+    }
+
+    const start = this.reanchorCursor;
+    const end = Math.min(this.tleRealCount, start + REANCHOR_CHUNK_SIZE);
+    const dateMs = this.simEpochMs + simTime * 1000;
+
+    this.tlePropagator.applyKeplerianBatch(dateMs, start, end - start, (index, state) => {
+      writeKeplerianExtended(this.extendedElementData, index, state);
+    });
+
+    const floatOffset = start * EXTENDED_FLOATS_PER_SATELLITE;
+    const chunk = this.extendedElementData.slice(floatOffset, end * EXTENDED_FLOATS_PER_SATELLITE);
+    this.context.getDevice().queue.writeBuffer(
+      this.buffers.extendedElements,
+      floatOffset * 4,
+      chunk.buffer,
+      chunk.byteOffset,
+      chunk.byteLength,
+    );
+
+    this.reanchorCursor = end;
+  }
+
+  /** Full SGP4 re-anchor after a large sim-time jump (scrub / NOW / URL sync). */
+  forceSgp4Reanchor(simTime: number): void {
+    if (!this.realismEnabled || !this.tlePropagator || this.tleRealCount === 0) {
+      return;
+    }
+    this.rebuildExtendedElements(simTime);
+    this.lastReanchorCycleSimTime = simTime;
+    this.reanchorCursor = this.tleRealCount;
+    this.uploadExtendedElements();
+  }
+
+  private rebuildExtendedElements(anchorSimTime: number): void {
+    const dateMs = this.simEpochMs + anchorSimTime * 1000;
+
+    if (this.realismEnabled && this.tlePropagator && this.tleRealCount > 0) {
+      this.tlePropagator.applyKeplerianBatch(dateMs, 0, this.tleRealCount, (index, state) => {
+        writeKeplerianExtended(this.extendedElementData, index, state);
+      });
+    }
+
+    for (let i = this.realismEnabled ? this.tleRealCount : 0; i < this.numSatellites; i++) {
+      const base = i * 4;
+      const raan = this.orbitalElementData[base];
+      const inc = this.orbitalElementData[base + 1];
+      const meanAnomaly = this.orbitalElementData[base + 2];
+      const shellIndex = (this.orbitalElementData[base + 3] >> 8) & 0xff;
+      writeShellExtended(this.extendedElementData, i, raan, inc, meanAnomaly, shellIndex);
+    }
+  }
+
+  uploadExtendedElements(): void {
+    if (!this.buffers) throw new Error('Buffers not initialized');
+    const data = this.extendedElementData;
+    this.context.getDevice().queue.writeBuffer(
+      this.buffers.extendedElements,
+      0,
+      data.buffer,
+      data.byteOffset,
+      data.byteLength,
+    );
   }
 
   /**
@@ -523,6 +643,7 @@ export class SatelliteGPUBuffer {
   uploadOrbitalElements(): void {
     if (!this.buffers) throw new Error('Buffers not initialized');
     this.context.writeBuffer(this.buffers.orbitalElements, this.orbitalElementData);
+    this.uploadExtendedElements();
   }
 
   /**
@@ -607,6 +728,12 @@ export class SatelliteGPUBuffer {
    * Calculate satellite position on CPU (multi-shell)
    */
   calculateSatellitePosition(index: number, time: number): [number, number, number] {
+    if (this.realismEnabled) {
+      const ext = readKeplerianExtended(this.extendedElementData, index);
+      if (ext.realismFlag > 0.5) {
+        return propagateKeplerian(ext, time);
+      }
+    }
     return this.orbital.calculatePosition(index, time);
   }
 

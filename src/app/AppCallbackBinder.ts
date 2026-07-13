@@ -12,7 +12,15 @@ import {
   setupAnimationPatternButtons,
   setupPhysicsButtons,
 } from '@/app/PatternController.js';
+import { setRealismMode } from '@/app/RealismController.js';
+import { switchTLECatalog } from '@/app/loadSatelliteOrbitalData.js';
+import { bindSimClock } from '@/app/SimClockController.js';
 import { applyViewTuning } from '@/app/ViewModeCoordinator.js';
+import {
+  followSelectedSatellite,
+  frameSatelliteInGodView,
+  searchAndSelectSatellite,
+} from '@/app/SatelliteSelection.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 
 function shouldPlayButtonTick(button: HTMLButtonElement): boolean {
@@ -30,6 +38,8 @@ function updateAngleDisplay(yaw: number, pitch: number): void {
 }
 
 export function setupCallbacks(rt: AppRuntime): void {
+  bindSimClock(rt);
+
   rt.camera.onModeChange((_mode, name, altitude) => {
     rt.ui.setViewMode(name, altitude);
     rt.ui.setActiveButton(rt.camera.getViewModeIndex());
@@ -113,6 +123,13 @@ export function setupCallbacks(rt: AppRuntime): void {
     rt.moonScaleHudEnabled = enabled;
     rt.ui.setMoonScaleAnnotation(enabled && rt.camera.getViewMode() === 'moon');
   });
+  rt.ui.onRealismChange((enabled) => {
+    setRealismMode(rt, enabled);
+  });
+
+  rt.ui.onTleCatalogChange((catalogId) => {
+    void switchTLECatalog(rt, catalogId);
+  });
 
   rt.ui.setDemoActive(false);
   rt.ui.setDemoAutoEnabled(rt.simulation.demoAutoEnabled);
@@ -128,11 +145,8 @@ export function setupCallbacks(rt: AppRuntime): void {
   setupPhysicsButtons(rt);
   setupGroundPresetButtons(rt);
 
-  rt.ui.createTimeScaleControl();
-  rt.ui.onTimeScaleChange((scale) => {
-    rt.simulation.timeScale = Math.max(1, Math.min(100000, scale));
-    console.log(`⏱️ Time scale: ${rt.simulation.timeScale}x`);
-  });
+  rt.ui.createSimTransport(() => rt.simulation.clock);
+  rt.ui.updateSimClock(rt.simulation.clock);
 
   rt.captureManager = new CaptureManager(rt);
   rt.captureManager.setupCaptureControls();
@@ -168,6 +182,17 @@ export function setupCallbacks(rt: AppRuntime): void {
     }
   });
 
+  document.addEventListener('satellite-follow', () => {
+    followSelectedSatellite(rt);
+  });
+  document.addEventListener('satellite-frame-god', () => {
+    if (rt.selectedSatelliteIndex >= 0) {
+      frameSatelliteInGodView(rt, rt.selectedSatelliteIndex);
+    }
+  });
+
+  setupSatelliteSearch(rt);
+
   const controls = document.getElementById('controls');
   controls?.addEventListener('click', (e) => {
     const target = e.target as HTMLElement | null;
@@ -190,4 +215,74 @@ export function registerUserActivity(rt: AppRuntime, interruptCinematic: boolean
 
 export function applyExposureSettings(rt: AppRuntime): void {
   applyExposureSettingsImpl(rt);
+}
+
+function setupSatelliteSearch(rt: AppRuntime): void {
+  const input = document.getElementById('satelliteSearch') as HTMLInputElement | null;
+  const resultsEl = document.getElementById('satelliteSearchResults');
+  if (!input || !resultsEl) return;
+
+  let debounceId = 0;
+
+  const hideResults = (): void => {
+    resultsEl.hidden = true;
+    resultsEl.replaceChildren();
+  };
+
+  const renderResults = (query: string): void => {
+    resultsEl.replaceChildren();
+    if (!query.trim()) {
+      hideResults();
+      return;
+    }
+
+    const indices = rt.satelliteCatalog.search(query, 8);
+    if (indices.length === 0) {
+      const empty = document.createElement('li');
+      empty.className = 'satellite-search-empty';
+      empty.textContent = 'No matches';
+      resultsEl.appendChild(empty);
+      resultsEl.hidden = false;
+      return;
+    }
+
+    for (const index of indices) {
+      const identity = rt.satelliteCatalog.getIdentity(index);
+      const li = document.createElement('li');
+      li.className = 'satellite-search-item';
+      const norad =
+        identity?.noradId !== null && identity?.noradId !== undefined
+          ? ` · NORAD ${identity.noradId}`
+          : '';
+      li.textContent = `${identity?.name ?? `SAT #${index}`}${norad}`;
+      li.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        input.value = identity?.name ?? String(index);
+        hideResults();
+        frameSatelliteInGodView(rt, index);
+      });
+      resultsEl.appendChild(li);
+    }
+    resultsEl.hidden = false;
+  };
+
+  input.addEventListener('input', () => {
+    window.clearTimeout(debounceId);
+    debounceId = window.setTimeout(() => renderResults(input.value), 120);
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      searchAndSelectSatellite(rt, input.value);
+      hideResults();
+    } else if (e.key === 'Escape') {
+      hideResults();
+      input.blur();
+    }
+  });
+
+  input.addEventListener('blur', () => {
+    window.setTimeout(hideResults, 150);
+  });
 }

@@ -1,5 +1,8 @@
 import { WebGPUContext } from '@/core/WebGPUContext.js';
 import type { WebGPUErrorReport } from '@/core/WebGPUErrorReporter.js';
+import { resolveCanvasPresentationOptions } from '@/core/HdrPresentation.js';
+import { loadSavedQualityLevel } from '@/core/QualityPresets.js';
+import { parseInitialStateFromURL } from '@/app/UrlState.js';
 import { setupMobileOrientationSupport } from '@/app/MobilePresentation.js';
 import { createGpuResources } from '@/app/createGpuResources.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
@@ -34,7 +37,14 @@ export async function bootWebGPU(
   orientationLockGestureListener: () => void,
   hooks: BootWebGPUHooks,
 ): Promise<void> {
+  const urlParams = parseInitialStateFromURL();
+  const initialQuality =
+    urlParams.qualityLevel ??
+    loadSavedQualityLevel() ??
+    (rt.isMobileDevice ? rt.mobileDefaultQuality : 'high');
+
   rt.context = new WebGPUContext(rt.canvas, {
+    canvas: resolveCanvasPresentationOptions(initialQuality),
     onDeviceLost: (info) => {
       void hooks.onDeviceLost(info);
     },
