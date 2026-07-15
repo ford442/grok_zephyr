@@ -591,6 +591,46 @@
   color: #fff;
 }
 
+.skyline-display-btn {
+  background: rgba(0, 220, 255, 0.06);
+  border: 1px solid rgba(0, 220, 255, 0.35);
+  color: #44e8ff;
+  padding: 7px 12px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  transition:
+    background 0.18s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease,
+    color 0.18s ease;
+  pointer-events: auto;
+  margin: 1px 0;
+  border-radius: 8px;
+  min-height: 32px;
+  position: relative;
+}
+
+.skyline-display-btn:hover {
+  background: rgba(0, 220, 255, 0.18);
+  box-shadow:
+    0 0 10px rgba(0, 220, 255, 0.25),
+    inset 0 0 14px rgba(0, 220, 255, 0.12);
+  border-color: #44e8ff;
+  transform: translateY(-1px) scale(1.02);
+}
+
+.skyline-display-btn.active {
+  background: rgba(0, 220, 255, 0.2);
+  box-shadow:
+    0 0 14px rgba(0, 220, 255, 0.3),
+    0 0 4px rgba(0, 220, 255, 0.5) inset;
+  border-color: #44e8ff;
+  color: #fff;
+}
+
 /* Animation Extended Controls (Speed/Loop) */
 .animation-controls-extended {
   margin-top: 8px;

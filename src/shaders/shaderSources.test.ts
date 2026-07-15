@@ -91,7 +91,14 @@ describe('shader source of truth', () => {
     expect(skyline).toContain('clamp((2.05');
     expect(skyline).toContain('sodium');
     expect(skyline).toContain('roofEquip');
-    expect(skyline).toContain('camera_enu');
+    expect(skyline).toContain('displayType');
+    expect(skyline).toContain('facadeMeta');
+    expect(skyline).toContain('fn ledMatrixDisplay');
+    expect(skyline).toContain('fn laserScanDisplay');
+    expect(skyline).toContain('fn spotlightDisplay');
+    expect(skyline).toContain('fn neonStripDisplay');
+    expect(skyline).toContain('fn facadeDisplayColor');
+    expect(skyline).toContain('displayFilter');
     expect(skyline).toContain('flicker');
     expect(skyline).toContain('recessShade');
   });
