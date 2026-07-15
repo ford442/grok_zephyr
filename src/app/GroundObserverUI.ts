@@ -1,5 +1,6 @@
 import type { GroundObserverPreset } from '@/camera/GroundObserverCamera.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
+import { updateSkylineDisplayControlsVisibility } from '@/app/SkylineDisplayController.js';
 
 export function setupGroundPresetButtons(rt: AppRuntime): void {
   const presetButtons = document.querySelectorAll('.preset-btn');
@@ -48,6 +49,8 @@ export function updateGroundObserverOverlay(rt: AppRuntime): void {
   } else if (isSkyline) {
     rt.applyGroundOverlayClass('frame-skyline');
   }
+
+  updateSkylineDisplayControlsVisibility(rt);
 }
 
 export function applyGroundOverlayClass(_rt: AppRuntime, overlayClass: string): void {

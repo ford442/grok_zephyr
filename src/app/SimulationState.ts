@@ -17,6 +17,8 @@ export class SimulationState {
   currentAnimationPattern = 0;
   currentPhysicsMode = 0;
   realismMode = false;
+  /** Skyline view: 0=auto mix, 1=LED, 2=laser, 3=spots, 4=neon, 5=all */
+  skylineDisplayMode: 0 | 1 | 2 | 3 | 4 | 5 = 0;
   hasTleCatalog = false;
   patternSeed = 0;
   patternAnimationStart = 0;

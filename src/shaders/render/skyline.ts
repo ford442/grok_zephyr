@@ -10,7 +10,8 @@
  * - Soft window masks + HDR cores clamped 2.0–2.85 for cohesive bloom halos
  * - Exponential depth fog with distant warm city bleed
  * - Street-level sodium strips + retail spill at building bases
- * - Rooftop equipment silhouettes on tallest decile (roofEquip flag)
+ * - Rooftop equipment silhouettes on tallest decile (facadeMeta bit 0)
+ * - Computerized facade displays: LED matrix, laser scan, spotlights, neon strips
  * - Fresnel sky-gradient glass reflection on dark facades
  * - Facade corner AO + recessed mullion depth
  */
@@ -26,14 +27,14 @@ struct Building {
   height     : f32,   // extrusion height, km
   colorSeed  : f32,   // window tint variation seed
   windowSeed : f32,   // window on/off pattern seed
-  roofEquip  : f32,   // 1.0 = tallest decile — rooftop HVAC silhouettes
+  facadeMeta : f32,   // roofEquip (meta%2) + displayType*2
 };
 
 struct CityUni {
   city_view_proj : mat4x4f,
   sun_dir_enu    : vec4f,
   params         : vec4f, // x = nightFactor, y = buildingCount, z = time, w = emissiveBoost
-  camera_enu     : vec4f, // xyz = observer eye in local ENU (km)
+  camera_enu     : vec4f, // xyz = observer eye in local ENU (km), w = displayMode filter
 };
 
 @group(0) @binding(1) var<uniform> city : CityUni;
@@ -47,6 +48,7 @@ struct VOut {
   @location(3) worldPos : vec3f,
   @location(4) bldgHeight : f32,
   @location(5) roofEquip : f32,
+  @location(6) displayType : f32,
 };
 
 const CUBE_POS = array<vec3f, 36>(
@@ -107,6 +109,166 @@ fn facadeCornerAO(cellU : f32, cellV : f32) -> f32 {
   return mix(0.72, 1.0, smoothstep(0.0, 0.12, min(edgeU, edgeV) * 4.0));
 }
 
+fn unpackFacadeMeta(meta : f32) -> vec2f {
+  let packed = i32(meta + 0.25);
+  return vec2f(f32(packed % 2), f32(packed / 2));
+}
+
+fn displayModeWeight(displayType : f32, filterMode : f32) -> f32 {
+  if (filterMode < 0.5) {
+  // Auto — full strength for every assigned display.
+    return 1.0;
+  }
+  if (filterMode > 4.5) {
+  // All — boost every display type.
+    return 1.35;
+  }
+  return select(0.12, 1.0, abs(displayType - filterMode) < 0.5);
+}
+
+fn ledMatrixDisplay(
+  cellU : f32,
+  cellV : f32,
+  cellIdU : f32,
+  cellIdV : f32,
+  heightNorm : f32,
+  seed : vec2f,
+  time : f32,
+) -> vec3f {
+  let band = smoothstep(0.22, 0.34, heightNorm) * (1.0 - smoothstep(0.82, 0.94, heightNorm));
+  let centerU = smoothstep(0.08, 0.22, cellU) * (1.0 - smoothstep(0.78, 0.92, cellU));
+  if (band * centerU < 0.02) {
+    return vec3f(0.0);
+  }
+
+  let pixelU = floor(cellIdU * 0.55 + seed.x * 3.0);
+  let pixelV = floor(cellIdV * 0.42 + seed.y * 5.0);
+  let pxU = fract(cellIdU * 0.55 + seed.x * 3.0);
+  let pxV = fract(cellIdV * 0.42 + seed.y * 5.0);
+  let pixelMask = smoothstep(0.10, 0.18, pxU) * smoothstep(0.90, 0.82, pxU)
+                * smoothstep(0.12, 0.20, pxV) * smoothstep(0.88, 0.80, pxV);
+
+  let scroll = floor(time * 2.4 + seed.x * 11.0);
+  let wave = sin(time * 1.7 + pixelU * 0.9 + pixelV * 0.35 + seed.y * 9.0);
+  let checker = fract((pixelU + pixelV + scroll) * 0.5);
+  let glyph = step(0.58, hash21(vec2f(pixelU + scroll * 0.17, pixelV) + seed * 4.1));
+  let pattern = mix(checker, glyph, 0.55 + 0.35 * wave);
+
+  let hue = fract(seed.x * 0.37 + time * 0.08 + pixelU * 0.04);
+  let rgbA = vec3f(0.15, 0.85, 1.0);
+  let rgbB = vec3f(1.0, 0.18, 0.72);
+  let rgbC = vec3f(0.25, 1.0, 0.45);
+  var tint = mix(rgbA, rgbB, smoothstep(0.2, 0.8, hue));
+  tint = mix(tint, rgbC, step(0.72, hue) * 0.65);
+
+  let core = (2.8 + pattern * 1.6) * pixelMask * band * centerU;
+  return tint * core;
+}
+
+fn laserScanDisplay(
+  cellU : f32,
+  heightNorm : f32,
+  seed : vec2f,
+  time : f32,
+) -> vec3f {
+  let band = smoothstep(0.08, 0.18, heightNorm) * (1.0 - smoothstep(0.92, 0.98, heightNorm));
+  let scanAxis = fract(seed.x * 3.7) > 0.45;
+  let scanPos = fract(time * (0.11 + seed.y * 0.07) + seed.x * 5.3);
+  let coord = select(heightNorm, cellU, scanAxis);
+  let line = exp(-pow((coord - scanPos) * 42.0, 2.0));
+  let trail = exp(-pow((coord - fract(scanPos + 0.08)) * 28.0, 2.0)) * 0.35;
+  let hue = fract(time * 0.22 + seed.y * 0.41);
+  let laserColor = mix(vec3f(0.2, 1.0, 1.0), vec3f(1.0, 0.2, 0.95), step(0.5, hue));
+  return laserColor * (line + trail) * band * 3.6;
+}
+
+fn spotlightDisplay(
+  cellU : f32,
+  heightNorm : f32,
+  seed : vec2f,
+  time : f32,
+) -> vec3f {
+  var glow = vec3f(0.0);
+  for (var i = 0; i < 3; i++) {
+    let fi = f32(i);
+    let spotU = fract(time * (0.05 + fi * 0.018) + seed.x * (1.7 + fi * 2.3) + fi * 0.31);
+    let spotV = fract(time * (0.04 + fi * 0.012) + seed.y * (2.1 + fi * 1.9) + fi * 0.47);
+    let du = cellU - spotU;
+    let dv = heightNorm - spotV;
+    let spot = exp(-(du * du + dv * dv) * 180.0);
+    let tint = mix(vec3f(1.0, 0.95, 0.82), vec3f(0.75, 0.88, 1.0), fi * 0.5);
+    glow += tint * spot * (2.6 - fi * 0.35);
+  }
+  return glow;
+}
+
+fn neonStripDisplay(
+  cellU : f32,
+  cellIdV : f32,
+  heightNorm : f32,
+  seed : vec2f,
+  time : f32,
+) -> vec3f {
+  let stripCount = 3.0 + floor(seed.x * 4.0);
+  let stripIdx = floor(heightNorm * stripCount + 0.2);
+  let stripCenter = (stripIdx + 0.5) / stripCount;
+  let stripLine = exp(-pow((heightNorm - stripCenter) * stripCount * 9.0, 2.0));
+  let edgeU = smoothstep(0.04, 0.12, cellU) * (1.0 - smoothstep(0.88, 0.96, cellU));
+  let pulse = 0.65 + 0.35 * sin(time * (1.4 + seed.y * 0.8) + stripIdx * 1.7);
+  let hue = fract(stripIdx * 0.21 + seed.y * 0.33 + time * 0.06);
+  let neonA = vec3f(1.0, 0.12, 0.55);
+  let neonB = vec3f(0.1, 0.95, 1.0);
+  let neonC = vec3f(1.0, 0.82, 0.18);
+  var tint = mix(neonA, neonB, smoothstep(0.15, 0.85, hue));
+  tint = mix(tint, neonC, step(0.78, hue));
+  return tint * stripLine * edgeU * pulse * 2.4;
+}
+
+fn spectacularDisplay(
+  cellU : f32,
+  cellV : f32,
+  cellIdU : f32,
+  cellIdV : f32,
+  heightNorm : f32,
+  seed : vec2f,
+  time : f32,
+) -> vec3f {
+  return ledMatrixDisplay(cellU, cellV, cellIdU, cellIdV, heightNorm, seed, time) * 0.85
+       + laserScanDisplay(cellU, heightNorm, seed + vec2f(1.3, 0.7), time) * 0.75
+       + spotlightDisplay(cellU, heightNorm, seed + vec2f(2.1, 1.9), time) * 0.55
+       + neonStripDisplay(cellU, cellIdV, heightNorm, seed + vec2f(0.4, 2.6), time) * 0.65;
+}
+
+fn facadeDisplayColor(
+  displayType : f32,
+  cellU : f32,
+  cellV : f32,
+  cellIdU : f32,
+  cellIdV : f32,
+  heightNorm : f32,
+  seed : vec2f,
+  time : f32,
+  modeWeight : f32,
+) -> vec3f {
+  if (displayType < 0.5 || modeWeight < 0.01) {
+    return vec3f(0.0);
+  }
+
+  var display = vec3f(0.0);
+  if (displayType < 1.5) {
+    display = ledMatrixDisplay(cellU, cellV, cellIdU, cellIdV, heightNorm, seed, time);
+  } else if (displayType < 2.5) {
+    display = laserScanDisplay(cellU, heightNorm, seed, time);
+  } else if (displayType < 3.5) {
+    display = spotlightDisplay(cellU, heightNorm, seed, time);
+  } else if (displayType < 4.5) {
+    display = neonStripDisplay(cellU, cellIdV, heightNorm, seed, time);
+  } else {
+    display = spectacularDisplay(cellU, cellV, cellIdU, cellIdV, heightNorm, seed, time);
+  }
+  return display * modeWeight;
+}
+
 @vertex
 fn vs(@builtin(vertex_index) vi : u32, @builtin(instance_index) ii : u32) -> VOut {
   let b = buildings[ii];
@@ -126,7 +288,9 @@ fn vs(@builtin(vertex_index) vi : u32, @builtin(instance_index) ii : u32) -> VOu
   out.instSeed = vec2f(b.colorSeed, b.windowSeed);
   out.worldPos = vec3f(worldX, worldY, worldZ);
   out.bldgHeight = b.height;
-  out.roofEquip = b.roofEquip;
+  let meta = unpackFacadeMeta(b.facadeMeta);
+  out.roofEquip = meta.x;
+  out.displayType = meta.y;
   return out;
 }
 
@@ -136,6 +300,8 @@ fn fs(in : VOut) -> @location(0) vec4f {
   let distKm = length(in.worldPos - cam);
   let night = city.params.x;
   let windowBoost = max(city.params.w, 0.5);
+  let displayFilter = city.camera_enu.w;
+  let displayWeight = displayModeWeight(in.displayType, displayFilter);
   let viewDir = normalize(cam - in.worldPos);
   let N = faceNormal(in.faceId);
   let fresnel = pow(1.0 - max(dot(normalize(viewDir), N), 0.0), 2.4);
@@ -214,6 +380,24 @@ fn fs(in : VOut) -> @location(0) vec4f {
   let recessShade = mix(0.58, 1.0, windowMask);
 
   var color = mix(facadeColor, windowColor * recessShade, windowLit * windowMask);
+
+  // Computerized facade displays — LED matrices, laser scans, spotlights, neon strips.
+  let displayGlow = facadeDisplayColor(
+    in.displayType,
+    cellU,
+    cellV,
+    cellIdU,
+    cellIdV,
+    heightNorm,
+    in.instSeed,
+    city.params.z,
+    displayWeight,
+  );
+  if (length(displayGlow) > 0.001) {
+    let displayMask = max(windowMask, 0.35);
+    color = mix(color, displayGlow, clamp(displayMask * night, 0.0, 1.0));
+    color += displayGlow * 0.18 * night;
+  }
 
   // Soft spill halo around lit panes — widens bloom footprint without raising core HDR.
   let spill = windowLit * windowMask * 0.14 * night;

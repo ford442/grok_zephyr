@@ -234,6 +234,7 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
         nightFactor,
         simTime,
         skylineEmissiveScale(rt.view.imageTuning.coreBoost),
+        rt.simulation.skylineDisplayMode,
       );
       rt.pipeline.encodeSkylinePass(encoder, rt.skyline.buildingCount);
     }

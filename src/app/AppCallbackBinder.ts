@@ -12,6 +12,7 @@ import {
   setupAnimationPatternButtons,
   setupPhysicsButtons,
 } from '@/app/PatternController.js';
+import { setupSkylineDisplayButtons } from '@/app/SkylineDisplayController.js';
 import { setRealismMode } from '@/app/RealismController.js';
 import { switchTLECatalog } from '@/app/loadSatelliteOrbitalData.js';
 import { bindSimClock } from '@/app/SimClockController.js';
@@ -144,6 +145,7 @@ export function setupCallbacks(rt: AppRuntime): void {
   setupAnimationPatternButtons(rt);
   setupPhysicsButtons(rt);
   setupGroundPresetButtons(rt);
+  setupSkylineDisplayButtons(rt);
 
   rt.ui.createSimTransport(() => rt.simulation.clock);
   rt.ui.updateSimClock(rt.simulation.clock);

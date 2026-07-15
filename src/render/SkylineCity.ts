@@ -23,6 +23,36 @@ import {
 /** Floats per Building instance (must match the 32-byte WGSL struct). */
 const BUILDING_FLOATS = 8;
 
+/**
+ * Per-building computerized display kinds packed into `facadeMeta` with roofEquip:
+ *   facadeMeta = roofEquip (0|1) + displayType * 2
+ */
+export const SKYLINE_DISPLAY = {
+  NONE: 0,
+  LED_MATRIX: 1,
+  LASER_SCAN: 2,
+  SPOTLIGHTS: 3,
+  NEON_STRIPS: 4,
+  SPECTACULAR: 5,
+} as const;
+
+export type SkylineDisplayType = (typeof SKYLINE_DISPLAY)[keyof typeof SKYLINE_DISPLAY];
+
+/** UI filter: 0 = auto mix, 1–4 = single family, 5 = all displays at full intensity. */
+export type SkylineDisplayMode = 0 | 1 | 2 | 3 | 4 | 5;
+
+export function packFacadeMeta(roofEquip: 0 | 1, displayType: SkylineDisplayType): number {
+  return roofEquip + displayType * 2;
+}
+
+export function unpackFacadeMeta(meta: number): { roofEquip: 0 | 1; displayType: SkylineDisplayType } {
+  const packed = Math.round(meta);
+  return {
+    roofEquip: (packed % 2) as 0 | 1,
+    displayType: Math.floor(packed / 2) as SkylineDisplayType,
+  };
+}
+
 /** Bytes in the CityUni uniform (mat4x4f + vec4f + vec4f + vec4f = 112 bytes). */
 const CITY_UNI_BYTES = 112;
 
@@ -120,11 +150,17 @@ export class SkylineCity {
       this.buildingData[o + 7] = 0;
     }
 
-    // Mark tallest decile for rooftop equipment silhouettes.
+    // Mark tallest decile for rooftop equipment silhouettes, then assign LED/laser displays.
     const heights: number[] = [];
+    const candidates: { index: number; prominence: number }[] = [];
     for (let i = 0; i < this.buildingCount; i++) {
-      const h = this.buildingData[i * BUILDING_FLOATS + 4];
-      if (h > 0) heights.push(h);
+      const o = i * BUILDING_FLOATS;
+      const h = this.buildingData[o + 4];
+      if (h > 0) {
+        heights.push(h);
+        const footprint = this.buildingData[o + 2] * this.buildingData[o + 3];
+        candidates.push({ index: i, prominence: h * Math.sqrt(footprint) });
+      }
     }
     heights.sort((a, b) => a - b);
     const threshold = heights[Math.floor(heights.length * 0.9)] ?? this.config.maxHeightKm;
@@ -132,8 +168,37 @@ export class SkylineCity {
       const o = i * BUILDING_FLOATS;
       const h = this.buildingData[o + 4];
       if (h >= threshold && h > 0) {
-        this.buildingData[o + 7] = 1;
+        this.buildingData[o + 7] = packFacadeMeta(1, SKYLINE_DISPLAY.NONE);
       }
+    }
+
+    candidates.sort((a, b) => b.prominence - a.prominence);
+    const displayQuota = Math.max(18, Math.floor(candidates.length * 0.28));
+    const displayRng = mulberry32(this.config.seed ^ 0x1edfacade);
+    for (let rank = 0; rank < displayQuota && rank < candidates.length; rank++) {
+      const { index } = candidates[rank]!;
+      const o = index * BUILDING_FLOATS;
+      const h = this.buildingData[o + 4];
+      const width = this.buildingData[o + 2];
+      const depth = this.buildingData[o + 3];
+      const footprint = width * depth;
+      const { roofEquip } = unpackFacadeMeta(this.buildingData[o + 7]);
+
+      let displayType: SkylineDisplayType = SKYLINE_DISPLAY.NONE;
+      if (rank < 4) {
+        displayType =
+          displayRng() < 0.55 ? SKYLINE_DISPLAY.SPECTACULAR : SKYLINE_DISPLAY.LASER_SCAN;
+      } else if (footprint > this.config.maxFootprintKm * this.config.minFootprintKm * 0.82) {
+        displayType = SKYLINE_DISPLAY.LED_MATRIX;
+      } else if (h > this.config.maxHeightKm * 0.62 && roofEquip) {
+        displayType = SKYLINE_DISPLAY.SPOTLIGHTS;
+      } else if (displayRng() < 0.42) {
+        displayType = SKYLINE_DISPLAY.NEON_STRIPS;
+      } else {
+        displayType = SKYLINE_DISPLAY.LED_MATRIX;
+      }
+
+      this.buildingData[o + 7] = packFacadeMeta(roofEquip, displayType);
     }
   }
 
@@ -227,6 +292,7 @@ export class SkylineCity {
     nightFactor: number,
     time: number,
     emissiveBoost = 1.0,
+    displayMode: SkylineDisplayMode = 0,
   ): void {
     if (!this.cityUniformBuffer) return;
 
@@ -253,7 +319,7 @@ export class SkylineCity {
     tail[8] = camEnu[0];
     tail[9] = camEnu[1];
     tail[10] = camEnu[2];
-    tail[11] = 0;
+    tail[11] = displayMode;
 
     device.queue.writeBuffer(this.cityUniformBuffer, 0, data);
   }
