@@ -52,7 +52,7 @@ async function applyCatalogResult(
   }
 
   const { tles, meta } = result;
-  let dataSourceLabel = 'Procedural Walker';
+  let dataSourceLabel: string;
   let hasTleCatalog = false;
   let realTLECount = 0;
 
