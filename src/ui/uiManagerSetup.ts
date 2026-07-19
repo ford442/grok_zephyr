@@ -519,8 +519,8 @@ export function updateTleCatalogPickerOption(
   const picker = elements.tleCatalogPicker;
   if (!picker) return;
 
-  const option = picker.querySelector(`option[value="${catalogId}"]`) ;
-  if (option) {
+  const option = picker.querySelector(`option[value="${catalogId}"]`);
+  if (option instanceof HTMLOptionElement) {
     option.textContent = formatCatalogOptionLabel(getCatalogDef(catalogId), meta);
   }
 }
