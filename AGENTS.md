@@ -47,7 +47,7 @@ grok_zephyr/
 ├── tests/
 │   └── visual/                   # Visual regression baselines (Playwright)
 └── src/
-    ├── main.ts                   # Thin bootstrap — delegates to App
+    ├── main.ts                   # Thin bootstrap — application lifecycle lives in src/app/App.ts
     ├── styles.css                # Global styles and UI theming
     ├── styles/
     │   ├── ground-observer.css   # Ground view overlay styles
@@ -310,6 +310,10 @@ The default procedural mode uses a Walker constellation pattern with multiple in
 
 ### Core Application
 
+**src/main.ts**: Thin bootstrap — mounts `OnboardingManager`, instantiates `App`, and wires
+the `beforeunload` teardown. All application lifecycle (WebGPU/WebGL init, frame loop,
+camera, UI, TLE loading, pattern/physics/animation control) lives in **`src/app/App.ts`** and
+its satellite modules (`FrameLoop.ts`, `bootWebGPU.ts`, `bootWebGL.ts`, `SimClock.ts`, etc.).
 **src/main.ts**: Thin bootstrap that creates an `OnboardingManager` and an `App`
 instance, exposes `App` (aliased as `GrokZephyrApp`) as the default export, and
 attaches it to `window.zephyr` for debugging. The main application lifecycle
@@ -614,6 +618,7 @@ If TLE fetch/parse fails (network error, CORS, invalid format), the app logs a w
 2. **J2 Perturbations**: UI exists but compute shader implementation is incomplete
 3. **GPU Timing**: Only works if the browser supports `timestamp-query` feature
 4. **Standalone Build**: Creates a single HTML file but requires manual deployment
+5. ~~**No Automated Tests**~~: The project now has **139 Vitest unit tests** (`npm run test`) covering math utilities, TLE parsing, orbital elements, WebGL renderer selection, and the visual harness, plus Playwright visual regression tests (`npm run test:visual`).
 
 ## Security Considerations
 
