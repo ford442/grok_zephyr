@@ -27,6 +27,7 @@ interface DashboardElements {
   panel: HTMLElement;
   fpsSparkline: SVGSVGElement;
   computeTime: HTMLElement;
+  cullTime: HTMLElement;
   sceneTime: HTMLElement;
   bloomTime: HTMLElement;
   postTime: HTMLElement;
@@ -105,6 +106,10 @@ export class PerformanceDashboard {
                 <span class="perf-value" id="perf-compute">--</span>
               </div>
               <div class="perf-timing-row">
+                <span class="perf-label">Cull</span>
+                <span class="perf-value" id="perf-cull">--</span>
+              </div>
+              <div class="perf-timing-row">
                 <span class="perf-label">Scene</span>
                 <span class="perf-value" id="perf-scene">--</span>
               </div>
@@ -155,6 +160,7 @@ export class PerformanceDashboard {
       panel: container.querySelector('.perf-dashboard-panel') as HTMLElement,
       fpsSparkline: container.querySelector('#perf-sparkline') as SVGSVGElement,
       computeTime: container.querySelector('#perf-compute') as HTMLElement,
+      cullTime: container.querySelector('#perf-cull') as HTMLElement,
       sceneTime: container.querySelector('#perf-scene') as HTMLElement,
       bloomTime: container.querySelector('#perf-bloom') as HTMLElement,
       postTime: container.querySelector('#perf-post') as HTMLElement,
@@ -232,6 +238,7 @@ export class PerformanceDashboard {
 
     // Update timing displays
     this.elements.computeTime.textContent = timings.compute.toFixed(2);
+    this.elements.cullTime.textContent = timings.cull.toFixed(2);
     this.elements.sceneTime.textContent = timings.scene.toFixed(2);
     this.elements.bloomTime.textContent = timings.bloom.toFixed(2);
     this.elements.postTime.textContent = timings.postProcess.toFixed(2);

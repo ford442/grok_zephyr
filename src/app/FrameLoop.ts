@@ -5,6 +5,7 @@ import { skylineEmissiveScale } from '@/core/ViewTuningProfile.js';
 import { v3dot, v3norm, smoothstep } from '@/utils/math.js';
 import { getBackgroundModeIndex } from '@/background.js';
 import { estimateVisibleSatellites, recordPassTimings } from '@/app/FrameProfilerEstimates.js';
+import { resolveCullBenchmarkMode } from '@/core/CullingOptions.js';
 import { getDrawableSize } from '@/app/MobilePresentation.js';
 import {
   applyGroundPresetEffects,
@@ -24,6 +25,9 @@ export class FrameLoopState {
   animationId = 0;
   isRunning = false;
   lastTime = 0;
+  benchCullMode = resolveCullBenchmarkMode();
+  benchCullLastSwitch = 0;
+  benchCullViewIndex = 0;
 }
 
 export function recordTrailSamplesForCamera(
@@ -173,9 +177,22 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
     );
 
     const encoder = rt.context.createCommandEncoder('frame');
-    rt.pipeline.encodeComputePass(encoder);
-    rt.pipeline.encodeBeamComputePass(encoder);
 
+    rt.profiler.beginGPUTimestamp(encoder, 'orbital');
+    rt.pipeline.encodeComputePass(encoder);
+    rt.profiler.endGPUTimestamp(encoder, 'orbital');
+
+    rt.profiler.beginGPUTimestamp(encoder, 'beam');
+    rt.pipeline.encodeBeamComputePass(encoder);
+    rt.profiler.endGPUTimestamp(encoder, 'beam');
+
+    if (rt.pipeline.isGpuCullingEnabled()) {
+      rt.profiler.beginGPUTimestamp(encoder, 'cull');
+      rt.pipeline.encodeCullPass(encoder);
+      rt.profiler.endGPUTimestamp(encoder, 'cull');
+    }
+
+    rt.profiler.beginGPUTimestamp(encoder, 'scene');
     if (rt.camera.getViewMode() === 'ground') {
       const hz = rt.groundObserver.getHorizonSettings();
       rt.pipeline.setGroundViewParams(hz.oceanBias, hz.urbanGlow, hz.overlayFade, hz.hazeBoost);
@@ -239,6 +256,9 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
       rt.pipeline.encodeSkylinePass(encoder, rt.skyline.buildingCount);
     }
 
+    rt.profiler.endGPUTimestamp(encoder, 'scene');
+
+    rt.profiler.beginGPUTimestamp(encoder, 'post');
     const sceneSourceView = rt.pipeline.encodeDepthOfFieldPasses(encoder);
     const motionBlurSourceView = rt.pipeline.encodeMotionBlurPass(encoder, sceneSourceView);
     rt.pipeline.encodeAutoExposurePasses(encoder, motionBlurSourceView, deltaTime);
@@ -273,12 +293,42 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
       );
     }
 
+    rt.profiler.endGPUTimestamp(encoder, 'post');
+    rt.profiler.resolveTimestamps(encoder);
+
     rt.context.submit([encoder.finish()]);
-    recordPassTimings(rt);
+
+    if (!rt.profiler.hasGpuTimings()) {
+      recordPassTimings(rt);
+    }
+    void rt.profiler.readbackTimestamps();
+
+    if (rt.pipeline.isGpuCullingEnabled()) {
+      void rt.pipeline.consumeVisibleSatelliteCount().then((count) => {
+        if (count !== null) {
+          rt.lastVisibleCount = count;
+          rt.profiler.setVisibleSatellites(count);
+        }
+      });
+    }
+
+    if (rt.loop.benchCullMode && time - rt.loop.benchCullLastSwitch >= 5) {
+      rt.loop.benchCullLastSwitch = time;
+      rt.loop.benchCullViewIndex = (rt.loop.benchCullViewIndex + 1) % 6;
+      rt.camera.setViewMode(rt.loop.benchCullViewIndex);
+      const timings = rt.profiler.getDetailedTimings();
+      console.log(
+        `[bench=cull] mode=${rt.loop.benchCullViewIndex} cull=${timings.cull.toFixed(2)}ms scene=${timings.scene.toFixed(2)}ms`,
+      );
+    }
 
     const stats = rt.profiler.endFrame(timestamp);
     if (stats) {
-      stats.visibleSatellites = estimateVisibleSatellites(rt);
+      if (rt.pipeline.isGpuCullingEnabled() && rt.lastVisibleCount > 0) {
+        stats.visibleSatellites = rt.lastVisibleCount;
+      } else {
+        stats.visibleSatellites = estimateVisibleSatellites(rt);
+      }
       rt.ui.updateStats(stats);
       rt.ui.updateSimClock(rt.simulation.clock);
     }

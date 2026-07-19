@@ -396,11 +396,11 @@ fn x_logo_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, start_time: f32) -> P
 }
 
 @vertex
-fn vs(
+fn satellite_vs(
   @builtin(vertex_index)   vi : u32,
-  @builtin(instance_index) ii : u32,
+  satIdx : u32,
 ) -> VOut {
-  let pd = sat_pos[ii];
+  let pd = sat_pos[satIdx];
   let wp = pd.xyz;
   let cdat = pd.w;
   let cam = uni.camera_pos.xyz;
@@ -415,8 +415,8 @@ fn vs(
   let right = uni.camera_right.xyz;
   let up = uni.camera_up.xyz;
 
-  // Shell detection from instance index (~1M satellites / 3 shells = 349525 per shell)
-  let shellIdx = ii / 349525u;
+  // Shell detection from satellite index (~1M satellites / 3 shells = 349525 per shell)
+  let shellIdx = satIdx / 349525u;
   let shellSize = shellSizeScale(shellIdx);
 
   let groundScale = select(1.0, 0.72, ((uni.view_mode >> 16u) & 1u) == 1u);
@@ -469,7 +469,7 @@ fn vs(
     shellTint *= mix(vec3f(1.0), vec3f(1.14, 1.06, 0.92), zoomOut);
   }
   var col = baseColor * shellTint;
-  let isHighlighted = select(0.0, 1.0, ii == params.selected_satellite);
+  let isHighlighted = select(0.0, 1.0, satIdx == params.selected_satellite);
   if (isHighlighted > 0.0) {
     col = mix(col, vec3f(1.0, 0.92, 0.6), 0.75);
   }
@@ -482,7 +482,7 @@ fn vs(
   let selectionBoost = 1.0 + isHighlighted * 1.5;
 
   // Solar panel glint simulation
-  let glintHash = hashU32(ii);
+  let glintHash = hashU32(satIdx);
   let glintPhase = fract(uni.time * 0.1 + glintHash * 10.0);
   let glintAlignment = 1.0 - abs(glintPhase - 0.5) * 2.0;
   let glint = pow(glintAlignment, 8.0) * 0.8;
@@ -496,16 +496,16 @@ fn vs(
     var sample: PatternSample;
     switch params.pattern_mode {
       case PATTERN_X_LOGO: {
-        sample = x_logo_pattern(ii, wp, uni.time, params.animation_time);
+        sample = x_logo_pattern(satIdx, wp, uni.time, params.animation_time);
       }
       case PATTERN_SMILE: {
-        sample = smile_pattern(ii, wp, uni.time, earth_dir);
+        sample = smile_pattern(satIdx, wp, uni.time, earth_dir);
       }
       case PATTERN_DIGITAL_RAIN: {
-        sample = digital_rain_pattern(ii, wp, uni.time);
+        sample = digital_rain_pattern(satIdx, wp, uni.time);
       }
       case PATTERN_HEARTBEAT: {
-        sample = heartbeat_pattern(ii, wp, uni.time);
+        sample = heartbeat_pattern(satIdx, wp, uni.time);
       }
       default: {
         sample = PatternSample(col, 1.0, PATTERN_TIER_BG, 0.0);
@@ -527,6 +527,14 @@ fn vs(
   out.highlight = isHighlighted;
   out.world_dist = dist;
   return out;
+}
+
+@vertex
+fn vs(
+  @builtin(vertex_index)   vi : u32,
+  @builtin(instance_index) ii : u32,
+) -> VOut {
+  return satellite_vs(vi, ii);
 }
 
 // ── Distance LOD kernels (near / mid / far) ───────────────────────────────────
@@ -654,3 +662,25 @@ fn fs(in: VOut) -> @location(0) vec4f {
   return vec4f(final_color, alpha);
 }
 `;
+
+export const SATELLITE_CULLED_SHADER = SATELLITE_SHADER.replace(
+  'struct VOut {',
+  `@group(0) @binding(6) var<storage, read> visible_indices : array<u32>;
+
+struct VOut {`,
+).replace(
+  `@vertex
+fn vs(
+  @builtin(vertex_index)   vi : u32,
+  @builtin(instance_index) ii : u32,
+) -> VOut {
+  return satellite_vs(vi, ii);
+}`,
+  `@vertex
+fn vs_culled(
+  @builtin(vertex_index)   vi : u32,
+  @builtin(instance_index) ii : u32,
+) -> VOut {
+  return satellite_vs(vi, visible_indices[ii]);
+}`,
+);

@@ -131,15 +131,15 @@ fn groundProjectionTint(color: vec3f, viewFlags: u32, atmScatter: f32) -> vec3f 
 }
 
 @vertex
-fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) instance: u32) -> VOut {
+fn beam_vs(beamIdx: u32, vi: u32) -> VOut {
   var out: VOut;
   let quad = vi & 3u;
   let step = quad >> 1u;
   let sideSign = select(-1.0, 1.0, (quad & 1u) == 1u);
   let t = f32(step);
 
-  let start = beams[instance * 2u];
-  let end = beams[instance * 2u + 1u];
+  let start = beams[beamIdx * 2u];
+  let end = beams[beamIdx * 2u + 1u];
   let p0 = start.xyz;
   let p1 = end.xyz;
   let beamMode = u32(end.w);
@@ -153,7 +153,7 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) instance: u32) ->
   let distance = max(length(uni.camera_pos.xyz - center), 1.0);
   var thickness = (0.0008 + 0.0014 * start.w) * distance;
   if (beamMode == 0u) {
-    thickness *= 1.0 + 0.7 * fract(sin(f32(instance) * 12.9898) * 43758.5453);
+    thickness *= 1.0 + 0.7 * fract(sin(f32(beamIdx) * 12.9898) * 43758.5453);
   } else if (beamMode == 2u) {
     thickness *= 0.82;
   }
@@ -166,6 +166,11 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) instance: u32) ->
   let surfaceUp = normalize(uni.camera_pos.xyz);
   out.atmScatter = abs(dot(beamDir, surfaceUp));
   return out;
+}
+
+@vertex
+fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) instance: u32) -> VOut {
+  return beam_vs(instance, vi);
 }
 
 @fragment
@@ -192,3 +197,18 @@ fn fs(in: VOut) -> @location(0) vec4f {
   return vec4f(color * alpha, alpha * alphaScale);
 }
 `;
+
+export const BEAM_CULLED_SHADER = BEAM_SHADER.replace(
+  '@group(0) @binding(1) var<storage, read> beams : array<vec4f>;',
+  `@group(0) @binding(1) var<storage, read> beams : array<vec4f>;
+@group(0) @binding(2) var<storage, read> visible_beam_indices : array<u32>;`,
+).replace(
+  `@vertex
+fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) instance: u32) -> VOut {
+  return beam_vs(instance, vi);
+}`,
+  `@vertex
+fn vs_culled(@builtin(vertex_index) vi: u32, @builtin(instance_index) instance: u32) -> VOut {
+  return beam_vs(visible_beam_indices[instance], vi);
+}`,
+);
