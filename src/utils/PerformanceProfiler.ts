@@ -33,10 +33,13 @@ interface GPUTimingQuery {
 /** Detailed pass timing information */
 export interface DetailedTimings {
   compute: number;
+  cull: number;
   scene: number;
   bloom: number;
   postProcess: number;
 }
+
+export type GPUTimestampPass = 'orbital' | 'beam' | 'cull' | 'scene' | 'post';
 
 /** Options for configuring the PerformanceProfiler */
 export interface PerformanceProfilerOptions {
@@ -77,6 +80,7 @@ export class PerformanceProfiler {
   private computeTimeHistory: MetricHistory;
   private renderTimeHistory: MetricHistory;
   private sceneTimeHistory: MetricHistory;
+  private cullTimeHistory: MetricHistory;
   private bloomTimeHistory: MetricHistory;
   private postProcessTimeHistory: MetricHistory;
 
@@ -99,6 +103,7 @@ export class PerformanceProfiler {
     this.computeTimeHistory = this.createHistory(this.options.historySize);
     this.renderTimeHistory = this.createHistory(this.options.historySize);
     this.sceneTimeHistory = this.createHistory(this.options.historySize);
+    this.cullTimeHistory = this.createHistory(this.options.historySize);
     this.bloomTimeHistory = this.createHistory(this.options.historySize);
     this.postProcessTimeHistory = this.createHistory(this.options.historySize);
   }
@@ -136,12 +141,11 @@ export class PerformanceProfiler {
     // Create query set for 2 timestamps per frame (start/end)
     const querySet = this.device.createQuerySet({
       type: 'timestamp',
-      count: 4, // 2 for compute, 2 for render
+      count: 10,
     });
 
-    // Create resolve buffer
     const resolveBuffer = this.device.createBuffer({
-      size: 4 * 8, // 4 timestamps * 8 bytes each
+      size: 10 * 8,
       usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
     });
 
@@ -224,6 +228,10 @@ export class PerformanceProfiler {
     this.addToHistory(this.renderTimeHistory, timeMs);
   }
 
+  recordCullTime(timeMs: number): void {
+    this.addToHistory(this.cullTimeHistory, timeMs);
+  }
+
   /**
    * Record scene pass timing
    */
@@ -286,6 +294,7 @@ export class PerformanceProfiler {
   getDetailedTimings(): DetailedTimings {
     return {
       compute: this.getAverage(this.computeTimeHistory),
+      cull: this.getAverage(this.cullTimeHistory),
       scene: this.getAverage(this.sceneTimeHistory),
       bloom: this.getAverage(this.bloomTimeHistory),
       postProcess: this.getAverage(this.postProcessTimeHistory),
@@ -306,44 +315,59 @@ export class PerformanceProfiler {
     return this.supportsGPUTiming;
   }
 
+  private passTimestampIndex(pass: GPUTimestampPass): number {
+    switch (pass) {
+      case 'orbital':
+        return 0;
+      case 'beam':
+        return 2;
+      case 'cull':
+        return 4;
+      case 'scene':
+        return 6;
+      case 'post':
+        return 8;
+    }
+  }
+
+  beginGPUTimestamp(encoder: GPUCommandEncoder, pass: GPUTimestampPass): void {
+    if (!this.timingQuery || !this.supportsGPUTiming) return;
+    const index = this.passTimestampIndex(pass);
+    (
+      encoder as unknown as { writeTimestamp(set: GPUQuerySet, index: number): void }
+    ).writeTimestamp(this.timingQuery.querySet, index);
+  }
+
+  endGPUTimestamp(encoder: GPUCommandEncoder, pass: GPUTimestampPass): void {
+    if (!this.timingQuery || !this.supportsGPUTiming) return;
+    const index = this.passTimestampIndex(pass) + 1;
+    (
+      encoder as unknown as { writeTimestamp(set: GPUQuerySet, index: number): void }
+    ).writeTimestamp(this.timingQuery.querySet, index);
+  }
+
   /**
-   * Begin GPU timing for a pass
+   * @deprecated Use beginGPUTimestamp/endGPUTimestamp with a pass id.
    */
   beginGPUPass(encoder: GPUCommandEncoder, passType: 'compute' | 'render'): void {
-    if (!this.timingQuery || !this.supportsGPUTiming) return;
-
-    const index = passType === 'compute' ? 0 : 2;
-    // writeTimestamp is available when timestamp-query feature is enabled
-    (
-      encoder as unknown as { writeTimestamp(set: GPUQuerySet, index: number): void }
-    ).writeTimestamp(this.timingQuery.querySet, index);
+    this.beginGPUTimestamp(encoder, passType === 'compute' ? 'orbital' : 'scene');
   }
 
   /**
-   * End GPU timing for a pass
+   * @deprecated Use beginGPUTimestamp/endGPUTimestamp with a pass id.
    */
   endGPUPass(encoder: GPUCommandEncoder, passType: 'compute' | 'render'): void {
-    if (!this.timingQuery || !this.supportsGPUTiming) return;
-
-    const index = passType === 'compute' ? 1 : 3;
-    // writeTimestamp is available when timestamp-query feature is enabled
-    (
-      encoder as unknown as { writeTimestamp(set: GPUQuerySet, index: number): void }
-    ).writeTimestamp(this.timingQuery.querySet, index);
+    this.endGPUTimestamp(encoder, passType === 'compute' ? 'orbital' : 'scene');
   }
 
-  /**
-   * Resolve GPU timestamps
-   */
   resolveTimestamps(encoder: GPUCommandEncoder): void {
     if (!this.timingQuery || !this.supportsGPUTiming) return;
 
-    encoder.resolveQuerySet(this.timingQuery.querySet, 0, 4, this.timingQuery.resolveBuffer, 0);
+    encoder.resolveQuerySet(this.timingQuery.querySet, 0, 10, this.timingQuery.resolveBuffer, 0);
 
-    // Create result buffer if needed
     if (!this.timingQuery.resultBuffer) {
       this.timingQuery.resultBuffer = this.device!.createBuffer({
-        size: 4 * 8,
+        size: 10 * 8,
         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
       });
     }
@@ -353,15 +377,12 @@ export class PerformanceProfiler {
       0,
       this.timingQuery.resultBuffer,
       0,
-      4 * 8,
+      10 * 8,
     );
 
     this.pendingQueries++;
   }
 
-  /**
-   * Read back GPU timing results
-   */
   async readbackTimestamps(): Promise<void> {
     if (!this.timingQuery?.resultBuffer || this.pendingQueries === 0) return;
 
@@ -370,20 +391,32 @@ export class PerformanceProfiler {
     await buffer.mapAsync(GPUMapMode.READ);
     const data = new BigInt64Array(buffer.getMappedRange());
 
-    // Convert nanoseconds to milliseconds
-    const computeTime = Number(data[1] - data[0]) / 1_000_000;
-    const renderTime = Number(data[3] - data[2]) / 1_000_000;
+    const toMs = (start: number, end: number): number =>
+      Number(data[end] - data[start]) / 1_000_000;
+
+    const orbital = toMs(0, 1);
+    const beam = toMs(2, 3);
+    const cull = toMs(4, 5);
+    const scene = toMs(6, 7);
+    const post = toMs(8, 9);
 
     buffer.unmap();
 
-    if (computeTime > 0 && computeTime < 1000) {
-      this.addToHistory(this.computeTimeHistory, computeTime);
-    }
-    if (renderTime > 0 && renderTime < 1000) {
-      this.addToHistory(this.renderTimeHistory, renderTime);
-    }
+    const record = (history: MetricHistory, value: number): void => {
+      if (value > 0 && value < 1000) this.addToHistory(history, value);
+    };
+
+    record(this.computeTimeHistory, orbital + beam);
+    record(this.cullTimeHistory, cull);
+    record(this.sceneTimeHistory, scene);
+    record(this.postProcessTimeHistory, post);
+    record(this.renderTimeHistory, scene + post);
 
     this.pendingQueries--;
+  }
+
+  hasGpuTimings(): boolean {
+    return this.supportsGPUTiming;
   }
 
   /**
@@ -446,6 +479,7 @@ export class PerformanceProfiler {
     this.computeTimeHistory = this.createHistory(this.options.historySize);
     this.renderTimeHistory = this.createHistory(this.options.historySize);
     this.sceneTimeHistory = this.createHistory(this.options.historySize);
+    this.cullTimeHistory = this.createHistory(this.options.historySize);
     this.bloomTimeHistory = this.createHistory(this.options.historySize);
     this.postProcessTimeHistory = this.createHistory(this.options.historySize);
     this.visibleSatellites = 0;

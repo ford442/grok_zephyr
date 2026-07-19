@@ -73,6 +73,41 @@ export function createPipelines(context: WebGPUContext): Pipelines {
     ],
   });
 
+  const satelliteCulledLayout = device.createBindGroupLayout({
+    entries: [
+      {
+        binding: 0,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+        buffer: { type: 'uniform' },
+      },
+      { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+      { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+      {
+        binding: 3,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+        buffer: { type: 'uniform' },
+      },
+      { binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+      { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+      { binding: 6, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+    ],
+  });
+
+  const satelliteCullLayout = device.createBindGroupLayout({
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+      { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+      { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+    ],
+  });
+
   // Bloom layout (Kawase downsample + upsample + legacy blur)
   const bloomLayout = device.createBindGroupLayout({
     entries: [
@@ -230,6 +265,27 @@ export function createPipelines(context: WebGPUContext): Pipelines {
     ],
   });
 
+  const beamCulledRenderLayout = device.createPipelineLayout({
+    bindGroupLayouts: [
+      device.createBindGroupLayout({
+        entries: [
+          {
+            binding: 0,
+            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+            buffer: { type: 'uniform' },
+          },
+          { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+          { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+        ],
+      }),
+    ],
+  });
+
+  const satelliteCullModule = context.createShaderModule(
+    SHADERS.compute.satelliteCull,
+    'satellite-cull',
+  );
+
   // Create pipelines
   return {
     compute: device.createComputePipeline({
@@ -246,6 +302,21 @@ export function createPipelines(context: WebGPUContext): Pipelines {
         module: context.createShaderModule(SHADERS.compute.beam, 'beam-compute'),
         entryPoint: 'main',
       },
+    }),
+
+    satelliteCullSats: device.createComputePipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [satelliteCullLayout] }),
+      compute: { module: satelliteCullModule, entryPoint: 'cull_satellites' },
+    }),
+
+    satelliteCullBeams: device.createComputePipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [satelliteCullLayout] }),
+      compute: { module: satelliteCullModule, entryPoint: 'cull_beams' },
+    }),
+
+    satelliteCullFinalize: device.createComputePipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [satelliteCullLayout] }),
+      compute: { module: satelliteCullModule, entryPoint: 'finalize_indirect' },
     }),
     autoExposureHistogram: device.createComputePipeline({
       layout: device.createPipelineLayout({ bindGroupLayouts: [autoExposureHistogramLayout] }),
@@ -346,6 +417,25 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
     }),
 
+    satellitesCulled: device.createRenderPipeline({
+      layout: device.createPipelineLayout({ bindGroupLayouts: [satelliteCulledLayout] }),
+      vertex: {
+        module: context.createShaderModule(SHADERS.render.satellitesCulled, 'satellites-culled'),
+        entryPoint: 'vs_culled',
+      },
+      fragment: {
+        module: context.createShaderModule(SHADERS.render.satellitesCulled, 'satellites-culled'),
+        entryPoint: 'fs',
+        targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
+      },
+      primitive: { topology: 'triangle-list' },
+      depthStencil: {
+        format: RENDER.DEPTH_FORMAT,
+        depthWriteEnabled: false,
+        depthCompare: 'less',
+      },
+    }),
+
     beam: device.createRenderPipeline({
       layout: beamRenderLayout,
       vertex: {
@@ -354,6 +444,27 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       fragment: {
         module: context.createShaderModule(SHADERS.render.beam, 'beam-render'),
+        entryPoint: 'fs',
+        targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
+      },
+      primitive: {
+        topology: 'triangle-strip',
+      },
+      depthStencil: {
+        format: RENDER.DEPTH_FORMAT,
+        depthWriteEnabled: false,
+        depthCompare: 'less',
+      },
+    }),
+
+    beamCulled: device.createRenderPipeline({
+      layout: beamCulledRenderLayout,
+      vertex: {
+        module: context.createShaderModule(SHADERS.render.beamCulled, 'beam-culled'),
+        entryPoint: 'vs_culled',
+      },
+      fragment: {
+        module: context.createShaderModule(SHADERS.render.beamCulled, 'beam-culled'),
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
       },

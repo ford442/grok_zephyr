@@ -6,6 +6,8 @@ import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
 import type { PipelineBindGroups, Pipelines, RenderTargets } from './types.js';
 
+import type { SatelliteCullBuffers } from '../SatelliteCullBuffers.js';
+
 export interface BindGroupResources {
   context: WebGPUContext;
   buffers: SatelliteBufferSet;
@@ -21,6 +23,7 @@ export interface BindGroupResources {
   autoExposureStateBuffer: GPUBuffer;
   motionBlurUniformBuffer: GPUBuffer;
   satelliteVisualUniformBuffer: GPUBuffer;
+  cullBuffers: SatelliteCullBuffers;
 }
 
 export function createStaticBindGroups(resources: BindGroupResources): PipelineBindGroups {
@@ -39,6 +42,7 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
     autoExposureStateBuffer,
     motionBlurUniformBuffer,
     satelliteVisualUniformBuffer,
+    cullBuffers,
   } = resources;
 
   const device = context.getDevice();
@@ -67,6 +71,22 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
         { binding: 1, resource: { buffer: posBuffer } },
         { binding: 2, resource: { buffer: buffers.beams } },
         { binding: 3, resource: { buffer: buffers.beamParams } },
+      ],
+    }),
+
+    satelliteCull: device.createBindGroup({
+      layout: pipelines.satelliteCullSats.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: buffers.uniforms } },
+        { binding: 1, resource: { buffer: posBuffer } },
+        { binding: 2, resource: { buffer: satelliteVisualUniformBuffer } },
+        { binding: 3, resource: { buffer: buffers.patternParams } },
+        { binding: 4, resource: { buffer: cullBuffers.counters } },
+        { binding: 5, resource: { buffer: buffers.beams } },
+        { binding: 6, resource: { buffer: cullBuffers.visibleSatIndices } },
+        { binding: 7, resource: { buffer: cullBuffers.visibleBeamIndices } },
+        { binding: 8, resource: { buffer: cullBuffers.satDrawIndirect } },
+        { binding: 9, resource: { buffer: cullBuffers.beamDrawIndirect } },
       ],
     }),
 
@@ -112,11 +132,33 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
       ],
     }),
 
+    satellitesCulled: device.createBindGroup({
+      layout: pipelines.satellitesCulled.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: buffers.uniforms } },
+        { binding: 1, resource: { buffer: posBuffer } },
+        { binding: 2, resource: { buffer: buffers.colors } },
+        { binding: 3, resource: { buffer: buffers.patternParams } },
+        { binding: 4, resource: { buffer: motionBlurUniformBuffer } },
+        { binding: 5, resource: { buffer: satelliteVisualUniformBuffer } },
+        { binding: 6, resource: { buffer: cullBuffers.visibleSatIndices } },
+      ],
+    }),
+
     beam: device.createBindGroup({
       layout: pipelines.beam.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: buffers.uniforms } },
         { binding: 1, resource: { buffer: buffers.beams } },
+      ],
+    }),
+
+    beamCulled: device.createBindGroup({
+      layout: pipelines.beamCulled.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: buffers.uniforms } },
+        { binding: 1, resource: { buffer: buffers.beams } },
+        { binding: 2, resource: { buffer: cullBuffers.visibleBeamIndices } },
       ],
     }),
 

@@ -18,7 +18,8 @@
     "test:visual": "playwright test",
     "test:visual:update": "UPDATE_BASELINES=1 playwright test",
     "build:wasm": "bash native/build.sh",
-    "deploy": "echo 'Deployment is automatic: push to main (after Test passes) or run the Deploy workflow manually in GitHub Actions.'"
+    "deploy": "python deploy.py",
+    "deploy:pages": "echo 'GitHub Pages: push to main (after Test passes) or run the Deploy workflow in Actions.'"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

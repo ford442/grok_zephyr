@@ -16,6 +16,7 @@ import { setupImageTuning } from '@/app/ViewModeCoordinator.js';
 import { setPatternMode, setAnimationPattern, setPhysicsMode } from '@/app/PatternController.js';
 import { loadSatelliteOrbitalData } from '@/app/loadSatelliteOrbitalData.js';
 import { applyVisualHarnessParams } from '@/app/UrlState.js';
+import { resolveGpuCullingEnabled } from '@/core/CullingOptions.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 
 export type GpuResourceBootMode = 'boot' | 'recovery';
@@ -90,6 +91,7 @@ export async function createGpuResources(
 
   await reporter.withScope(device, 'render-pipeline', () => {
     rt.pipeline!.initialize(width, height);
+    rt.pipeline!.setGpuCullingEnabled(resolveGpuCullingEnabled());
   });
   rt.buffers.updateBloomUniforms(width, height);
 
@@ -180,6 +182,7 @@ export async function createGpuResources(
   }
 
   // Recovery: restore render settings from preserved simulation state.
+  rt.pipeline.setGpuCullingEnabled(resolveGpuCullingEnabled());
   applyQualityPreset(rt, rt.simulation.currentQualityLevel);
   applyExposureSettings(rt);
   setupImageTuning(rt);
