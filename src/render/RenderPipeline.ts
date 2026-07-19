@@ -30,6 +30,7 @@ import {
   encodeCompositePass,
   encodeComputePass,
   encodeConstellationGuidesPass,
+  encodeCullPass,
   encodeDepthOfFieldPasses,
   encodeGroundScenePass,
   encodeMoonOverlayPass,
@@ -37,8 +38,11 @@ import {
   encodeScenePass,
   encodeSkylinePass,
   encodeTrailPass,
+  invalidateGroundSceneRenderBundle,
+  invalidateSceneRenderBundle,
   type FrameContext,
 } from './passes/index.js';
+import { SatelliteCullBuffers } from './SatelliteCullBuffers.js';
 import { SatellitePicker } from './SatellitePicker.js';
 
 export type {
@@ -69,6 +73,9 @@ export class RenderPipeline {
   private smileV2Pipeline: SmileV2Pipeline | null = null;
   private atmosphereLUT: AtmosphereLUTResources | null = null;
   private readonly satellitePicker: SatellitePicker;
+  private readonly cullBuffers: SatelliteCullBuffers;
+  private gpuCullingEnabled = true;
+  private visibleCountReadbackPending = false;
 
   private width = 0;
   private height = 0;
@@ -82,6 +89,7 @@ export class RenderPipeline {
     this.uniforms = new RenderUniformBuffers(context);
     this.renderTargetManager = new RenderTargetManager(context);
     this.satellitePicker = new SatellitePicker(context);
+    this.cullBuffers = new SatelliteCullBuffers(context);
   }
 
   initialize(width: number, height: number): void {
@@ -101,7 +109,30 @@ export class RenderPipeline {
     this.smileV2Pipeline.initialize();
     this.satellitePicker.initialize();
 
+    console.log(`[RenderPipeline] GPU culling: ${this.gpuCullingEnabled ? 'enabled' : 'disabled'}`);
     console.log('[RenderPipeline] Initialization complete');
+  }
+
+  setGpuCullingEnabled(enabled: boolean): void {
+    if (this.gpuCullingEnabled === enabled) return;
+    this.gpuCullingEnabled = enabled;
+    invalidateSceneRenderBundle();
+    invalidateGroundSceneRenderBundle();
+    console.log(`[RenderPipeline] GPU culling: ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  isGpuCullingEnabled(): boolean {
+    return this.gpuCullingEnabled;
+  }
+
+  getCullBuffers(): SatelliteCullBuffers {
+    return this.cullBuffers;
+  }
+
+  async consumeVisibleSatelliteCount(): Promise<number | null> {
+    if (!this.visibleCountReadbackPending) return null;
+    this.visibleCountReadbackPending = false;
+    return this.cullBuffers.readVisibleSatelliteCount();
   }
 
   async pickSatelliteAt(
@@ -151,6 +182,7 @@ export class RenderPipeline {
       autoExposureStateBuffer: this.uniforms.autoExposureStateBuffer,
       motionBlurUniformBuffer: this.uniforms.motionBlurUniformBuffer,
       satelliteVisualUniformBuffer: this.uniforms.satelliteVisualUniformBuffer,
+      cullBuffers: this.cullBuffers,
     });
   }
 
@@ -213,6 +245,14 @@ export class RenderPipeline {
     this.uniforms.createBuffers(width, height);
     this.renderTargets = this.renderTargetManager.initialize(width, height);
     this.createBindGroups();
+    invalidateSceneRenderBundle();
+    invalidateGroundSceneRenderBundle();
+  }
+
+  encodeCullPass(encoder: GPUCommandEncoder): void {
+    if (!this.gpuCullingEnabled) return;
+    this.withFrameContext((ctx) => encodeCullPass(encoder, ctx, this.cullBuffers));
+    this.visibleCountReadbackPending = true;
   }
 
   encodeComputePass(encoder: GPUCommandEncoder): void {
@@ -240,7 +280,16 @@ export class RenderPipeline {
     moonView = false,
   ): void {
     this.withFrameContext((ctx) =>
-      encodeScenePass(encoder, ctx, earthVertexBuffer, earthIndexBuffer, earthIndexCount, moonView),
+      encodeScenePass(
+        encoder,
+        ctx,
+        earthVertexBuffer,
+        earthIndexBuffer,
+        earthIndexCount,
+        moonView,
+        this.gpuCullingEnabled,
+        this.gpuCullingEnabled ? this.cullBuffers : null,
+      ),
     );
   }
 
@@ -286,7 +335,14 @@ export class RenderPipeline {
   }
 
   encodeGroundScenePass(encoder: GPUCommandEncoder): void {
-    this.withFrameContext((ctx) => encodeGroundScenePass(encoder, ctx));
+    this.withFrameContext((ctx) =>
+      encodeGroundScenePass(
+        encoder,
+        ctx,
+        this.gpuCullingEnabled,
+        this.gpuCullingEnabled ? this.cullBuffers : null,
+      ),
+    );
   }
 
   setSkylineResources(cityUniformBuffer: GPUBuffer, instanceBuffer: GPUBuffer): void {
@@ -474,6 +530,7 @@ export class RenderPipeline {
       this.smileV2Pipeline = null;
     }
     this.satellitePicker.destroy();
+    this.cullBuffers.destroy();
   }
 
   setBloomConfig(config: Partial<BloomConfig>): void {

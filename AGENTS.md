@@ -44,28 +44,61 @@ grok_zephyr/
 │   └── tle/
 │       └── starlink_sample.txt   # Sample Starlink TLE data
 ├── dist/                         # Build output (generated)
+├── tests/
+│   └── visual/                   # Visual regression baselines (Playwright)
 └── src/
     ├── main.ts                   # Thin bootstrap — application lifecycle lives in src/app/App.ts
     ├── styles.css                # Global styles and UI theming
     ├── styles/
-    │   └── ground-observer.css   # Ground view overlay styles
+    │   ├── ground-observer.css   # Ground view overlay styles
+    │   └── onboarding.css       # First-run onboarding styles
     ├── types/
     │   ├── index.ts              # Core TypeScript interfaces and types
     │   ├── constants.ts          # Simulation and rendering constants
     │   ├── shaders.ts            # Shader-related types
     │   └── animation.ts          # Animation, LOD, TAA, post-process types
+    ├── app/
+    │   ├── App.ts                # Application orchestrator (GrokZephyrApp)
+    │   ├── AppRuntime.ts         # Runtime interface shared across modules
+    │   ├── AppCallbackBinder.ts  # UI/event callback binding
+    │   ├── FrameLoop.ts          # Render loop start/stop and frame state
+    │   ├── bootWebGPU.ts         # WebGPU backend initialization
+    │   ├── bootWebGL.ts          # WebGL backend initialization
+    │   ├── createGpuResources.ts # GPU buffer/pipeline creation
+    │   ├── destroyGpuResources.ts# GPU resource teardown
+    │   ├── SimClock.ts           # Simulation clock with rate scaling
+    │   ├── SimulationState.ts    # Central simulation state
+    │   ├── ViewModeCoordinator.ts# View mode and tuning coordination
+    │   ├── PatternController.ts  # Beam/animation/physics pattern routing
+    │   ├── QualityController.ts  # Quality preset application
+    │   ├── RealismController.ts  # Realism mode toggle
+    │   ├── UniformWriter.ts      # Uniform buffer write orchestration
+    │   ├── UrlState.ts           # URL query parameter state
+    │   ├── SatelliteSelection.ts # Screen-space satellite picking
+    │   ├── GroundObserverUI.ts   # Ground observer overlay updates
+    │   ├── MobilePresentation.ts # Mobile viewport/orientation handling
+    │   └── SkylineDisplayController.ts # Skyline city display control
     ├── core/
     │   ├── WebGPUContext.ts      # WebGPU adapter/device initialization
+    │   ├── WebGPUErrorReporter.ts# Structured GPU error reporting
     │   ├── SatelliteGPUBuffer.ts # GPU buffer management for 1M satellites
-    │   ├── SatelliteColorBuffer.ts # Per-satellite color buffer management
-    │   └── BlinkTimingModel.ts   # Coherent ground-image blink timing
+    │   ├── OrbitalElements.ts    # GPU-agnostic orbital element data
+    │   ├── QualityPresets.ts     # Quality level definitions
+    │   ├── ExposureRuntime.ts    # HDR exposure settings persistence
+    │   ├── HdrPresentation.ts    # HDR presentation utilities
+    │   ├── EarthGeometry.ts      # Earth sphere geometry generation
+    │   ├── AnimationTuning.ts    # Animation tuning profiles
+    │   ├── BeamPatternProfile.ts # Beam pattern profiles
+    │   ├── ImageTuning.ts        # Image tuning constants
+    │   ├── ViewTuningProfile.ts  # View-specific tuning
+    │   └── seededRandom.ts       # Deterministic random utilities
     ├── render/
     │   ├── RenderPipeline.ts     # Main rendering pipeline orchestration
     │   ├── PostProcessStack.ts   # Post-processing configuration stack
     │   ├── RenderTargets.ts      # HDR, depth, and bloom target management
     │   ├── TrailRenderer.ts      # Satellite trail/ribbon rendering
+    │   ├── SkylineCity.ts        # City skyline rendering
     │   ├── SmileV2Pipeline.ts    # Smile V2 animation compute pipeline
-    │   ├── SmileV2Controller.ts  # Smile V2 animation state controller
     │   ├── passes/
     │   │   └── index.ts          # Render pass helpers
     │   └── pipelines/
@@ -77,9 +110,23 @@ grok_zephyr/
     │       └── PostProcessPipelines.ts # Bloom/composite pipelines
     ├── camera/
     │   ├── CameraController.ts      # View modes and camera math
-    │   └── GroundObserverCamera.ts  # Ground view presets and parallax
+    │   ├── GroundObserverCamera.ts  # Ground view presets and parallax
+    │   ├── FleetCockpit.ts          # Fleet POV cockpit overlay
+    │   ├── GodFraming.ts            # God view framing helpers
+    │   ├── HorizonLimb.ts           # Horizon limb calculations
+    │   └── groundPresetEffects.ts   # Ground preset visual effects
+    ├── audio/
+    │   └── AudioEngine.ts        # Audio engine for ambient/sfx
+    ├── capture/
+    │   └── CaptureManager.ts     # Screenshot/video capture
     ├── ui/
-    │   └── UIManager.ts          # HUD updates, control buttons, animation UI
+    │   ├── UIManager.ts          # HUD updates, control buttons, animation UI
+    │   ├── OnboardingManager.ts  # First-run onboarding overlay
+    │   ├── PerformanceDashboard.ts # GPU/CPU perf panel
+    │   ├── WebGPUCompatibilityManager.ts # Browser support check
+    │   ├── timeScaleControl.ts   # Time scale UI integration
+    │   ├── uiManagerSetup.ts     # UI setup helpers
+    │   └── uiTypes.ts            # UI-specific types
     ├── utils/
     │   ├── math.ts               # 3D math utilities (vectors, matrices)
     │   └── PerformanceProfiler.ts # FPS and timing metrics
@@ -90,16 +137,15 @@ grok_zephyr/
     │   └── index.ts
     ├── data/
     │   ├── ConstellationLoader.ts  # Walker constellation generation
-    │   └── TLELoader.ts            # TLE data parsing and loading
-    ├── matrix/
-    │   ├── ColorMatrix.ts          # RGB projection patterns
-    │   └── AnimationEngine.ts      # Animation engine for patterns
-    ├── patterns/
-    │   └── PatternSequencer.ts     # Pattern sequencing logic
-    ├── animations/
-    │   ├── SmileV2Controller.ts    # Smile V2 animation controller
-    │   ├── SmileV2IntegrationExample.ts # Integration example
-    │   └── index.ts
+    │   ├── TLELoader.ts            # TLE data parsing and loading
+    │   ├── SatelliteCatalog.ts     # Satellite catalog management
+    │   ├── TLESource.ts            # CelesTrak URL resolution
+    │   └── TLESource.test.ts
+    ├── background.ts             # Background utilities
+    ├── earth.ts                  # Earth rendering helpers
+    ├── focus.ts                  # Satellite focus/inspection manager
+    ├── patterns.ts               # Pattern definitions and control
+    ├── visualHarness.ts          # Playwright visual test harness
     └── shaders/
         ├── index.ts              # Central shader exports (canonical runtime WGSL)
         ├── uniforms.ts           # Shared uniform struct (TypeScript)
@@ -268,6 +314,21 @@ The default procedural mode uses a Walker constellation pattern with multiple in
 the `beforeunload` teardown. All application lifecycle (WebGPU/WebGL init, frame loop,
 camera, UI, TLE loading, pattern/physics/animation control) lives in **`src/app/App.ts`** and
 its satellite modules (`FrameLoop.ts`, `bootWebGPU.ts`, `bootWebGL.ts`, `SimClock.ts`, etc.).
+**src/main.ts**: Thin bootstrap that creates an `OnboardingManager` and an `App`
+instance, exposes `App` (aliased as `GrokZephyrApp`) as the default export, and
+attaches it to `window.zephyr` for debugging. The main application lifecycle
+lives in `src/app/App.ts`.
+
+**src/app/App.ts**: Application orchestrator (`App` class, exported as `GrokZephyrApp`) that:
+
+- WebGPU/WebGL backend initialization and boot
+- GPU buffer and pipeline resource creation
+- Render loop start/stop via `FrameLoop`
+- Camera, UI, audio, and profiler coordination
+- TLE data loading from query parameters
+- Pattern/physics/animation mode routing
+- Time scale and quality preset control
+- Device loss recovery and error handling
 
 **src/core/WebGPUContext.ts**: WebGPU abstraction layer handling:
 
@@ -405,9 +466,8 @@ runs in the GLSL vertex shader (the "simplified compute fallback" for
 motion blur, DoF, and J2/RK4 physics. Full details, the WGSL→GLSL uniform mapping,
 and WebGL→WebGPU porting notes are in **`docs/WEBGL_FALLBACK.md`**.
 
-WebGL module layout: `src/webgl/{rendererSelection,glUtils,shaders,WebGLRenderer,WebGLDebug}.ts`.
-Integration points in `src/main.ts`: `initializeWebGL()`, `renderWebGL`, and the
-`backend` branches in `initialize()` / `handleResize()` / `destroy()`.
+WebGL module layout: `src/webgl/{rendererSelection,glUtils,shaders,WebGLRenderer,WebGLDebug,SatellitePickerGL}.ts`.
+Integration points in `src/app/App.ts` and `src/app/bootWebGL.ts`.
 
 ## WASM SGP4 Engine
 
@@ -421,20 +481,55 @@ Prebuilt artifacts are committed; CI rebuilds on `native/**` changes (`.github/w
 
 ## Testing
 
-The project uses **Vitest** (Node environment) with colocated `*.test.ts` files.
+The project uses **Vitest** (Node environment) with colocated `*.test.ts` files. There are currently **26 unit test files** (plus visual regression tests) covering modules across the codebase:
 
-Current covered modules:
+**Math & Utilities:**
+- `src/utils/math.test.ts` — matrix/vector operations, frustum extraction
 
-1. `src/utils/math.ts` — matrix/vector operations and frustum extraction
-2. `src/data/TLELoader.ts` — parsing, line2 orbital extraction, and fetch handling
-3. `src/core/OrbitalElements.ts` — Keplerian propagation invariants (shell radius, determinism)
-4. `src/webgl/rendererSelection.ts` — backend + `?sats` + `?debug` resolution
-5. `src/visualHarness.ts` — Playwright harness URL param parsing
-6. **Visual regression** — `npm run test:visual` (Playwright + SwiftShader, golden PNGs under `tests/visual/baselines/`; see `docs/WEBGL_FALLBACK.md`)
+**Core:**
+- `src/core/OrbitalElements.test.ts` — Keplerian propagation invariants
+- `src/core/AnimationTuning.test.ts` — animation tuning profiles
+- `src/core/BeamPatternProfile.test.ts` — beam pattern data validation
+- `src/core/HdrPresentation.test.ts` — HDR presentation utilities
+- `src/core/ImageTuning.test.ts` — image tuning constants
+- `src/core/ViewTuningProfile.test.ts` — view tuning profile resolution
+- `src/core/WebGPUErrorReporter.test.ts` — error reporter formatting
 
-Recommended next targets:
+**Data:**
+- `src/data/TLELoader.test.ts` — TLE parsing and fetch handling
+- `src/data/TLESource.test.ts` — CelesTrak URL resolution
+- `src/data/TLESource.resolve.test.ts` — TLE source resolution
+- `src/data/SatelliteCatalog.test.ts` — catalog management
 
-1. `src/camera/CameraController.ts` — camera state calculations for each view mode
+**Physics:**
+- `src/physics/Sgp4WasmEngine.test.ts` — WASM SGP4 accuracy (1e-3 km @ 24h)
+- `src/physics/Sgp4Benchmark.test.ts` — WASM vs JS speedup
+- `src/physics/TlePropagator.test.ts` — propagator orchestration
+- `src/physics/keplerianFromState.test.ts` — ECI to Keplerian conversion
+
+**Camera:**
+- `src/camera/FleetCockpit.test.ts` — Fleet POV cockpit logic
+- `src/camera/GodFraming.test.ts` — God view framing
+- `src/camera/HorizonLimb.test.ts` — horizon limb calculations
+- `src/camera/groundPresetEffects.test.ts` — ground preset effects
+
+**App:**
+- `src/app/SimClock.test.ts` — simulation clock
+- `src/app/SimClock.url.test.ts` — clock URL state sync
+
+**Render:**
+- `src/render/SkylineCity.test.ts` — city skyline rendering
+
+**Shaders:**
+- `src/shaders/shaderSources.test.ts` — shader source validation
+
+**WebGL:**
+- `src/webgl/rendererSelection.test.ts` — backend + `?sats` + `?debug` resolution
+
+**Visual regression** — `npm run test:visual` (Playwright + SwiftShader, golden PNGs under `tests/visual/baselines/`)
+
+**Harness:**
+- `src/visualHarness.test.ts` — Playwright harness URL param parsing
 
 ## Deployment
 
@@ -538,7 +633,7 @@ If TLE fetch/parse fails (network error, CORS, invalid format), the app logs a w
 2. Add button to `#controls` div in `index.html`
 3. Update `setViewMode()` method in `CameraController.ts`
 4. Add camera logic in `calculateCamera()` method
-5. Update `estimateVisibleSatellites()` in `main.ts` if needed
+5. Update `estimateVisibleSatellites()` in `src/app/App.ts` if needed
 
 ### Modifying Orbital Mechanics
 
@@ -557,14 +652,14 @@ If TLE fetch/parse fails (network error, CORS, invalid format), the app logs a w
 
 1. Update the beam compute shader in `src/shaders/compute/beam.ts`
 2. Add UI button in `index.html` with `data-pattern` attribute
-3. Update `setPatternMode()` in `main.ts` if pattern param semantics change
+3. Update `setPatternMode()` in `src/app/PatternController.ts` if pattern param semantics change
 
 ### Adding New Animation Patterns
 
 1. Create WGSL shader in `src/shaders/animations/`
 2. Export from `src/shaders/animations/index.ts`
 3. Add UI button in `index.html` under `#animation-controls`
-4. Wire up in `UIManager.ts` and `main.ts`
+4. Wire up in `UIManager.ts` and `src/app/PatternController.ts`
 
 ### Ground Observer Development
 
@@ -575,19 +670,38 @@ If TLE fetch/parse fails (network error, CORS, invalid format), the app logs a w
 ## File Dependencies Graph
 
 ```
-main.ts
-├── WebGPUContext
-├── SatelliteGPUBuffer
-├── RenderPipeline
-│   ├── shaders/index.ts
-│   ├── SmileV2Pipeline
-│   ├── PostProcessStack
-│   └── RenderTargets
-├── CameraController
-│   └── utils/math.ts
-├── GroundObserverCamera
-├── UIManager
-├── PerformanceProfiler
-├── TLELoader
-└── types/constants.ts
+main.ts (thin bootstrap)
+└── App (src/app/App.ts)
+    ├── bootWebGPU / bootWebGL
+    │   ├── WebGPUContext
+    │   └── WebGPUCompatibilityManager
+    ├── createGpuResources / destroyGpuResources
+    │   ├── SatelliteGPUBuffer
+    │   ├── RenderPipeline
+    │   │   ├── shaders/index.ts
+    │   │   ├── SmileV2Pipeline
+    │   │   ├── PostProcessStack
+    │   │   └── RenderTargets
+    │   └── SkylineCity
+    ├── FrameLoop (render loop)
+    │   ├── UniformWriter
+    │   └── TrailRenderer
+    ├── CameraController
+    │   └── utils/math.ts
+    ├── GroundObserverCamera
+    ├── UIManager
+    │   ├── OnboardingManager
+    │   ├── PerformanceDashboard
+    │   └── timeScaleControl
+    ├── PerformanceProfiler
+    ├── AudioEngine
+    ├── TLELoader / SatelliteCatalog / TLESource
+    ├── PatternController
+    ├── QualityController
+    ├── RealismController
+    ├── ViewModeCoordinator
+    ├── SimClock / SimulationState
+    ├── SatelliteSelection
+    ├── MobilePresentation
+    └── types/constants.ts
 ```

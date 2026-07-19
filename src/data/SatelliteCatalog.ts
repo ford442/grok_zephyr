@@ -40,7 +40,7 @@ export class SatelliteCatalog {
 
   rebuild(tles: readonly TLEData[], tleRealCount: number, orbitalData: Float32Array): void {
     this.tleRealCount = Math.min(tleRealCount, CONSTANTS.NUM_SATELLITES);
-    this.identities = new Array(CONSTANTS.NUM_SATELLITES);
+    this.identities = new Array<SatelliteIdentity>(CONSTANTS.NUM_SATELLITES);
 
     for (let i = 0; i < CONSTANTS.NUM_SATELLITES; i++) {
       const shellIndex = (orbitalData[i * 4 + 3] >> 8) & 0xff;

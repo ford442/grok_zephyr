@@ -411,7 +411,7 @@ export function catalogIdFromCelesTrakShorthand(value: string): TLECatalogId | n
     return lower;
   }
   if (lower in CELESTRAK_GROUPS && isTLECatalogId(CELESTRAK_GROUPS[lower])) {
-    return CELESTRAK_GROUPS[lower] as TLECatalogId;
+    return CELESTRAK_GROUPS[lower];
   }
   return null;
 }
