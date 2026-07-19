@@ -38,11 +38,14 @@ export interface RenderTargets {
 export interface PipelineBindGroups {
   compute: GPUBindGroup;
   beamCompute: GPUBindGroup;
+  satelliteCull: GPUBindGroup;
   stars: GPUBindGroup;
   earth: GPUBindGroup;
   atmosphere: GPUBindGroup;
   satellites: GPUBindGroup;
+  satellitesCulled: GPUBindGroup;
   beam: GPUBindGroup;
+  beamCulled: GPUBindGroup;
   groundTerrain: GPUBindGroup;
   moonForeground: GPUBindGroup;
   moonEarthDisk: GPUBindGroup;
@@ -57,13 +60,18 @@ export const MAX_BEAMS = 65536;
 export interface Pipelines {
   compute: GPUComputePipeline;
   beamCompute: GPUComputePipeline;
+  satelliteCullSats: GPUComputePipeline;
+  satelliteCullBeams: GPUComputePipeline;
+  satelliteCullFinalize: GPUComputePipeline;
   autoExposureHistogram: GPUComputePipeline;
   autoExposureAdapt: GPUComputePipeline;
   stars: GPURenderPipeline;
   earth: GPURenderPipeline;
   atmosphere: GPURenderPipeline;
   satellites: GPURenderPipeline;
+  satellitesCulled: GPURenderPipeline;
   beam: GPURenderPipeline;
+  beamCulled: GPURenderPipeline;
   groundTerrain: GPURenderPipeline;
   moonForeground: GPURenderPipeline;
   moonEarthDisk: GPURenderPipeline;

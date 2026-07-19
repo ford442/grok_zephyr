@@ -1,9 +1,20 @@
-import { CONSTANTS } from '@/types/constants.js';
-import { MAX_BEAMS } from '../pipelines/types.js';
+import { SceneRenderBundle } from '../SceneRenderBundle.js';
+import type { SatelliteCullBuffers } from '../SatelliteCullBuffers.js';
 import type { FrameContext } from './types.js';
 
-export function encodeGroundScenePass(encoder: GPUCommandEncoder, ctx: FrameContext): void {
-  const { pipelines, bindGroups, renderTargets, width, height } = ctx;
+const groundSceneBundle = new SceneRenderBundle();
+
+export function invalidateGroundSceneRenderBundle(): void {
+  groundSceneBundle.invalidate();
+}
+
+export function encodeGroundScenePass(
+  encoder: GPUCommandEncoder,
+  ctx: FrameContext,
+  cullingEnabled = false,
+  cullBuffers: SatelliteCullBuffers | null = null,
+): void {
+  const { renderTargets, width, height } = ctx;
 
   const pass = encoder.beginRenderPass({
     colorAttachments: [
@@ -24,23 +35,23 @@ export function encodeGroundScenePass(encoder: GPUCommandEncoder, ctx: FrameCont
 
   pass.setViewport(0, 0, width, height, 0, 1);
 
-  pass.setPipeline(pipelines.stars);
-  pass.setBindGroup(0, bindGroups.stars);
-  pass.draw(3);
+  const bundle = groundSceneBundle.getBundle(
+    ctx.context.getDevice(),
+    ctx,
+    {
+      variant: 'ground',
+      cullingEnabled,
+      width,
+      height,
+      groundTerrainEnabled: ctx.groundTerrainEnabled,
+    },
+    // Ground bundle does not use earth mesh; placeholders satisfy signature.
+    ctx.buffers.uniforms,
+    ctx.buffers.uniforms,
+    0,
+    cullBuffers,
+  );
 
-  if (ctx.groundTerrainEnabled) {
-    pass.setPipeline(pipelines.groundTerrain);
-    pass.setBindGroup(0, bindGroups.groundTerrain);
-    pass.draw(6);
-  }
-
-  pass.setPipeline(pipelines.satellites);
-  pass.setBindGroup(0, bindGroups.satellites);
-  pass.draw(6, CONSTANTS.NUM_SATELLITES);
-
-  pass.setPipeline(pipelines.beam);
-  pass.setBindGroup(0, bindGroups.beam);
-  pass.draw(4, MAX_BEAMS);
-
+  pass.executeBundles([bundle]);
   pass.end();
 }
