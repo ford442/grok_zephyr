@@ -405,9 +405,8 @@ fn x_logo_pattern(sat_idx: u32, sat_pos: vec3f, time: f32, start_time: f32) -> P
   }
 }
 
-@vertex
 fn satellite_vs(
-  @builtin(vertex_index)   vi : u32,
+  vi : u32,
   satIdx : u32,
 ) -> VOut {
   let pd = sat_pos[satIdx];
