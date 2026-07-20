@@ -32,7 +32,7 @@ struct SatelliteVisualUni {
 struct PickVOut {
   @builtin(position) cp : vec4f,
   @location(0) uv : vec2f,
-  @location(1) flat id : u32,
+  @location(1) @interpolate(flat) id : u32,
 }
 
 fn shellSizeScale(shellIdx: u32) -> f32 {

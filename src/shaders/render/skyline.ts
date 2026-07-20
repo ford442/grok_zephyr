@@ -109,8 +109,8 @@ fn facadeCornerAO(cellU : f32, cellV : f32) -> f32 {
   return mix(0.72, 1.0, smoothstep(0.0, 0.12, min(edgeU, edgeV) * 4.0));
 }
 
-fn unpackFacadeMeta(meta : f32) -> vec2f {
-  let packed = i32(meta + 0.25);
+fn unpackFacadeMeta(packedMeta : f32) -> vec2f {
+  let packed = i32(packedMeta + 0.25);
   return vec2f(f32(packed % 2), f32(packed / 2));
 }
 
@@ -288,9 +288,9 @@ fn vs(@builtin(vertex_index) vi : u32, @builtin(instance_index) ii : u32) -> VOu
   out.instSeed = vec2f(b.colorSeed, b.windowSeed);
   out.worldPos = vec3f(worldX, worldY, worldZ);
   out.bldgHeight = b.height;
-  let meta = unpackFacadeMeta(b.facadeMeta);
-  out.roofEquip = meta.x;
-  out.displayType = meta.y;
+  let facadeInfo = unpackFacadeMeta(b.facadeMeta);
+  out.roofEquip = facadeInfo.x;
+  out.displayType = facadeInfo.y;
   return out;
 }
 

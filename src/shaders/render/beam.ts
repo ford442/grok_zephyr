@@ -130,7 +130,6 @@ fn groundProjectionTint(color: vec3f, viewFlags: u32, atmScatter: f32) -> vec3f 
   return outCol;
 }
 
-@vertex
 fn beam_vs(beamIdx: u32, vi: u32) -> VOut {
   var out: VOut;
   let quad = vi & 3u;

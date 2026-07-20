@@ -336,7 +336,7 @@ fn heartbeat_pattern(sat_idx: u32, sat_pos: vec3f, time: f32) -> PatternSample {
   let wave_delay = dist_from_center * 0.0001;
   let wave_pulse = smoothstep(0.0, 0.1, fract((time - wave_delay) * 1.25)) * 0.45;
 
-  let total_pulse = max(pulse, wave_pulse);
+  var total_pulse = max(pulse, wave_pulse);
   // Lift diastole floor when contrast < 1 (Fleet/God profiles).
   let diastole_floor = mix(0.0, 0.07, 1.0 - satVisual.animation_contrast);
   total_pulse = max(total_pulse, diastole_floor);
