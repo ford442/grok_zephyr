@@ -705,3 +705,11 @@ main.ts (thin bootstrap)
     ├── MobilePresentation
     └── types/constants.ts
 ```
+
+## Cursor Cloud specific instructions
+
+### Running / verifying the WebGPU renderer in the cloud VM
+
+Chrome here ships a SwiftShader Vulkan ICD, so the WebGPU path runs under software rendering. Launch Chrome with `--enable-unsafe-webgpu --enable-features=Vulkan --use-webgpu-adapter=swiftshader` (plus `--headless=new --no-sandbox --disable-gpu-sandbox --user-data-dir=/tmp/<unique>` for scripted runs). The default URL (no `?renderer=`) uses WebGPU; `?renderer=webgl` selects the readable WebGL2 fallback.
+
+Key caveat: WebGPU **offscreen rendering + compute work** in this VM, but **on-screen canvas presentation does NOT** — the GPU process cannot allocate the swapchain shared image (`SharedImageStub: Unable to create shared image`), so the device is lost (`reason=destroyed`) on the first `getCurrentTexture()`/present and the app enters its device-loss recovery loop. This reproduces with a trivial WebGPU canvas, so it is an environment limitation, not an app bug (presentation works on real GPUs). To verify the WebGPU renderer here, look for `[GrokZephyr] Initialization complete` in the console (full shader/pipeline init) rather than expecting a visible canvas; to capture actual WebGPU pixels, read back an offscreen target (e.g. the composite-intermediate texture) instead of presenting. For quick visual inspection, use `?renderer=webgl`.
