@@ -705,3 +705,15 @@ main.ts (thin bootstrap)
     ├── MobilePresentation
     └── types/constants.ts
 ```
+
+## Cursor Cloud specific instructions
+
+Pure frontend Vite/TypeScript app; no backend, database, or external services. Node 22 and Python 3.12 are preinstalled. The startup update script runs `npm install`, so dependencies are already present when a session begins.
+
+Standard commands live in `package.json` (`dev`, `build`, `test`, `type-check`, `lint`, `test:visual`). Notes and caveats:
+
+- `npm run lint` (`eslint . && knip`) currently reports pre-existing errors in a few source files and exits non-zero. This is a known code-quality state, not an environment problem — don't treat it as a broken setup.
+- `npm run dev` serves on port 5173; `npm run test:visual` (Playwright) builds and previews on port 4173 with SwiftShader flags baked into `playwright.config.ts`.
+- Rendering the app in a real browser: WebGPU output is NOT readable in the headless/software-GPU browser here. Use the WebGL2 fallback via `?renderer=webgl` (optionally `&sats=200000` to reduce load). See `docs/WEBGL_FALLBACK.md`.
+- Interactive Chrome (computer-use) may report "WebGL2 is not supported". Fix by enabling `chrome://flags` → "Override software rendering list" and relaunching Chrome. Playwright visual tests don't need this (they already pass `--use-gl=angle --use-angle=swiftshader`).
+- Dismiss the first-run onboarding overlay ("START EXPLORING") before the simulation canvas is interactable.
