@@ -442,7 +442,10 @@ export class SatelliteGPUBuffer {
     const groupParams = this.context.createUniformBuffer(GROUP_PARAMS_UNIFORM_SIZE);
     this.groupIdData.fill(0);
     this.context.writeBuffer(groupIds, this.groupIdData);
-    this.uploadGroupParams();
+    // Write directly to the local buffer: `this.buffers` is not assigned until the
+    // end of initialize(), so calling uploadGroupParams() here would throw its
+    // "Buffers not initialized" guard and abort the entire WebGPU boot.
+    this.context.writeBuffer(groupParams, buildGroupParamsUniform(this.groupVisibility));
     console.log(
       `[SatelliteGPUBuffer] Group IDs buffer: ${(groupIdBufferSize / 1024 / 1024).toFixed(2)} MB`,
     );

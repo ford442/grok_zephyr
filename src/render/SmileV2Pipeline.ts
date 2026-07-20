@@ -117,12 +117,12 @@ export class SmileV2Pipeline {
   private createPipeline(): void {
     const device = this.context.getDevice();
 
-    // Bind group layout for animations/smileV2.ts:
-    // Binding 0: smileV2Uniforms (uniform)
+    // Bind group layout must match the smile_v2 compute shader bindings
+    // (src/shaders/animations/smileV2Common.ts):
+    // Binding 0: params        (uniform)
     // Binding 1: sat_positions (storage, read)
-    // Binding 2: orb_elements (storage, read)
-    // Binding 3: sat_colors (storage, read_write)
-    // Binding 4: trail_buffer (storage, read_write)
+    // Binding 2: sat_output    (storage, read_write)
+    // Binding 3: feature_cache (storage, read_write)
     const bindGroupLayout = device.createBindGroupLayout({
       label: 'SmileV2BindGroupLayout',
       entries: [
@@ -139,15 +139,10 @@ export class SmileV2Pipeline {
         {
           binding: 2,
           visibility: GPUShaderStage.COMPUTE,
-          buffer: { type: 'read-only-storage' },
-        },
-        {
-          binding: 3,
-          visibility: GPUShaderStage.COMPUTE,
           buffer: { type: 'storage' },
         },
         {
-          binding: 4,
+          binding: 3,
           visibility: GPUShaderStage.COMPUTE,
           buffer: { type: 'storage' },
         },
@@ -165,7 +160,7 @@ export class SmileV2Pipeline {
       layout: pipelineLayout,
       compute: {
         module: this.context.createShaderModule(SMILE_V2_SHADER, 'smile-v2'),
-        entryPoint: 'main',
+        entryPoint: 'smile_v2_compute',
       },
     });
 
@@ -186,15 +181,17 @@ export class SmileV2Pipeline {
         ? this.buffers.positions
         : (this.buffers.positions as { read: GPUBuffer }).read;
 
+    // Bindings mirror the smile_v2 compute shader: params, read-only positions,
+    // a read-write vec4f output buffer (patterns, 16 bytes/sat) and a read-write
+    // u32 feature-cache buffer (colors, 4 bytes/sat).
     this.bindGroup = device.createBindGroup({
       label: 'SmileV2BindGroup',
       layout: this.pipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: this.buffers.smileV2Uniforms } },
         { binding: 1, resource: { buffer: posBuffer } },
-        { binding: 2, resource: { buffer: this.buffers.orbitalElements } },
+        { binding: 2, resource: { buffer: this.buffers.patterns } },
         { binding: 3, resource: { buffer: this.buffers.colors } },
-        { binding: 4, resource: { buffer: this.buffers.trailBuffer } },
       ],
     });
 

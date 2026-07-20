@@ -211,7 +211,7 @@ fn starHdrLuminance(mag: f32) -> f32 {
   let dir = skyDir(in.uv);
 
   // Deep-space background gradient (very dark blue-black)
-  let sky = mix(vec3f(0.0, 0.005, 0.015), vec3f(0.01, 0.02, 0.05),
+  var sky = mix(vec3f(0.0, 0.005, 0.015), vec3f(0.01, 0.02, 0.05),
                 pow(clamp(in.uv.y, 0.0, 1.0), 1.7));
 
   // ── Stars: four layers spanning magnitudes 0–7 ──────────────────────────
