@@ -10,11 +10,14 @@ describe('SatelliteCatalog', () => {
     const catalog = new SatelliteCatalog();
     const orbital = new Float32Array(16);
     orbital[3] = (1 << 8) | 2;
-    catalog.rebuild([{ name: 'STARLINK-1007', line1: LINE1, line2: LINE2 }], 1, orbital);
+    const groupIds = new Uint32Array([1, 0, 0, 0]);
+    catalog.rebuild([{ name: 'STARLINK-1007', line1: LINE1, line2: LINE2 }], 1, orbital, groupIds);
 
     const id = catalog.getIdentity(0);
     expect(id?.kind).toBe('tle');
     expect(id?.name).toBe('STARLINK-1007');
+    expect(id?.groupId).toBe(1);
+    expect(id?.groupLabel).toBe('Starlink');
     expect(id?.noradId).toBe(TLELoader.parseNoradId(LINE1));
 
     expect(catalog.search('starlink')).toEqual([0]);

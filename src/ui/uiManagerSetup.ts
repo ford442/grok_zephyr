@@ -1,8 +1,12 @@
-import { formatCatalogOptionLabel, getCatalogDef, TLE_CATALOGS } from '@/data/TLESource.js';
+import {
+  CHIP_CATALOG_IDS,
+  getGroupDefByCatalog,
+  type ChipCatalogId,
+} from '@/data/ConstellationGroups.js';
 import { formatTleHudFetchAge } from '@/app/loadSatelliteOrbitalData.js';
 import type { AnimationPattern } from '@/types/animation.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
-import type { TLECatalogId, TLECatalogMeta } from '@/data/TLESource.js';
+import type { TLECatalogMeta } from '@/data/TLESource.js';
 import type { ImageTuningSettings } from '@/core/ImageTuning.js';
 import type { AnimationUIState, ExposureMode, TonemapMode, UIElements } from '@/ui/uiTypes.js';
 
@@ -12,7 +16,7 @@ export interface UIManagerSetupCallbacks {
   onAnimationChange: ((pattern: AnimationPattern) => void) | null;
   onPhysicsChange: ((mode: number) => void) | null;
   onRealismChange: ((enabled: boolean) => void) | null;
-  onTleCatalogChange: ((catalogId: TLECatalogId) => void) | null;
+  onConstellationChipClick: ((catalogId: ChipCatalogId, shiftKey: boolean) => void) | null;
   onQualityChange: ((level: QualityLevel) => void) | null;
   onSpeedChange: ((speed: number) => void) | null;
   onLoopToggle: ((loop: boolean) => void) | null;
@@ -163,8 +167,8 @@ export function getElements(): UIElements {
     angleInfo: getEl('angleInfo'),
     resetAngleBtn: getEl('resetAngle'),
     animationControls: getEl('animation-controls'),
-    tleCatalogPicker:
-      (document.getElementById('tleCatalogPicker') as HTMLSelectElement | null) ?? undefined,
+    constellationChips: document.getElementById('constellationChips') ?? undefined,
+    constellationLegend: document.getElementById('constellationLegend') ?? undefined,
     tleCatalogMeta: document.getElementById('tleCatalogMeta') ?? undefined,
   };
 }
@@ -277,12 +281,7 @@ export function setupEventListeners(ctx: UIManagerSetupContext): void {
     });
   });
 
-  elements.tleCatalogPicker?.addEventListener('change', () => {
-    const catalogId = elements.tleCatalogPicker?.value as TLECatalogId | undefined;
-    if (catalogId && callbacks.onTleCatalogChange) {
-      callbacks.onTleCatalogChange(catalogId);
-    }
-  });
+  setupConstellationChips(elements, callbacks);
 
   elements.qualityButtons.forEach((btn) => {
     btn?.addEventListener('click', (e) => {
@@ -493,35 +492,62 @@ export function createAnimationControls(
   });
 }
 
-export function populateTleCatalogPicker(
+export function setupConstellationChips(
   elements: UIElements,
-  activeCatalogId: TLECatalogId,
+  callbacks: UIManagerSetupCallbacks,
 ): void {
-  const picker = elements.tleCatalogPicker;
-  if (!picker) return;
+  const container = elements.constellationChips;
+  if (!container) return;
 
-  picker.replaceChildren(
-    ...TLE_CATALOGS.map((def) => {
-      const option = document.createElement('option');
-      option.value = def.id;
-      option.textContent = def.label;
-      return option;
+  container.replaceChildren(
+    ...CHIP_CATALOG_IDS.map((catalogId) => {
+      const group = getGroupDefByCatalog(catalogId);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'constellation-chip';
+      btn.dataset.catalog = catalogId;
+      btn.textContent = group?.label ?? catalogId;
+      btn.style.setProperty('--chip-color', group?.chipColor ?? '#888');
+      btn.setAttribute('aria-pressed', 'true');
+      btn.addEventListener('click', (e) => {
+        callbacks.onConstellationChipClick?.(catalogId, e.shiftKey);
+      });
+      return btn;
     }),
   );
-  picker.value = activeCatalogId;
 }
 
-export function updateTleCatalogPickerOption(
+export function updateConstellationChips(
   elements: UIElements,
-  catalogId: TLECatalogId,
-  meta: TLECatalogMeta | null,
+  enabledIds: readonly ChipCatalogId[],
+  groupCounts: ReadonlyMap<number, number>,
+  visibility: readonly boolean[],
 ): void {
-  const picker = elements.tleCatalogPicker;
-  if (!picker) return;
+  const container = elements.constellationChips;
+  if (!container) return;
 
-  const option = picker.querySelector(`option[value="${catalogId}"]`);
-  if (option instanceof HTMLOptionElement) {
-    option.textContent = formatCatalogOptionLabel(getCatalogDef(catalogId), meta);
+  for (const btn of Array.from(container.querySelectorAll<HTMLButtonElement>('.constellation-chip'))) {
+    const catalogId = btn.dataset.catalog as ChipCatalogId | undefined;
+    if (!catalogId) continue;
+    const group = getGroupDefByCatalog(catalogId);
+    const groupId = group?.groupId ?? 0;
+    const loaded = enabledIds.includes(catalogId);
+    const visible = visibility[groupId] !== false;
+    const count = groupCounts.get(groupId) ?? 0;
+
+    btn.classList.toggle('chip-loaded', loaded);
+    btn.classList.toggle('chip-hidden', loaded && !visible);
+    btn.setAttribute('aria-pressed', loaded && visible ? 'true' : 'false');
+    btn.title =
+      count > 0
+        ? `${group?.label ?? catalogId}: ${count.toLocaleString()} objects`
+        : (group?.label ?? catalogId);
+  }
+}
+
+export function setConstellationLegendText(elements: UIElements, text: string): void {
+  if (elements.constellationLegend) {
+    elements.constellationLegend.textContent = text;
   }
 }
 

@@ -8,10 +8,10 @@
  * - Network failures fall back to the bundled sample file
  */
 
-import { TLELoader } from '@/data/TLELoader.js';
+import { getSimWorkerClient } from '@/workers/SimWorkerClient.js';
 import type { TLEData } from '@/types/index.js';
 
-export type TLECatalogId = 'starlink' | 'oneweb' | 'gnss' | 'active' | 'sample';
+export type TLECatalogId = 'starlink' | 'oneweb' | 'gnss' | 'stations' | 'active' | 'sample';
 
 export interface TLECatalogDef {
   id: TLECatalogId;
@@ -24,6 +24,7 @@ export const TLE_CATALOGS: readonly TLECatalogDef[] = [
   { id: 'starlink', label: 'Starlink', celestrakGroup: 'starlink' },
   { id: 'oneweb', label: 'OneWeb', celestrakGroup: 'oneweb' },
   { id: 'gnss', label: 'GNSS', celestrakGroup: 'gnss' },
+  { id: 'stations', label: 'Stations', celestrakGroup: 'stations' },
   { id: 'active', label: 'Active Catalog', celestrakGroup: 'active' },
   { id: 'sample', label: 'Bundled Sample', bundledPath: '/tle/starlink_sample.txt' },
 ] as const;
@@ -181,6 +182,10 @@ async function writeCache(record: TLECacheRecord): Promise<void> {
   });
 }
 
+async function parseTLEText(text: string): Promise<TLEData[]> {
+  return getSimWorkerClient().parseTLE(text);
+}
+
 function celestrakUrl(group: string): string {
   return `https://celestrak.org/NORAD/elements/gp.php?GROUP=${encodeURIComponent(group)}&FORMAT=tle`;
 }
@@ -238,7 +243,7 @@ function scheduleBackgroundRefresh(
   void (async () => {
     try {
       const { text, fetchedAt } = await fetchAndCacheCatalog(cacheKey, url);
-      const tles = TLELoader.parse(text);
+      const tles = await parseTLEText(text);
       if (tles.length === 0 || !catalogId || !onUpdated) return;
       onUpdated({
         tles,
@@ -252,7 +257,7 @@ function scheduleBackgroundRefresh(
 
 async function acquireBundledCatalog(catalogId: TLECatalogId): Promise<TLECatalogResult> {
   const { text, fetchedAt } = await loadBundledSample();
-  const tles = TLELoader.parse(text);
+  const tles = await parseTLEText(text);
   return {
     tles,
     meta: buildMeta(catalogId, tles, fetchedAt, 'bundled'),
@@ -271,7 +276,7 @@ async function acquireNetworkCatalog(
   const alreadyFetchedThisSession = sessionFetchedGroups.has(cacheKey);
 
   if (cached && cacheAge < TLE_CACHE_MAX_AGE_MS) {
-    const tles = TLELoader.parse(cached.text);
+    const tles = await parseTLEText(cached.text);
     return {
       tles,
       meta: buildMeta(catalogId, tles, cached.fetchedAt, 'cache'),
@@ -279,7 +284,7 @@ async function acquireNetworkCatalog(
   }
 
   if (cached) {
-    const tles = TLELoader.parse(cached.text);
+    const tles = await parseTLEText(cached.text);
     const result: TLECatalogResult = {
       tles,
       meta: buildMeta(catalogId, tles, cached.fetchedAt, 'cache'),
@@ -301,7 +306,7 @@ async function acquireNetworkCatalog(
 
   try {
     const { text, fetchedAt } = await fetchAndCacheCatalog(cacheKey, url);
-    const tles = TLELoader.parse(text);
+    const tles = await parseTLEText(text);
     if (tles.length === 0) {
       throw new Error('CelesTrak returned 0 TLE records');
     }
@@ -333,7 +338,7 @@ export async function acquireTLECatalog(
 export async function acquireCustomTLEUrl(url: string): Promise<TLECatalogResult> {
   try {
     const text = await fetchTLEText(url);
-    const tles = TLELoader.parse(text);
+    const tles = await parseTLEText(text);
     return {
       tles,
       meta: {

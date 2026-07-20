@@ -102,6 +102,7 @@ export const SAT_VERT = /* glsl */ `#version 300 es
 precision highp float;
 precision highp int;
 layout(location = 0) in vec4 aElem; // raan, inclination, meanAnomaly0, shellData
+layout(location = 1) in float aGroupId;
 ${SHELL_GLSL}
 const float FLEET_LOD_NEAR_KM = 50.0;
 uniform mat4 uViewProj;
@@ -114,6 +115,9 @@ uniform int uViewMode;     // low 16 bits = view mode index (4 = moon)
 uniform float uDistanceCullKm;
 uniform float uTimeScale;
 uniform vec3 uHostVelocity;
+uniform vec4 uGroupA[8]; // rgb + brightness
+uniform vec4 uGroupB[8]; // sizeScale, visible, pad
+uniform float uMultiGroupColor;
 out vec3 vColor;
 out float vFade;
 out float vWorldDist;
@@ -124,25 +128,35 @@ void main() {
 
   float dist = max(length(pos - uCameraPos), 1.0);
   vWorldDist = dist;
+  int gid = int(aGroupId + 0.5);
+  gid = clamp(gid, 0, 7);
+  float visible = uGroupB[gid].y;
+  if (visible < 0.5) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    gl_PointSize = 0.0;
+    vFade = 0.0;
+    return;
+  }
   if (dist > uDistanceCullKm) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     gl_PointSize = 0.0;
     vFade = 0.0;
     return;
   }
-  // Screen-size attenuation: closer satellites render larger (clamped for GL_POINTS).
-  float size = clamp((uScreen.y * 4.0) / dist, 1.0, 32.0) * uPointScale;
+  float sizeScale = uGroupB[gid].x;
+  float size = clamp((uScreen.y * 4.0) / dist, 1.0, 32.0) * uPointScale * sizeScale;
   gl_PointSize = size;
 
   int shell = decodeShellIndex(aElem.w);
   vec3 base = SHELL_COLOR[shell];
+  if (uMultiGroupColor > 0.5) {
+    base = uGroupA[gid].rgb * uGroupA[gid].w;
+  }
   if (uLodDebug == 1) {
-    // LOD debug: bucket by distance into discrete bands.
     float band = clamp(floor(dist / 8000.0), 0.0, 3.0);
     base = mix(vec3(1.0, 1.0, 0.2), vec3(1.0, 0.1, 0.6), band / 3.0);
   }
   vColor = base;
-  // Fade distant satellites slightly so dense shells don't blow out.
   vFade = clamp(20000.0 / dist, 0.15, 1.0);
   bool isFleetView = (uViewMode & 0xFFFF) == 2;
   if (isFleetView) {

@@ -9,7 +9,8 @@ import type { AnimationPattern } from '@/types/animation.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
 import type { PresentationMode } from '@/core/HdrPresentation.js';
 import type { Sgp4BenchmarkResult } from '@/physics/Sgp4Benchmark.js';
-import type { TLECatalogId, TLECatalogMeta } from '@/data/TLESource.js';
+import type { ChipCatalogId } from '@/data/ConstellationGroups.js';
+import type { TLECatalogMeta } from '@/data/TLESource.js';
 import { QUALITY_PRESETS } from '@/core/QualityPresets.js';
 import type { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
 import type { ImageTuningSettings } from '@/core/ImageTuning.js';
@@ -25,15 +26,16 @@ export type { AnimationUIState, ExposureMode, TonemapMode, UIElements } from '@/
 import {
   createAnimationControls,
   getElements,
-  populateTleCatalogPicker,
+  setupConstellationChips,
   setupEventListeners,
   setupMobileMenu,
+  setConstellationLegendText,
+  updateConstellationChips,
   updateTleCatalogMetaPanel,
-  updateTleCatalogPickerOption,
   type UIManagerSetupCallbacks,
 } from '@/ui/uiManagerSetup.js';
 import { formatTleHudEpoch, formatTleHudFetchAge } from '@/app/loadSatelliteOrbitalData.js';
-import { resolveActiveCatalogId } from '@/data/TLESource.js';
+import { readSavedConstellationSelection } from '@/data/ConstellationGroups.js';
 import {
   createSimTransportControl,
   syncTransportUi,
@@ -59,7 +61,7 @@ export class UIManager {
     onAnimationChange: null,
     onPhysicsChange: null,
     onRealismChange: null,
-    onTleCatalogChange: null,
+    onConstellationChipClick: null,
     onQualityChange: null,
     onSpeedChange: null,
     onLoopToggle: null,
@@ -106,7 +108,8 @@ export class UIManager {
     });
     createAnimationControls(this.elements, this.animationState, this.callbacks);
     setupMobileMenu(this.elements);
-    populateTleCatalogPicker(this.elements, resolveActiveCatalogId());
+    setupConstellationChips(this.elements, this.callbacks);
+    this.setConstellationChips(readSavedConstellationSelection(), new Map());
   }
 
   setActiveButton(index: number): void {
@@ -291,17 +294,22 @@ export class UIManager {
     el.textContent = `Source   : ${label}`;
   }
 
+  setConstellationLegend(text: string): void {
+    setConstellationLegendText(this.elements, text);
+  }
+
+  setConstellationChips(
+    enabledIds: readonly ChipCatalogId[],
+    groupCounts: ReadonlyMap<number, number>,
+    visibility?: readonly boolean[],
+  ): void {
+    const vis = visibility ?? [true, true, true, true, true];
+    updateConstellationChips(this.elements, enabledIds, groupCounts, vis);
+  }
+
   setTleCatalogMeta(meta: TLECatalogMeta | null): void {
     this.elements.tleEpoch.textContent = `TLE Epoch: ${formatTleHudEpoch(meta)}`;
     this.elements.tleAge.textContent = `TLE Age  : ${formatTleHudFetchAge(meta)}`;
-    updateTleCatalogMetaPanel(this.elements, meta);
-  }
-
-  setActiveTleCatalog(catalogId: TLECatalogId, meta: TLECatalogMeta | null): void {
-    if (this.elements.tleCatalogPicker) {
-      this.elements.tleCatalogPicker.value = catalogId;
-    }
-    updateTleCatalogPickerOption(this.elements, catalogId, meta);
     updateTleCatalogMetaPanel(this.elements, meta);
   }
 
@@ -388,8 +396,10 @@ export class UIManager {
     this.callbacks.onRealismChange = callback;
   }
 
-  onTleCatalogChange(callback: (catalogId: TLECatalogId) => void): void {
-    this.callbacks.onTleCatalogChange = callback;
+  onConstellationChipClick(
+    callback: (catalogId: ChipCatalogId, shiftKey: boolean) => void,
+  ): void {
+    this.callbacks.onConstellationChipClick = callback;
   }
 
   onQualityChange(callback: (level: QualityLevel) => void): void {

@@ -73,8 +73,9 @@ export interface UIElements {
   simTimeDisplay?: HTMLElement;
   timeScaleSlider?: HTMLInputElement;
   timeScaleValue?: HTMLElement;
-  tleCatalogPicker?: HTMLSelectElement;
   tleCatalogMeta?: HTMLElement;
+  constellationChips?: HTMLElement;
+  constellationLegend?: HTMLElement;
   simPlayPauseButton?: HTMLButtonElement;
   simNowButton?: HTMLButtonElement;
   simTimelineSlider?: HTMLInputElement;

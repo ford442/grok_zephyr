@@ -1,97 +1,113 @@
+import { resolveCustomTLEUrl, acquireCustomTLEUrl, formatEpochAge, formatTLEEpoch } from '@/data/TLESource.js';
 import {
-  acquireCustomTLEUrl,
-  acquireTLECatalog,
-  formatEpochAge,
-  formatTLEEpoch,
-  resolveActiveCatalogId,
-  resolveCustomTLEUrl,
-  saveCatalogId,
-  type TLECatalogId,
-  type TLECatalogMeta,
-  type TLECatalogResult,
-} from '@/data/TLESource.js';
+  composeConstellationCatalog,
+  composeProceduralCatalog,
+  type MergedCatalog,
+} from '@/data/ConstellationComposer.js';
+import {
+  createDefaultVisibility,
+  formatGroupCountLegend,
+  readSavedConstellationSelection,
+  saveConstellationSelection,
+  shouldUseMultiGroupColors,
+  type ChipCatalogId,
+} from '@/data/ConstellationGroups.js';
 import { syncSimClockFromTleEpoch } from '@/app/SimClockController.js';
 import { rebuildSatelliteCatalog } from '@/app/SatelliteSelection.js';
 import { CONSTANTS } from '@/types/constants.js';
 import { runSgp4Benchmark } from '@/physics/Sgp4Benchmark.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 
-function buildDataSourceLabel(meta: TLECatalogMeta, realismMode: boolean, realCount: number): string {
-  const prefix = realismMode ? 'TLE SGP4' : 'TLE';
-  const sourceHint =
-    meta.source === 'bundled-fallback'
-      ? 'offline'
-      : meta.source === 'bundled'
-        ? 'bundled'
-        : meta.label;
-  return `${prefix} · ${sourceHint} (${realCount.toLocaleString()} real)`;
-}
-
-async function acquireCatalogData(
-  rt: AppRuntime,
-  catalogId: TLECatalogId,
-): Promise<TLECatalogResult> {
-  const customUrl = resolveCustomTLEUrl();
-  if (customUrl) {
-    return acquireCustomTLEUrl(customUrl);
+function buildDataSourceLabel(
+  merged: MergedCatalog,
+  realismMode: boolean,
+  realCount: number,
+): string {
+  if (merged.segments.length === 0) {
+    return 'Procedural Walker';
   }
-
-  return acquireTLECatalog(catalogId, (updated) => {
-    void applyCatalogResult(rt, updated, catalogId, false);
-  });
+  const legend = formatGroupCountLegend(merged.groupCounts);
+  const prefix = realismMode ? 'TLE SGP4' : 'TLE';
+  if (legend) {
+    return `${prefix} · ${legend}`;
+  }
+  return `${prefix} (${realCount.toLocaleString()} real)`;
 }
 
-async function applyCatalogResult(
+async function applyMergedCatalog(
   rt: AppRuntime,
-  result: TLECatalogResult,
-  catalogId: TLECatalogId,
+  merged: MergedCatalog,
+  enabledIds: readonly ChipCatalogId[],
   persistSelection: boolean,
 ): Promise<string> {
   if (!rt.buffers) {
     throw new Error('SatelliteGPUBuffer must be initialized before loading orbital data');
   }
 
-  const { tles, meta } = result;
+  const multiGroupColorMode = shouldUseMultiGroupColors(enabledIds);
+  const visibility = createDefaultVisibility();
+  visibility.multiGroupColorMode = multiGroupColorMode;
+  rt.buffers.setGroupVisibilityState(visibility);
+
   let dataSourceLabel: string;
   let hasTleCatalog = false;
   let realTLECount = 0;
 
-  if (tles.length > 0) {
+  if (merged.segments.length > 0 && merged.tles.length > 0) {
     realTLECount = rt.simulation.realismMode
-      ? rt.buffers.loadFromTLEDataWithSgp4(tles, rt.simulation.simTime)
-      : rt.buffers.loadFromTLEData(tles);
+      ? await rt.buffers.loadFromMergedCatalog(
+          merged.tles,
+          merged.segments,
+          new ArrayBuffer(CONSTANTS.NUM_SATELLITES * 4),
+          rt.simulation.simTime,
+        )
+      : await rt.buffers.loadFromMergedCatalog(
+          merged.tles,
+          merged.segments,
+          new ArrayBuffer(CONSTANTS.NUM_SATELLITES * 4),
+        );
     hasTleCatalog = true;
-    dataSourceLabel = buildDataSourceLabel(meta, rt.simulation.realismMode, realTLECount);
+    dataSourceLabel = buildDataSourceLabel(merged, rt.simulation.realismMode, realTLECount);
     console.log(
-      `[GrokZephyr] Loaded ${realTLECount} TLE satellites from ${meta.label}, padded to ${CONSTANTS.NUM_SATELLITES.toLocaleString()}`,
+      `[GrokZephyr] Loaded ${realTLECount} satellites across ${merged.segments.length} constellation(s)`,
     );
   } else {
-    console.warn('[GrokZephyr] TLE source returned 0 records, falling back to procedural');
-    rt.buffers.generateOrbitalElements();
+    console.warn('[GrokZephyr] No TLE catalogs enabled, using procedural Walker');
+    await rt.buffers.generateOrbitalElements();
     dataSourceLabel = 'Procedural Walker';
   }
 
-  if (rt.webglOrbital) {
-    if (tles.length > 0) {
-      rt.webglOrbital.loadFromTLE(tles);
-    } else {
-      rt.webglOrbital.generate();
-    }
+  if (rt.webglOrbital && rt.buffers) {
+    const src = rt.buffers.getOrbitalElementData();
+    const bytes = src.byteLength;
+    const copy = new Uint8Array(bytes);
+    copy.set(new Uint8Array(src.buffer, src.byteOffset, bytes));
+    rt.webglOrbital.adoptBuffer(copy.buffer);
+    const groupSrc = rt.buffers.getGroupIdData();
+    rt.webglGroupIds = new Uint32Array(groupSrc);
+    rt.webglMultiGroupColorMode = multiGroupColorMode;
+    rt.webglGroupVisibility = [...visibility.visible];
+    rt.webglRenderer?.reloadOrbitalElements();
   }
 
   rt.simulation.hasTleCatalog = hasTleCatalog;
   rt.buffers.uploadOrbitalElements();
   rt.ui.setDataSource(dataSourceLabel);
-  rt.ui.setTleCatalogMeta(meta);
-  rt.ui.setActiveTleCatalog(catalogId, meta);
+  rt.ui.setConstellationLegend(formatGroupCountLegend(merged.groupCounts));
+  rt.ui.setConstellationChips(
+    enabledIds,
+    merged.groupCounts,
+    rt.buffers?.getGroupVisibilityState().visible ?? rt.webglGroupVisibility,
+  );
   rt.ui.setRealismControls(rt.simulation.realismMode, hasTleCatalog);
   rt.dataSourceLabel = dataSourceLabel;
-  rt.tleCatalogMeta = meta;
+  rt.tleCatalogMeta = merged.meta.catalogs[0] ?? null;
+  rt.constellationGroupCounts = merged.groupCounts;
 
-  syncSimClockFromTleEpoch(rt, meta.epoch);
+  syncSimClockFromTleEpoch(rt, merged.meta.epoch);
 
   if (persistSelection) {
-    saveCatalogId(catalogId);
+    saveConstellationSelection(enabledIds);
   }
 
   if (hasTleCatalog) {
@@ -105,37 +121,77 @@ async function applyCatalogResult(
     rt.ui.updateSgp4Benchmark(null, 'js');
   }
 
-  rt.loadedTles = tles;
+  rt.loadedTles = merged.tles;
   rt.tleRealCount = realTLECount;
+  rt.enabledConstellations = [...enabledIds];
   rebuildSatelliteCatalog(rt);
 
   return dataSourceLabel;
 }
 
-/** Load procedural or TLE orbital elements into the active satellite buffer. */
+/** Load procedural or multi-constellation orbital elements into the active satellite buffer. */
 export async function loadSatelliteOrbitalData(rt: AppRuntime): Promise<string> {
-  const catalogId = resolveActiveCatalogId();
-  const result = await acquireCatalogData(rt, catalogId);
-  return applyCatalogResult(rt, result, catalogId, false);
+  const customUrl = resolveCustomTLEUrl();
+  if (customUrl) {
+    const result = await acquireCustomTLEUrl(customUrl);
+    const enabledIds: ChipCatalogId[] = ['starlink'];
+    const merged: MergedCatalog = {
+      tles: result.tles,
+      segments: result.tles.length > 0 ? [{ tles: result.tles, groupId: 1 }] : [],
+      groupCounts: result.tles.length > 0 ? new Map([[1, result.tles.length]]) : new Map(),
+      meta: {
+        catalogs: [result.meta],
+        epoch: result.meta.epoch,
+        totalRealCount: result.tles.length,
+      },
+    };
+    return applyMergedCatalog(rt, merged, enabledIds, false);
+  }
+
+  const enabledIds = readSavedConstellationSelection();
+  const merged = await composeConstellationCatalog(enabledIds);
+  return applyMergedCatalog(rt, merged, enabledIds, false);
 }
 
-/** Switch TLE catalog at runtime without reloading the page. */
-export async function switchTLECatalog(rt: AppRuntime, catalogId: TLECatalogId): Promise<string> {
-  console.log(`[GrokZephyr] Switching TLE catalog to: ${catalogId}`);
-  const result = await acquireTLECatalog(catalogId, (updated) => {
-    void applyCatalogResult(rt, updated, catalogId, true);
-  });
-  return applyCatalogResult(rt, result, catalogId, true);
+/** Apply multi-constellation chip selection at runtime. */
+export async function applyConstellationSelection(
+  rt: AppRuntime,
+  enabledIds: readonly ChipCatalogId[],
+): Promise<string> {
+  console.log(`[GrokZephyr] Constellation selection: ${enabledIds.join(', ') || 'procedural'}`);
+  if (enabledIds.length === 0) {
+    const merged = composeProceduralCatalog();
+    return applyMergedCatalog(rt, merged, enabledIds, true);
+  }
+  const merged = await composeConstellationCatalog(enabledIds);
+  return applyMergedCatalog(rt, merged, enabledIds, true);
 }
 
-export function formatTleHudEpoch(meta: TLECatalogMeta | null): string {
+/** Toggle a constellation group's visibility without rebuilding buffers. */
+export function toggleConstellationGroup(rt: AppRuntime, groupId: number, visible: boolean): void {
+  rt.buffers?.setGroupVisibility(groupId, visible);
+  if (groupId >= 0 && groupId < rt.webglGroupVisibility.length) {
+    rt.webglGroupVisibility[groupId] = visible;
+  }
+  rt.webglRenderer?.setGroupVisibility(groupId, visible);
+}
+
+/** @deprecated Use applyConstellationSelection instead. */
+export async function switchTLECatalog(
+  rt: AppRuntime,
+  catalogId: ChipCatalogId,
+): Promise<string> {
+  return applyConstellationSelection(rt, [catalogId]);
+}
+
+export function formatTleHudEpoch(meta: { epoch: Date | null } | null): string {
   if (!meta?.epoch) return '—';
   return `${formatTLEEpoch(meta.epoch)} (${formatEpochAge(meta.epoch)} old)`;
 }
 
-export function formatTleHudFetchAge(meta: TLECatalogMeta | null): string {
+export function formatTleHudFetchAge(meta: { fetchedAt: number | null; source?: string } | null): string {
   if (!meta) return '—';
   if (meta.fetchedAt === null) return 'bundled file';
   const age = formatEpochAge(new Date(meta.fetchedAt));
-  return `${age} ago (${meta.source})`;
+  return `${age} ago (${meta.source ?? 'unknown'})`;
 }

@@ -480,6 +480,54 @@
   min-height: 1.2em;
 }
 
+.constellation-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.constellation-chip {
+  --chip-color: #888;
+  border: 1px solid color-mix(in srgb, var(--chip-color) 70%, transparent);
+  background: color-mix(in srgb, var(--chip-color) 18%, transparent);
+  color: #f0f0f0;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    opacity 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.constellation-chip.chip-loaded {
+  border-color: var(--chip-color);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--chip-color) 35%, transparent);
+}
+
+.constellation-chip.chip-hidden {
+  opacity: 0.45;
+  border-style: dashed;
+}
+
+.constellation-chip:not(.chip-loaded) {
+  opacity: 0.35;
+  border-style: dotted;
+}
+
+.constellation-legend {
+  font-size: 9px;
+  color: rgba(180, 220, 255, 0.85);
+  letter-spacing: 0.4px;
+  line-height: 1.4;
+  margin-bottom: 6px;
+  min-height: 1.2em;
+}
+
 .physics-label {
   font-size: 10px;
   color: #ffaa00;

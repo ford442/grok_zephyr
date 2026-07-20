@@ -3,6 +3,7 @@
  */
 
 import { TLELoader } from '@/data/TLELoader.js';
+import { getGroupDef } from '@/data/ConstellationGroups.js';
 import { CONSTANTS } from '@/types/constants.js';
 import { SHELL_MEAN_MOTIONS } from '@/core/OrbitalElements.js';
 import type { TLEData } from '@/types/index.js';
@@ -20,6 +21,8 @@ export interface SatelliteIdentity {
   name: string;
   noradId: number | null;
   shellIndex: number;
+  groupId: number;
+  groupLabel: string;
   plane: number | null;
   slot: number | null;
 }
@@ -38,12 +41,19 @@ export class SatelliteCatalog {
   private identities: SatelliteIdentity[] = [];
   private tleRealCount = 0;
 
-  rebuild(tles: readonly TLEData[], tleRealCount: number, orbitalData: Float32Array): void {
+  rebuild(
+    tles: readonly TLEData[],
+    tleRealCount: number,
+    orbitalData: Float32Array,
+    groupIdData?: Uint32Array,
+  ): void {
     this.tleRealCount = Math.min(tleRealCount, CONSTANTS.NUM_SATELLITES);
     this.identities = new Array<SatelliteIdentity>(CONSTANTS.NUM_SATELLITES);
 
     for (let i = 0; i < CONSTANTS.NUM_SATELLITES; i++) {
       const shellIndex = (orbitalData[i * 4 + 3] >> 8) & 0xff;
+      const groupId = groupIdData?.[i] ?? 0;
+      const groupLabel = getGroupDef(groupId)?.label ?? 'Walker';
       if (i < this.tleRealCount && tles[i]) {
         const tle = tles[i];
         this.identities[i] = {
@@ -52,6 +62,8 @@ export class SatelliteCatalog {
           name: tle.name.trim(),
           noradId: TLELoader.parseNoradId(tle.line1),
           shellIndex,
+          groupId,
+          groupLabel,
           plane: null,
           slot: null,
         };
@@ -63,6 +75,8 @@ export class SatelliteCatalog {
           name: `Walker ${plane}:${slot}`,
           noradId: null,
           shellIndex,
+          groupId,
+          groupLabel,
           plane,
           slot,
         };
@@ -127,8 +141,12 @@ export class SatelliteCatalog {
       }
 
       const name = id.name.toLowerCase();
+      const group = id.groupLabel.toLowerCase();
       if (name.includes(q)) {
         const score = name.startsWith(q) ? 1 : name.indexOf(q) + 2;
+        results.push({ index: i, score });
+      } else if (group.includes(q)) {
+        const score = group.startsWith(q) ? 2 : group.indexOf(q) + 4;
         results.push({ index: i, score });
       } else if (id.noradId !== null && String(id.noradId).includes(q)) {
         results.push({ index: i, score: 3 });

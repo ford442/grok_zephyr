@@ -14,6 +14,11 @@
 
 import type { OrbitalElements } from '@/core/OrbitalElements.js';
 import type { ImageTuningSettings } from '@/core/ImageTuning.js';
+import {
+  buildGroupParamsUniform,
+  createDefaultVisibility,
+  type GroupVisibilityState,
+} from '@/data/ConstellationGroups.js';
 import { packSatelliteVisualUniform, SHIPPING_IMAGE_TUNING } from '@/core/ImageTuning.js';
 import { mat4inv } from '@/utils/math.js';
 import {
@@ -113,7 +118,11 @@ export class WebGLRenderer {
 
   // Geometry
   private satVao!: WebGLVertexArrayObject;
+  private satVbo!: WebGLBuffer;
+  private satGroupVbo!: WebGLBuffer;
   private satCount = 0;
+  private groupVisibility: GroupVisibilityState = createDefaultVisibility();
+  private groupUniformData = new Float32Array(64);
   private earthVao!: WebGLVertexArrayObject;
   private earthIndexCount = 0;
   private fsTriangle!: WebGLVertexArrayObject;
@@ -132,6 +141,7 @@ export class WebGLRenderer {
     private readonly canvas: HTMLCanvasElement,
     private readonly orbital: OrbitalElements,
     private readonly satelliteCount: number,
+    private groupIds: Uint32Array | null = null,
   ) {}
 
   /** True if the underlying context supports HDR float render targets. */
@@ -188,14 +198,92 @@ export class WebGLRenderer {
     this.satCount = Math.min(this.satelliteCount, this.orbital.numSatellites);
     const vao = gl.createVertexArray();
     const vbo = gl.createBuffer();
+    const groupVbo = gl.createBuffer();
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
-    // One vec4 element per satellite; each is its own GL_POINTS vertex.
     gl.bufferData(gl.ARRAY_BUFFER, this.orbital.data, gl.STATIC_DRAW);
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 0, 0);
+
+    const groupData =
+      this.groupIds ?? new Uint32Array(this.orbital.numSatellites);
+    const groupFloat = new Float32Array(groupData.length);
+    for (let i = 0; i < groupData.length; i++) {
+      groupFloat[i] = groupData[i];
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, groupVbo);
+    gl.bufferData(gl.ARRAY_BUFFER, groupFloat, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 4, 0);
+
     gl.bindVertexArray(null);
     this.satVao = vao;
+    this.satVbo = vbo;
+    this.satGroupVbo = groupVbo;
+  }
+
+  setGroupIds(groupIds: Uint32Array): void {
+    this.groupIds = groupIds;
+  }
+
+  setGroupVisibilityState(state: GroupVisibilityState): void {
+    this.groupVisibility = state;
+    const buffer = buildGroupParamsUniform(state);
+    this.groupUniformData.set(new Float32Array(buffer));
+  }
+
+  setGroupVisibility(groupId: number, visible: boolean): void {
+    if (groupId < 0 || groupId >= this.groupVisibility.visible.length) return;
+    this.groupVisibility.visible[groupId] = visible;
+    const buffer = buildGroupParamsUniform(this.groupVisibility);
+    this.groupUniformData.set(new Float32Array(buffer));
+  }
+
+  private uploadGroupUniforms(): void {
+    const gl = this.gl;
+    for (let i = 0; i < 8; i++) {
+      const base = i * 8;
+      const locA = this.satU.loc(`uGroupA[${i}]`);
+      const locB = this.satU.loc(`uGroupB[${i}]`);
+      if (locA) {
+        gl.uniform4f(
+          locA,
+          this.groupUniformData[base + 0],
+          this.groupUniformData[base + 1],
+          this.groupUniformData[base + 2],
+          this.groupUniformData[base + 3],
+        );
+      }
+      if (locB) {
+        gl.uniform4f(
+          locB,
+          this.groupUniformData[base + 4],
+          this.groupUniformData[base + 5],
+          this.groupUniformData[base + 6],
+          this.groupUniformData[base + 7],
+        );
+      }
+    }
+    const multiLoc = this.satU.loc('uMultiGroupColor');
+    if (multiLoc) {
+      gl.uniform1f(multiLoc, this.groupVisibility.multiGroupColorMode ? 1 : 0);
+    }
+  }
+
+  /** Re-upload orbital element VBO after worker-transferred catalog reload. */
+  reloadOrbitalElements(): void {
+    const gl = this.gl;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.satVbo);
+    gl.bufferData(gl.ARRAY_BUFFER, this.orbital.data, gl.STATIC_DRAW);
+    if (this.groupIds) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.satGroupVbo);
+      const groupFloat = new Float32Array(this.groupIds.length);
+      for (let i = 0; i < this.groupIds.length; i++) {
+        groupFloat[i] = this.groupIds[i];
+      }
+      gl.bufferData(gl.ARRAY_BUFFER, groupFloat, gl.STATIC_DRAW);
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
   }
 
   private buildEarthGeometry(earth: EarthMesh): void {
@@ -454,6 +542,7 @@ export class WebGLRenderer {
     gl.uniform1f(this.satU.loc('uHaloInner'), this.satVisualPacked[3]);
     gl.uniform1f(this.satU.loc('uHaloStrength'), this.satVisualPacked[4]);
     gl.uniform1f(this.satU.loc('uCoreBoost'), this.satVisualPacked[5]);
+    this.uploadGroupUniforms();
     gl.bindVertexArray(this.satVao);
     gl.drawArrays(gl.POINTS, 0, this.satCount);
     gl.bindVertexArray(null);

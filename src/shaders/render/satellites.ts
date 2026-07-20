@@ -10,6 +10,16 @@ export const SATELLITE_SHADER =
   UNIFORM_STRUCT +
   /* wgsl */ `
 @group(0) @binding(1) var<storage, read> sat_pos : array<vec4f>;
+@group(0) @binding(2) var<storage, read> group_ids : array<u32>;
+
+struct GroupParams {
+  baseColor   : vec3f,
+  brightness  : f32,
+  sizeScale   : f32,
+  visible     : f32,
+  pad         : vec2f,
+}
+@group(0) @binding(7) var<uniform> groups : array<GroupParams, 8>;
 
 // Pattern parameters (updated from CPU when animation buttons are clicked)
 struct PatternParams {
@@ -419,14 +429,23 @@ fn satellite_vs(
   let shellIdx = satIdx / 349525u;
   let shellSize = shellSizeScale(shellIdx);
 
+  let gid = group_ids[satIdx];
+  let gp = groups[gid];
+  let multiGroup = groups[0].pad.x > 0.5;
+
   let groundScale = select(1.0, 0.72, ((uni.view_mode >> 16u) & 1u) == 1u);
   // Moon view (mode 4) sits at 384,400 km — scale billboards up and lift the 150k km cutoff
   // so the constellation appears as a visible glowing ring around Earth.
   let isMoonView = (uni.view_mode & 0xFFFFu) == 4u;
   let moonBillboardScale = select(1.0, 750.0, isMoonView);
   let maxVisibleDist = max(satVisual.distance_cull_km, 1000.0);
-  let bsize = clamp(1200.0 / max(dist, 50.0), 0.4, 60.0) * moonBillboardScale *
+  var bsize = clamp(1200.0 / max(dist, 50.0), 0.4, 60.0) * moonBillboardScale *
               select(0.0, 1.0, dist < maxVisibleDist) * shellSize * groundScale;
+  if (gp.visible < 0.5) {
+    bsize = 0.0;
+  } else {
+    bsize = bsize * gp.sizeScale;
+  }
   let offset = (qv.x * right + qv.y * up) * bsize;
   let curClip = uni.view_proj * vec4f(wp, 1.0);
   let prevClip = motion.prev_view_proj * vec4f(wp, 1.0);
@@ -469,6 +488,9 @@ fn satellite_vs(
     shellTint *= mix(vec3f(1.0), vec3f(1.14, 1.06, 0.92), zoomOut);
   }
   var col = baseColor * shellTint;
+  if (multiGroup) {
+    col = gp.baseColor * gp.brightness;
+  }
   let isHighlighted = select(0.0, 1.0, satIdx == params.selected_satellite);
   if (isHighlighted > 0.0) {
     col = mix(col, vec3f(1.0, 0.92, 0.6), 0.75);

@@ -125,10 +125,11 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
       entries: [
         { binding: 0, resource: { buffer: buffers.uniforms } },
         { binding: 1, resource: { buffer: posBuffer } },
-        { binding: 2, resource: { buffer: buffers.colors } },
+        { binding: 2, resource: { buffer: buffers.groupIds } },
         { binding: 3, resource: { buffer: buffers.patternParams } },
         { binding: 4, resource: { buffer: motionBlurUniformBuffer } },
         { binding: 5, resource: { buffer: satelliteVisualUniformBuffer } },
+        { binding: 7, resource: { buffer: buffers.groupParams } },
       ],
     }),
 
@@ -137,11 +138,12 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
       entries: [
         { binding: 0, resource: { buffer: buffers.uniforms } },
         { binding: 1, resource: { buffer: posBuffer } },
-        { binding: 2, resource: { buffer: buffers.colors } },
+        { binding: 2, resource: { buffer: buffers.groupIds } },
         { binding: 3, resource: { buffer: buffers.patternParams } },
         { binding: 4, resource: { buffer: motionBlurUniformBuffer } },
         { binding: 5, resource: { buffer: satelliteVisualUniformBuffer } },
         { binding: 6, resource: { buffer: cullBuffers.visibleSatIndices } },
+        { binding: 7, resource: { buffer: buffers.groupParams } },
       ],
     }),
 

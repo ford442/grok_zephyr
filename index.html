@@ -273,14 +273,14 @@
       </section>
 
       <section id="tle-catalog-controls" class="control-group" aria-label="Satellite Catalog">
-        <div class="physics-label">SATELLITE CATALOG</div>
-        <select id="tleCatalogPicker" aria-label="Select satellite TLE catalog">
-          <option value="starlink">Starlink</option>
-          <option value="oneweb">OneWeb</option>
-          <option value="gnss">GNSS</option>
-          <option value="active">Active Catalog</option>
-          <option value="sample">Bundled Sample</option>
-        </select>
+        <div class="physics-label">CONSTELLATIONS</div>
+        <div
+          id="constellationChips"
+          class="constellation-chips"
+          role="group"
+          aria-label="Constellation layers"
+        ></div>
+        <div id="constellationLegend" class="constellation-legend" aria-live="polite"></div>
         <label class="satellite-search-label" for="satelliteSearch">FIND SATELLITE</label>
         <div class="satellite-search-wrap">
           <input

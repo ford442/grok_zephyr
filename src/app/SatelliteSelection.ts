@@ -12,7 +12,8 @@ export function rebuildSatelliteCatalog(rt: AppRuntime): void {
   if (!orbitalData) return;
   const tles = rt.buffers?.getLoadedTles() ?? rt.loadedTles;
   const tleCount = rt.buffers?.getTleRealCount() ?? rt.tleRealCount;
-  rt.satelliteCatalog.rebuild(tles, tleCount, orbitalData);
+  const groupIdData = rt.buffers?.getGroupIdData() ?? rt.webglGroupIds ?? undefined;
+  rt.satelliteCatalog.rebuild(tles, tleCount, orbitalData, groupIdData);
   rt.focusManager?.setCatalog(rt.satelliteCatalog);
 }
 

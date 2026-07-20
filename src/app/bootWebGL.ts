@@ -1,5 +1,17 @@
 import { OrbitalElements } from '@/core/OrbitalElements.js';
-import { acquireTLECatalog, acquireCustomTLEUrl, resolveActiveCatalogId, resolveCustomTLEUrl } from '@/data/TLESource.js';
+import { resolveCustomTLEUrl, acquireCustomTLEUrl } from '@/data/TLESource.js';
+import {
+  composeConstellationCatalog,
+  composeProceduralCatalog,
+} from '@/data/ConstellationComposer.js';
+import {
+  createDefaultVisibility,
+  formatGroupCountLegend,
+  readSavedConstellationSelection,
+  shouldUseMultiGroupColors,
+} from '@/data/ConstellationGroups.js';
+import { getSimWorkerClient } from '@/workers/SimWorkerClient.js';
+import { CONSTANTS } from '@/types/constants.js';
 import { buildEarthMesh } from '@/core/EarthGeometry.js';
 import { WebGLRenderer } from '@/webgl/WebGLRenderer.js';
 import { WebGLDebugOverlay, parseDebugFlags } from '@/webgl/WebGLDebug.js';
@@ -27,24 +39,60 @@ export async function bootWebGL(
   rt.webglOrbital = orbital;
 
   const harness = parseVisualHarnessParams();
-  const catalogId = resolveActiveCatalogId();
   const customUrl = resolveCustomTLEUrl();
-  const catalogResult = customUrl
-    ? await acquireCustomTLEUrl(customUrl)
-    : await acquireTLECatalog(catalogId);
+  const enabledIds = readSavedConstellationSelection();
+  const merged = customUrl
+    ? await (async () => {
+        const result = await acquireCustomTLEUrl(customUrl);
+        return {
+          tles: result.tles,
+          segments: result.tles.length > 0 ? [{ tles: result.tles, groupId: 1 }] : [],
+          groupCounts:
+            result.tles.length > 0 ? new Map([[1, result.tles.length]]) : new Map<number, number>(),
+          meta: {
+            catalogs: [result.meta],
+            epoch: result.meta.epoch,
+            totalRealCount: result.tles.length,
+          },
+        };
+      })()
+    : enabledIds.length > 0
+      ? await composeConstellationCatalog(enabledIds)
+      : composeProceduralCatalog();
 
   let dataSourceLabel = 'Procedural Walker';
   let tleRealCount = 0;
-  if (catalogResult.tles.length > 0) {
-    tleRealCount = orbital.loadFromTLE(catalogResult.tles);
-    dataSourceLabel = `TLE · ${catalogResult.meta.label} (${tleRealCount.toLocaleString()} real)`;
+  const simWorker = getSimWorkerClient();
+  const multiGroupColorMode = shouldUseMultiGroupColors(enabledIds);
+  const visibility = createDefaultVisibility();
+  visibility.multiGroupColorMode = multiGroupColorMode;
+  rt.webglGroupVisibility = [...visibility.visible];
+  rt.webglMultiGroupColorMode = multiGroupColorMode;
+
+  if (merged.segments.length > 0 && merged.tles.length > 0) {
+    const result = await simWorker.mergeCatalogElements(merged.segments, CONSTANTS.NUM_SATELLITES);
+    orbital.adoptBuffer(result.orbitalBuffer);
+    if (result.groupIdsBuffer) {
+      rt.webglGroupIds = new Uint32Array(result.groupIdsBuffer);
+    }
+    tleRealCount = result.realTleCount;
+    dataSourceLabel = formatGroupCountLegend(merged.groupCounts) || 'TLE';
     rt.simulation.hasTleCatalog = true;
   } else {
-    orbital.generate(harness.seed ?? undefined);
+    const result = await simWorker.generateOrbitalElements(
+      CONSTANTS.NUM_SATELLITES,
+      harness.seed ?? undefined,
+    );
+    orbital.adoptBuffer(result.orbitalBuffer);
+    if (result.groupIdsBuffer) {
+      rt.webglGroupIds = new Uint32Array(result.groupIdsBuffer);
+    }
   }
 
-  rt.loadedTles = catalogResult.tles;
+  rt.loadedTles = merged.tles;
   rt.tleRealCount = tleRealCount;
+  rt.enabledConstellations = [...enabledIds];
+  rt.constellationGroupCounts = merged.groupCounts;
   const focusSource: FocusBufferSource = {
     getOrbitalElementData: () => orbital.data,
     calculateSatellitePosition: (index, time) => orbital.calculatePosition(index, time),
@@ -55,13 +103,14 @@ export async function bootWebGL(
   );
   rebuildSatelliteCatalog(rt);
 
-  rt.tleCatalogMeta = catalogResult.meta;
-  syncSimClockFromTleEpoch(rt, catalogResult.meta.epoch);
+  rt.tleCatalogMeta = merged.meta.catalogs[0] ?? null;
+  syncSimClockFromTleEpoch(rt, merged.meta.epoch);
   rt.camera.attachToCanvas(rt.canvas);
   setupMobileOrientationSupport(rt, orientationChangeListener, orientationLockGestureListener);
 
   const satCount = resolveSatelliteCount();
-  const renderer = new WebGLRenderer(rt.canvas, orbital, satCount);
+  const renderer = new WebGLRenderer(rt.canvas, orbital, satCount, rt.webglGroupIds);
+  renderer.setGroupVisibilityState(visibility);
   const size = getDrawableSize(rt) ?? {
     width: rt.canvas.clientWidth || 1280,
     height: rt.canvas.clientHeight || 720,
@@ -75,8 +124,9 @@ export async function bootWebGL(
 
   rt.ui.setFleetCount(satCount);
   rt.ui.setDataSource(`${dataSourceLabel} · WebGL2`);
-  rt.ui.setTleCatalogMeta(catalogResult.meta);
-  rt.ui.setActiveTleCatalog(catalogId, catalogResult.meta);
+  rt.ui.setTleCatalogMeta(rt.tleCatalogMeta);
+  rt.ui.setConstellationLegend(formatGroupCountLegend(merged.groupCounts));
+  rt.ui.setConstellationChips(enabledIds, merged.groupCounts, rt.webglGroupVisibility);
   rt.ui.setRealismControls(false, rt.simulation.hasTleCatalog);
   rt.dataSourceLabel = dataSourceLabel;
   rt.ui.hideError();

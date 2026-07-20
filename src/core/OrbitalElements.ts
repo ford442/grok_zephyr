@@ -20,6 +20,16 @@ import { CONSTANTS, INCLINATION_SHELLS } from '@/types/constants.js';
 import type { TLEData } from '@/types/index.js';
 import { createSeededRandom } from '@/core/seededRandom.js';
 
+export interface MergedCatalogSegment {
+  tles: TLEData[];
+  groupId: number;
+}
+
+export interface MergedCatalogResult {
+  realTleCount: number;
+  groupCounts: Map<number, number>;
+}
+
 /** Orbit radius (km) per inclination shell — matches compute/orbital.ts simple mode. */
 export const SHELL_RADII_KM = [6711.0, 6921.0, 7521.0];
 
@@ -40,10 +50,24 @@ const DEG_TO_RAD = Math.PI / 180;
  */
 export class OrbitalElements {
   /** Packed `[raan, inclination, meanAnomaly0, shellData]` per satellite. */
-  readonly data: Float32Array;
+  data: Float32Array;
 
   constructor(public readonly numSatellites: number = CONSTANTS.NUM_SATELLITES) {
     this.data = new Float32Array(numSatellites * 4);
+  }
+
+  /**
+   * Adopt a worker-transferred orbital element buffer (zero-copy on main thread).
+   * The buffer must hold exactly `numSatellites * 4` floats.
+   */
+  adoptBuffer(buffer: ArrayBuffer): void {
+    const expectedBytes = this.numSatellites * 4 * 4;
+    if (buffer.byteLength !== expectedBytes) {
+      throw new Error(
+        `Orbital buffer size mismatch: expected ${expectedBytes} bytes, got ${buffer.byteLength}`,
+      );
+    }
+    this.data = new Float32Array(buffer);
   }
 
   /**
@@ -131,33 +155,114 @@ export class OrbitalElements {
 
     // Fill remaining slots with deterministic procedural data
     if (tleCount < this.numSatellites) {
-      const remaining = this.numSatellites - tleCount;
-      const { NUM_PLANES, SATELLITES_PER_PLANE } = CONSTANTS;
-      const shells = INCLINATION_SHELLS;
-
-      for (let j = 0; j < remaining; j++) {
-        const globalIdx = tleCount + j;
-        const plane = globalIdx % NUM_PLANES;
-        const sat = Math.floor(globalIdx / NUM_PLANES) % SATELLITES_PER_PLANE;
-
-        const raan = (plane / NUM_PLANES) * Math.PI * 2;
-        const shellIdx = Math.floor(plane / (NUM_PLANES / shells.length));
-        const inclination = shells[shellIdx];
-        const meanAnomaly = (sat / SATELLITES_PER_PLANE) * Math.PI * 2;
-
-        const shellIndex = globalIdx % 3 === 0 ? 0 : globalIdx % 3 === 1 ? 1 : 2;
-        const colorIndex = SHELL_COLORS[shellIndex];
-        const shellData = (shellIndex << 8) | (colorIndex & 0xff);
-
-        const idx = globalIdx * 4;
-        data[idx + 0] = raan;
-        data[idx + 1] = inclination;
-        data[idx + 2] = meanAnomaly;
-        data[idx + 3] = shellData;
-      }
+      this.fillProceduralPadding(tleCount);
     }
 
     return tleCount;
+  }
+
+  /**
+   * Load multiple TLE catalogs sequentially with per-segment group IDs.
+   * Remaining slots are filled with procedural Walker data (groupId assigned separately).
+   */
+  loadMergedTleSegments(segments: readonly MergedCatalogSegment[]): MergedCatalogResult {
+    const data = this.data;
+    const groupCounts = new Map<number, number>();
+    let writeIndex = 0;
+
+    for (const segment of segments) {
+      const limit = Math.min(segment.tles.length, this.numSatellites - writeIndex);
+      for (let t = 0; t < limit; t++) {
+        const { line2 } = segment.tles[t];
+        const incDeg = parseFloat(line2.substring(8, 16).trim());
+        const raanDeg = parseFloat(line2.substring(17, 25).trim());
+        const meanAnomalyDeg = parseFloat(line2.substring(43, 51).trim());
+        const meanMotionRevPerDay = parseFloat(line2.substring(52, 63).trim());
+
+        const raan = raanDeg * DEG_TO_RAD;
+        const inc = incDeg * DEG_TO_RAD;
+        const M = meanAnomalyDeg * DEG_TO_RAD;
+
+        const nRadPerSec = (meanMotionRevPerDay * 2 * Math.PI) / 86400;
+        const MU = 398600.4418;
+        const a = Math.pow(MU / (nRadPerSec * nRadPerSec), 1 / 3);
+        const altKm = a - 6371.0;
+
+        let shellIndex: number;
+        if (altKm < 450) shellIndex = 0;
+        else if (altKm < 800) shellIndex = 1;
+        else shellIndex = 2;
+
+        const colorIndex = SHELL_COLORS[shellIndex];
+        const shellData = (shellIndex << 8) | (colorIndex & 0xff);
+
+        const idx = writeIndex * 4;
+        data[idx + 0] = raan;
+        data[idx + 1] = inc;
+        data[idx + 2] = M;
+        data[idx + 3] = shellData;
+        writeIndex++;
+      }
+      if (limit > 0) {
+        groupCounts.set(segment.groupId, (groupCounts.get(segment.groupId) ?? 0) + limit);
+      }
+      if (writeIndex >= this.numSatellites) break;
+    }
+
+    const realTleCount = writeIndex;
+    if (writeIndex < this.numSatellites) {
+      this.fillProceduralPadding(writeIndex);
+    }
+
+    return { realTleCount, groupCounts };
+  }
+
+  /** Deterministic Walker padding from `startIndex` to numSatellites. */
+  fillProceduralPadding(startIndex: number): void {
+    const data = this.data;
+    const remaining = this.numSatellites - startIndex;
+    const { NUM_PLANES, SATELLITES_PER_PLANE } = CONSTANTS;
+    const shells = INCLINATION_SHELLS;
+
+    for (let j = 0; j < remaining; j++) {
+      const globalIdx = startIndex + j;
+      const plane = globalIdx % NUM_PLANES;
+      const sat = Math.floor(globalIdx / NUM_PLANES) % SATELLITES_PER_PLANE;
+
+      const raan = (plane / NUM_PLANES) * Math.PI * 2;
+      const shellIdx = Math.floor(plane / (NUM_PLANES / shells.length));
+      const inclination = shells[shellIdx];
+      const meanAnomaly = (sat / SATELLITES_PER_PLANE) * Math.PI * 2;
+
+      const shellIndex = globalIdx % 3 === 0 ? 0 : globalIdx % 3 === 1 ? 1 : 2;
+      const colorIndex = SHELL_COLORS[shellIndex];
+      const shellData = (shellIndex << 8) | (colorIndex & 0xff);
+
+      const idx = globalIdx * 4;
+      data[idx + 0] = raan;
+      data[idx + 1] = inclination;
+      data[idx + 2] = meanAnomaly;
+      data[idx + 3] = shellData;
+    }
+  }
+
+  /** Build group-id array for a merged catalog load. */
+  buildGroupIdsForMerged(segments: readonly MergedCatalogSegment[]): Uint32Array {
+    const groupIds = new Uint32Array(this.numSatellites);
+    let writeIndex = 0;
+
+    for (const segment of segments) {
+      const limit = Math.min(segment.tles.length, this.numSatellites - writeIndex);
+      groupIds.fill(segment.groupId, writeIndex, writeIndex + limit);
+      writeIndex += limit;
+      if (writeIndex >= this.numSatellites) break;
+    }
+
+    if (writeIndex < this.numSatellites) {
+      groupIds.fill(0, writeIndex, this.numSatellites);
+    }
+
+    return groupIds;
   }
 
   /**

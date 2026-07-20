@@ -22,6 +22,13 @@ import {
   writeKeplerianExtended,
   writeShellExtended,
 } from '@/physics/index.js';
+import { getSimWorkerClient } from '@/workers/SimWorkerClient.js';
+import {
+  buildGroupParamsUniform,
+  createDefaultVisibility,
+  type GroupVisibilityState,
+  GROUP_PARAMS_UNIFORM_SIZE,
+} from '@/data/ConstellationGroups.js';
 
 /** Re-anchor SGP4 elements every N simulation seconds. */
 const REANCHOR_INTERVAL_SIM_SEC = 180;
@@ -85,6 +92,10 @@ export interface SatelliteBufferSet {
   smileV2Uniforms: GPUBuffer;
   /** Smile V2: Trail buffer for phase 6 trails (2 frames × 16 bytes) */
   trailBuffer: GPUBuffer;
+  /** Per-satellite constellation group id (u32, 4 MB for 1M sats) */
+  groupIds: GPUBuffer;
+  /** Per-group render parameters (colors, size, visibility) */
+  groupParams: GPUBuffer;
 }
 
 /**
@@ -153,6 +164,8 @@ export class SatelliteGPUBuffer {
   private lastReanchorCycleSimTime = 0;
   private reanchorCursor = 0;
   private loadedTles: TLEData[] = [];
+  private readonly groupIdData: Uint32Array;
+  private groupVisibility: GroupVisibilityState = createDefaultVisibility();
 
   /** Backing CPU array for orbital elements, owned by `this.orbital`. */
   private get orbitalElementData(): Float32Array {
@@ -182,6 +195,7 @@ export class SatelliteGPUBuffer {
     // Pre-allocate orbital element data on CPU (shared with the WebGL2 backend)
     this.orbital = new OrbitalElements(this.numSatellites);
     this.extendedElementData = new Float32Array(this.numSatellites * EXTENDED_FLOATS_PER_SATELLITE);
+    this.groupIdData = new Uint32Array(this.numSatellites);
   }
 
   /**
@@ -420,6 +434,19 @@ export class SatelliteGPUBuffer {
       `[SatelliteGPUBuffer] Trail buffer: ${(trailBufferSize / 1024 / 1024).toFixed(2)} MB (${TRAIL_HISTORY_FRAMES} frames)`,
     );
 
+    const groupIdBufferSize = numSats * 4;
+    const groupIds = this.context.createBuffer(
+      groupIdBufferSize,
+      GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    );
+    const groupParams = this.context.createUniformBuffer(GROUP_PARAMS_UNIFORM_SIZE);
+    this.groupIdData.fill(0);
+    this.context.writeBuffer(groupIds, this.groupIdData);
+    this.uploadGroupParams();
+    console.log(
+      `[SatelliteGPUBuffer] Group IDs buffer: ${(groupIdBufferSize / 1024 / 1024).toFixed(2)} MB`,
+    );
+
     // Create staging buffer for async uploads
     this.staging = new StagingBuffer(
       this.context.getDevice(),
@@ -440,6 +467,8 @@ export class SatelliteGPUBuffer {
       skyStripUniforms,
       smileV2Uniforms,
       trailBuffer,
+      groupIds,
+      groupParams,
     };
 
     return this.buffers;
@@ -475,9 +504,10 @@ export class SatelliteGPUBuffer {
   }
 
   /**
-   * Generate Walker constellation orbital elements with multi-shell orbits
+   * Generate Walker constellation orbital elements with multi-shell orbits.
+   * Heavy CPU work runs in the simulation worker; results transfer as an ArrayBuffer.
    */
-  generateOrbitalElements(): Float32Array {
+  async generateOrbitalElements(): Promise<Float32Array> {
     console.log(`[SatelliteGPUBuffer] Generating multi-shell orbital elements...`);
     const startTime = performance.now();
 
@@ -486,19 +516,68 @@ export class SatelliteGPUBuffer {
     this.loadedTles = [];
     this.realismEnabled = false;
 
-    const data = this.orbital.generate();
+    const result = await getSimWorkerClient().generateOrbitalElements(this.numSatellites);
+    this.orbital.adoptBuffer(result.orbitalBuffer);
+    if (result.groupIdsBuffer) {
+      this.adoptGroupIds(result.groupIdsBuffer);
+    }
     this.rebuildExtendedElements(0);
 
     const elapsed = performance.now() - startTime;
     console.log(`[SatelliteGPUBuffer] Generated elements in ${elapsed.toFixed(2)}ms`);
 
-    return data;
+    return this.orbital.data;
+  }
+
+  /**
+   * Load merged multi-catalog TLE segments with group IDs from the worker.
+   */
+  async loadFromMergedCatalog(
+    tles: TLEData[],
+    segments: import('@/core/OrbitalElements.js').MergedCatalogSegment[],
+    groupIdsBuffer: ArrayBuffer,
+    anchorSimTime?: number,
+  ): Promise<number> {
+    const startTime = performance.now();
+
+    console.log(
+      `[SatelliteGPUBuffer] Loading merged catalog (${tles.length} TLE satellites across ${segments.length} groups)...`,
+    );
+
+    this.loadedTles = tles;
+    this.tlePropagator = new TlePropagator();
+    this.tleRealCount = this.tlePropagator.load(tles, this.numSatellites);
+    void this.tlePropagator.initWasm();
+
+    const result = await getSimWorkerClient().mergeCatalogElements(segments, this.numSatellites);
+    this.orbital.adoptBuffer(result.orbitalBuffer);
+    if (result.groupIdsBuffer) {
+      this.adoptGroupIds(result.groupIdsBuffer);
+    } else {
+      this.adoptGroupIds(groupIdsBuffer);
+    }
+
+    if (anchorSimTime !== undefined) {
+      this.simEpochMs = Date.now();
+      this.realismEnabled = true;
+      this.rebuildExtendedElements(anchorSimTime);
+      this.lastReanchorCycleSimTime = anchorSimTime;
+      this.reanchorCursor = this.tleRealCount;
+    } else {
+      this.realismEnabled = false;
+      this.rebuildExtendedElements(0);
+    }
+
+    const elapsed = performance.now() - startTime;
+    console.log(`[SatelliteGPUBuffer] Merged catalog load complete in ${elapsed.toFixed(2)}ms`);
+    return result.realTleCount;
   }
 
   /**
    * Load orbital elements from parsed TLE data (shell-classified, art-directed layout).
+   * Element derivation runs in the simulation worker.
    */
-  loadFromTLEData(tles: TLEData[]): number {
+  async loadFromTLEData(tles: TLEData[]): Promise<number> {
     const startTime = performance.now();
 
     console.log(
@@ -509,19 +588,24 @@ export class SatelliteGPUBuffer {
     this.tlePropagator = new TlePropagator();
     this.tleRealCount = this.tlePropagator.load(tles, this.numSatellites);
     void this.tlePropagator.initWasm();
-    const tleCount = this.orbital.loadFromTLE(tles);
+
+    const result = await getSimWorkerClient().deriveOrbitalElementsFromTLE(tles, this.numSatellites);
+    this.orbital.adoptBuffer(result.orbitalBuffer);
+    if (result.groupIdsBuffer) {
+      this.adoptGroupIds(result.groupIdsBuffer);
+    }
     this.rebuildExtendedElements(0);
 
     const elapsed = performance.now() - startTime;
     console.log(`[SatelliteGPUBuffer] TLE load complete in ${elapsed.toFixed(2)}ms`);
-    return tleCount;
+    return result.realTleCount;
   }
 
   /**
    * Load TLE catalog and anchor osculating Keplerian elements via SGP4 for realism mode.
    */
-  loadFromTLEDataWithSgp4(tles: TLEData[], anchorSimTime: number): number {
-    const count = this.loadFromTLEData(tles);
+  async loadFromTLEDataWithSgp4(tles: TLEData[], anchorSimTime: number): Promise<number> {
+    const count = await this.loadFromTLEData(tles);
     this.simEpochMs = Date.now();
     this.realismEnabled = true;
     this.rebuildExtendedElements(anchorSimTime);
@@ -644,6 +728,49 @@ export class SatelliteGPUBuffer {
     if (!this.buffers) throw new Error('Buffers not initialized');
     this.context.writeBuffer(this.buffers.orbitalElements, this.orbitalElementData);
     this.uploadExtendedElements();
+    this.uploadGroupIds();
+  }
+
+  adoptGroupIds(buffer: ArrayBuffer): void {
+    const expectedBytes = this.numSatellites * 4;
+    if (buffer.byteLength !== expectedBytes) {
+      throw new Error(
+        `Group ID buffer size mismatch: expected ${expectedBytes} bytes, got ${buffer.byteLength}`,
+      );
+    }
+    this.groupIdData.set(new Uint32Array(buffer));
+  }
+
+  uploadGroupIds(): void {
+    if (!this.buffers) throw new Error('Buffers not initialized');
+    this.context.writeBuffer(this.buffers.groupIds, this.groupIdData);
+  }
+
+  getGroupIdData(): Uint32Array {
+    return this.groupIdData;
+  }
+
+  setGroupVisibilityState(state: GroupVisibilityState): void {
+    this.groupVisibility = state;
+    this.uploadGroupParams();
+  }
+
+  getGroupVisibilityState(): GroupVisibilityState {
+    return this.groupVisibility;
+  }
+
+  setGroupVisibility(groupId: number, visible: boolean): void {
+    if (groupId < 0 || groupId >= this.groupVisibility.visible.length) return;
+    this.groupVisibility.visible[groupId] = visible;
+    this.uploadGroupParams();
+  }
+
+  uploadGroupParams(): void {
+    if (!this.buffers) throw new Error('Buffers not initialized');
+    this.context.writeBuffer(
+      this.buffers.groupParams,
+      buildGroupParamsUniform(this.groupVisibility),
+    );
   }
 
   /**
@@ -815,6 +942,8 @@ export class SatelliteGPUBuffer {
       total += 48; // skyStripUniforms
       total += 96; // smileV2Uniforms
       total += numSats * 16 * 2; // trailBuffer (32 MB, 2 frames)
+      total += numSats * 4; // groupIds (4 MB)
+      total += GROUP_PARAMS_UNIFORM_SIZE; // groupParams
     }
 
     return total;
@@ -838,6 +967,8 @@ export class SatelliteGPUBuffer {
       this.buffers.skyStripUniforms.destroy();
       this.buffers.smileV2Uniforms.destroy();
       this.buffers.trailBuffer.destroy();
+      this.buffers.groupIds.destroy();
+      this.buffers.groupParams.destroy();
 
       if (this.isBufferPair(this.buffers.positions)) {
         this.buffers.positions.read.destroy();

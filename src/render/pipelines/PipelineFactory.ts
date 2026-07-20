@@ -70,6 +70,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       { binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
       { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+      { binding: 7, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
     ],
   });
 
@@ -90,6 +91,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       { binding: 4, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
       { binding: 5, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
       { binding: 6, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+      { binding: 7, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
     ],
   });
 

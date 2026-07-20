@@ -14,7 +14,11 @@ import {
 } from '@/app/PatternController.js';
 import { setupSkylineDisplayButtons } from '@/app/SkylineDisplayController.js';
 import { setRealismMode } from '@/app/RealismController.js';
-import { switchTLECatalog } from '@/app/loadSatelliteOrbitalData.js';
+import {
+  applyConstellationSelection,
+  toggleConstellationGroup,
+} from '@/app/loadSatelliteOrbitalData.js';
+import { getGroupIdForCatalog } from '@/data/ConstellationGroups.js';
 import { bindSimClock } from '@/app/SimClockController.js';
 import { applyViewTuning } from '@/app/ViewModeCoordinator.js';
 import {
@@ -128,8 +132,32 @@ export function setupCallbacks(rt: AppRuntime): void {
     setRealismMode(rt, enabled);
   });
 
-  rt.ui.onTleCatalogChange((catalogId) => {
-    void switchTLECatalog(rt, catalogId);
+  rt.ui.onConstellationChipClick((catalogId, shiftKey) => {
+    const enabled = [...rt.enabledConstellations];
+    const isLoaded = enabled.includes(catalogId);
+
+    if (shiftKey) {
+      const next = isLoaded
+        ? enabled.filter((id) => id !== catalogId)
+        : [...enabled, catalogId];
+      void applyConstellationSelection(rt, next.length > 0 ? next : []);
+      return;
+    }
+
+    if (!isLoaded) {
+      void applyConstellationSelection(rt, [...enabled, catalogId]);
+      return;
+    }
+
+    const groupId = getGroupIdForCatalog(catalogId);
+    const visibility = rt.buffers?.getGroupVisibilityState().visible ?? rt.webglGroupVisibility;
+    const currentlyVisible = visibility[groupId] !== false;
+    toggleConstellationGroup(rt, groupId, !currentlyVisible);
+    rt.ui.setConstellationChips(
+      rt.enabledConstellations,
+      rt.constellationGroupCounts,
+      rt.buffers?.getGroupVisibilityState().visible ?? rt.webglGroupVisibility,
+    );
   });
 
   rt.ui.setDemoActive(false);
@@ -256,7 +284,11 @@ function setupSatelliteSearch(rt: AppRuntime): void {
         identity?.noradId !== null && identity?.noradId !== undefined
           ? ` · NORAD ${identity.noradId}`
           : '';
-      li.textContent = `${identity?.name ?? `SAT #${index}`}${norad}`;
+      const group =
+        identity?.groupLabel && identity.groupLabel !== 'Walker'
+          ? ` · ${identity.groupLabel}`
+          : '';
+      li.textContent = `${identity?.name ?? `SAT #${index}`}${group}${norad}`;
       li.addEventListener('mousedown', (e) => {
         e.preventDefault();
         input.value = identity?.name ?? String(index);
