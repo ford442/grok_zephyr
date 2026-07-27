@@ -25,6 +25,7 @@ export interface UIElements {
   buttons: HTMLButtonElement[];
   demoButton: HTMLButtonElement;
   demoAutoButton: HTMLButtonElement;
+  enterVrButton: HTMLButtonElement | null;
   patternButtons: HTMLButtonElement[];
   animationButtons: HTMLButtonElement[];
   physicsButtons: HTMLButtonElement[];

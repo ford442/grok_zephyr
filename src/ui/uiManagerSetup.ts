@@ -22,6 +22,7 @@ export interface UIManagerSetupCallbacks {
   onLoopToggle: ((loop: boolean) => void) | null;
   onDemoToggle: (() => void) | null;
   onDemoAutoToggle: ((enabled: boolean) => void) | null;
+  onEnterVrToggle: (() => void) | null;
   onAudioToggle: ((muted: boolean) => void) | null;
   onTrailsToggle: ((enabled: boolean) => void) | null;
   onTrailLengthChange: ((mode: 'short' | 'medium' | 'long') => void) | null;
@@ -85,6 +86,7 @@ export function getElements(): UIElements {
     ],
     demoButton: document.getElementById('btnDemo') as HTMLButtonElement,
     demoAutoButton: document.getElementById('btnDemoAuto') as HTMLButtonElement,
+    enterVrButton: document.getElementById('btnEnterVr') as HTMLButtonElement | null,
     patternButtons: [
       document.getElementById('pbtn0') as HTMLButtonElement,
       document.getElementById('pbtn1') as HTMLButtonElement,
@@ -220,6 +222,12 @@ export function setupEventListeners(ctx: UIManagerSetupContext): void {
     actions.setDemoAutoEnabled(enabled);
     if (callbacks.onDemoAutoToggle) {
       callbacks.onDemoAutoToggle(enabled);
+    }
+  });
+
+  elements.enterVrButton?.addEventListener('click', () => {
+    if (callbacks.onEnterVrToggle) {
+      callbacks.onEnterVrToggle();
     }
   });
 

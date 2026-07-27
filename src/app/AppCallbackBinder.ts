@@ -80,6 +80,25 @@ export function setupCallbacks(rt: AppRuntime): void {
     rt.simulation.demoAutoEnabled = enabled;
     rt.registerUserActivity(false);
   });
+
+  rt.ui.onEnterVrToggle(() => {
+    void (async () => {
+      const xr = rt.xrSession;
+      if (!xr) return;
+      try {
+        if (xr.isActive()) {
+          await xr.exit();
+        } else {
+          await xr.enter();
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn('[XR] Session failed:', msg);
+        rt.ui.showError(`VR: ${msg}`);
+        setTimeout(() => rt.ui.hideError(), 4000);
+      }
+    })();
+  });
   rt.ui.onAudioToggle((muted) => {
     void rt.audio.setMuted(muted);
   });

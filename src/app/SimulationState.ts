@@ -1,9 +1,11 @@
 import type { QualityLevel } from '@/core/QualityPresets.js';
 import { SimClock } from '@/app/SimClock.js';
+import { GroundStationController } from '@/ground/GroundStationController.js';
 
 /** Simulation timing, quality, and pattern mode — single source of truth. */
 export class SimulationState {
   readonly clock = new SimClock();
+  readonly groundStations = new GroundStationController();
 
   demoAutoEnabled = true;
   lastUserActivityTime = performance.now() * 0.001;

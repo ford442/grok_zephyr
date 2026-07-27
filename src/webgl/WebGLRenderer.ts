@@ -58,6 +58,8 @@ export interface WebGLFrame {
   viewMode: number;
   timeScale?: number;
   hostVelocity?: readonly [number, number, number];
+  station?: { positionEciKm: readonly [number, number, number]; zenithEci: readonly [number, number, number]; minimumElevationSin: number; active: boolean };
+  selectedSatellite?: number;
 }
 
 /** Earth mesh data (shares genSphere geometry with the WebGPU path). */
@@ -449,13 +451,51 @@ export class WebGLRenderer {
     this.pickFbo = null;
   }
 
-  renderFrame(frame: WebGLFrame): void {
+  /** Underlying WebGL2 context (for WebXR layer binding). */
+  getGL(): WebGL2RenderingContext {
+    return this.gl;
+  }
+
+  /** Ensure the context is XR-compatible (required before requestSession). */
+  async makeXRCompatible(): Promise<void> {
+    const gl = this.gl as WebGL2RenderingContext & {
+      makeXRCompatible?: () => Promise<void>;
+    };
+    if (typeof gl.makeXRCompatible === 'function') {
+      await gl.makeXRCompatible();
+    }
+  }
+
+  /**
+   * Target for a single eye/scene pass. When omitted, uses the internal HDR FBO.
+   * Used by mono frames and WebXR stereo viewports.
+   */
+  renderScene(
+    frame: WebGLFrame,
+    target?: {
+      fbo: WebGLFramebuffer | null;
+      x?: number;
+      y?: number;
+      width: number;
+      height: number;
+    },
+  ): void {
     const gl = this.gl;
     const invViewProj = mat4inv(frame.viewProj);
+    const x = target?.x ?? 0;
+    const y = target?.y ?? 0;
+    const w = target?.width ?? this.width;
+    const h = target?.height ?? this.height;
+    const prevW = this.width;
+    const prevH = this.height;
+    // Satellite point size / screen uniforms use active viewport size.
+    this.width = w;
+    this.height = h;
 
-    // ── Scene → HDR target ─────────────────────────────────────────────
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.hdr.fbo);
-    gl.viewport(0, 0, this.width, this.height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : this.hdr.fbo);
+    gl.viewport(x, y, w, h);
+    gl.scissor(x, y, w, h);
+    gl.enable(gl.SCISSOR_TEST);
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -466,6 +506,32 @@ export class WebGLRenderer {
     if (isMoonView && this.debug.showEarth) this.drawEarth(frame);
     if (isMoonView) this.drawMoonEarthDisk(invViewProj, frame);
     if (isMoonView) this.drawMoonForeground(invViewProj, frame);
+
+    gl.disable(gl.SCISSOR_TEST);
+    this.width = prevW;
+    this.height = prevH;
+  }
+
+  /**
+   * Render one eye directly to an external framebuffer (e.g. XRWebGLLayer).
+   * Skips bloom and HDR composite — XR uses a simplified path for comfort FPS.
+   */
+  renderEye(
+    frame: WebGLFrame,
+    target: {
+      fbo: WebGLFramebuffer | null;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    },
+  ): void {
+    this.renderScene(frame, target);
+  }
+
+  renderFrame(frame: WebGLFrame): void {
+    // ── Scene → HDR target ─────────────────────────────────────────────
+    this.renderScene(frame);
 
     // ── Bloom ──────────────────────────────────────────────────────────
     if (this.debug.showBloom) this.drawBloom();
@@ -534,6 +600,12 @@ export class WebGLRenderer {
     gl.uniform1i(this.satU.loc('uViewMode'), frame.viewMode | 0);
     gl.uniform1f(this.satU.loc('uDistanceCullKm'), this.satVisualPacked[6]);
     gl.uniform1f(this.satU.loc('uTimeScale'), frame.timeScale ?? 1.0);
+    const station = frame.station;
+    gl.uniform1i(this.satU.loc('uStationActive'), station?.active ? 1 : 0);
+    gl.uniform3f(this.satU.loc('uStationPosition'), ...(station?.positionEciKm ?? [0, 0, 0]));
+    gl.uniform3f(this.satU.loc('uStationZenith'), ...(station?.zenithEci ?? [0, 0, 1]));
+    gl.uniform1f(this.satU.loc('uStationMinSin'), station?.minimumElevationSin ?? 0);
+    gl.uniform1i(this.satU.loc('uSelectedSatellite'), frame.selectedSatellite ?? -1);
     const hv = frame.hostVelocity ?? [0, 0, 0];
     gl.uniform3f(this.satU.loc('uHostVelocity'), hv[0], hv[1], hv[2]);
     gl.uniform1f(this.satU.loc('uCoreOuter'), this.satVisualPacked[0]);

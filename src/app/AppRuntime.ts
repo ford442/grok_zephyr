@@ -29,6 +29,9 @@ import type { ChipCatalogId } from '@/data/ConstellationGroups.js';
 import type { TLECatalogMeta } from '@/data/TLESource.js';
 import type { SatelliteCatalog } from '@/data/SatelliteCatalog.js';
 import type { TLEData } from '@/types/index.js';
+import type { GroundStationPanel } from '@/ui/GroundStationPanel.js';
+import type { GroundStationGuides } from '@/render/GroundStationGuides.js';
+import type { XrSessionManager } from '@/xr/XrSessionManager.js';
 
 /**
  * Shared runtime dependencies and mutable application state accessed by
@@ -65,6 +68,9 @@ export interface AppRuntime {
   webglOrbital: OrbitalElements | null;
   webglDebugOverlay: WebGLDebugOverlay | null;
   captureManager: CaptureManager | null;
+  groundStationPanel: GroundStationPanel | null;
+  groundStationGuides: GroundStationGuides;
+  xrSession: XrSessionManager | null;
 
   earthVertexBuffer: GPUBuffer | null;
   earthIndexBuffer: GPUBuffer | null;

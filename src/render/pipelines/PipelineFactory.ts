@@ -19,6 +19,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
           { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
           { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
           { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
         ],
       }),
     ],

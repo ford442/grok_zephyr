@@ -1,11 +1,16 @@
 import { getBackgroundModeIndex } from '@/background.js';
 import { groundPresetMotionBlurWeight } from '@/camera/groundPresetEffects.js';
 import type { CameraState } from '@/camera/CameraController.js';
+import {
+  viewDescriptorFromCameraState,
+  type ViewDescriptor,
+} from '@/camera/ViewDescriptor.js';
 import type { ConstellationStats } from '@/focus.js';
 import { BUFFER_SIZES } from '@/types/constants.js';
-import { extractFrustum, mat4inv } from '@/utils/math.js';
+import { mat4inv } from '@/utils/math.js';
 import { CONSTANTS } from '@/types/constants.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
+import { stationGpuState } from '@/ground/GroundStation.js';
 
 /**
  * Calculate sun position in ECI frame for eclipse shadow calculation.
@@ -51,34 +56,63 @@ export function updateBeamParamsTime(rt: AppRuntime, time: number): void {
   rt.context.writeBuffer(rt.buffers.getBuffers().beamParams, beamParamsData);
 }
 
+/**
+ * Resolve a mono ViewDescriptor from an optional camera state (or live camera).
+ * Prefer passing an explicit ViewDescriptor for stereo / XR.
+ */
+export function resolveViewDescriptor(
+  rt: AppRuntime,
+  time: number,
+  camera: CameraState | null = null,
+  screenWidth?: number,
+  screenHeight?: number,
+): ViewDescriptor {
+  const size = rt.context?.getCanvasSize() ?? { width: 1, height: 1 };
+  const width = screenWidth ?? size.width;
+  const height = screenHeight ?? size.height;
+
+  const cameraState =
+    camera ??
+    rt.camera.calculateCamera(
+      (idx, t) => {
+        if (rt.buffers) return rt.buffers.calculateSatellitePosition(idx, t);
+        return rt.webglOrbital!.calculatePosition(idx, t);
+      },
+      (idx, t) => {
+        if (rt.buffers) return rt.buffers.calculateSatelliteVelocity(idx, t);
+        return rt.webglOrbital!.calculateVelocity(idx, t);
+      },
+      time,
+    );
+
+  return viewDescriptorFromCameraState(cameraState, width, height);
+}
+
 export function writeUniforms(
   rt: AppRuntime,
   time: number,
   deltaTime: number,
   camera: CameraState | null = null,
+  view?: ViewDescriptor | null,
 ): void {
+  const station = stationGpuState(rt.simulation.groundStations.active, rt.simulation.clock.simUtcMs);
+  const stationData = new Float32Array([
+    station.positionEciKm[0], station.positionEciKm[1], station.positionEciKm[2], station.active ? 1 : 0,
+    station.zenithEci[0], station.zenithEci[1], station.zenithEci[2], station.minimumElevationSin,
+  ]);
+  const stationBuffer = rt.buffers?.getBuffers().stationUniform;
+  if (stationBuffer && rt.context) rt.context.writeBuffer(stationBuffer, stationData);
   if (!rt.context || !rt.buffers) return;
 
-  const { width, height } = rt.context.getCanvasSize();
-  const aspect = width / height;
-
-  const cameraState =
-    camera ??
-    rt.camera.calculateCamera(
-      (idx, t) => rt.buffers!.calculateSatellitePosition(idx, t),
-      (idx, t) => rt.buffers!.calculateSatelliteVelocity(idx, t),
-      time,
-    );
-
-  const { viewProjection, view } = rt.camera.buildViewProjection(cameraState, aspect);
+  const desc = view ?? resolveViewDescriptor(rt, time, camera);
+  const viewProjection = desc.viewProjection;
   const inverseViewProjection = mat4inv(viewProjection);
-  const { right, up } = rt.camera.getCameraAxes(view);
-  const frustum = extractFrustum(viewProjection);
+  const { cameraPos, cameraRight: right, cameraUp: up, frustum } = desc;
+  const width = desc.screenWidth;
+  const height = desc.screenHeight;
 
   const cameraRadius = Math.sqrt(
-    cameraState.position[0] * cameraState.position[0] +
-      cameraState.position[1] * cameraState.position[1] +
-      cameraState.position[2] * cameraState.position[2],
+    cameraPos[0] * cameraPos[0] + cameraPos[1] * cameraPos[1] + cameraPos[2] * cameraPos[2],
   );
 
   const viewMode = rt.camera.getViewModeIndex();
@@ -99,9 +133,9 @@ export function writeUniforms(
   const u32 = new Uint32Array(uniformData);
 
   f32.set(viewProjection, 0);
-  f32[16] = cameraState.position[0];
-  f32[17] = cameraState.position[1];
-  f32[18] = cameraState.position[2];
+  f32[16] = cameraPos[0];
+  f32[17] = cameraPos[1];
+  f32[18] = cameraPos[2];
   f32[19] = 1.0;
   f32[20] = right[0];
   f32[21] = right[1];

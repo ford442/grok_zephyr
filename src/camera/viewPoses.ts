@@ -3,6 +3,8 @@ import { CONSTANTS, CAMERA, MATH } from '@/types/constants.js';
 import { HORIZON_FRAMING } from '@/camera/HorizonLimb.js';
 import { v3add, v3scale, v3norm, v3sub, v3cross, v3dot } from '@/utils/math.js';
 import type { CameraAngles, CameraState, FleetPOVState, FocusTransition } from './cameraTypes.js';
+import type { GroundStation } from '@/ground/GroundStation.js';
+import { stationGpuState } from '@/ground/GroundStation.js';
 
 export function calculateHorizonView(
   cameraAngles: CameraAngles,
@@ -320,6 +322,25 @@ export function calculateGroundView(cameraAngles: CameraAngles): CameraState {
     near: 0.1,
     far: CAMERA.FAR_PLANE,
   };
+}
+
+/** Ground View in the active station's local east/north/up frame. */
+export function calculateStationGroundView(
+  cameraAngles: CameraAngles,
+  station: GroundStation,
+  utcMs: number,
+): CameraState {
+  const frame = stationGpuState(station, utcMs);
+  const up = v3norm(frame.zenithEci);
+  let east = v3norm(v3cross([0, 0, 1], up));
+  if (Math.hypot(...east) < 0.1) east = [0, 1, 0];
+  const north = v3norm(v3cross(up, east));
+  const az = cameraAngles.yaw * MATH.DEG_TO_RAD;
+  const elevation = cameraAngles.pitch * MATH.DEG_TO_RAD;
+  const horizontal = v3add(v3scale(north, Math.cos(az)), v3scale(east, Math.sin(az)));
+  const look = v3norm(v3add(v3scale(horizontal, Math.cos(elevation)), v3scale(up, Math.sin(elevation))));
+  const position = v3add(frame.positionEciKm, v3scale(up, 0.1));
+  return { position, target: v3add(position, v3scale(look, 10000)), up, fov: CAMERA.DEFAULT_FOV, near: 0.1, far: CAMERA.FAR_PLANE };
 }
 
 export function calculateSkylineView(cameraAngles: CameraAngles): CameraState {

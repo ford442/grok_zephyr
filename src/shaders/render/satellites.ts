@@ -411,7 +411,9 @@ fn satellite_vs(
 ) -> VOut {
   let pd = sat_pos[satIdx];
   let wp = pd.xyz;
-  let cdat = pd.w;
+  let packedData = u32(pd.w);
+  let stationVisible = (packedData & 256u) != 0u;
+  let cdat = f32(packedData & 255u);
   let cam = uni.camera_pos.xyz;
   let dist = length(wp - cam);
 
@@ -491,6 +493,9 @@ fn satellite_vs(
     col = gp.baseColor * gp.brightness;
   }
   let isHighlighted = select(0.0, 1.0, satIdx == params.selected_satellite);
+  if (stationVisible && isHighlighted < 0.5) {
+    col = mix(col, vec3f(0.15, 0.95, 1.0), 0.68);
+  }
   if (isHighlighted > 0.0) {
     col = mix(col, vec3f(1.0, 0.92, 0.6), 0.75);
   }
@@ -500,7 +505,8 @@ fn satellite_vs(
   // From the Moon (~384k km), atten would be ~0.003; boost it so the constellation glows visibly.
   let moonAttenBoost = select(1.0, 250.0, isMoonView);
   let atten = 1.0 / (1.0 + dist * 0.00075) * moonAttenBoost;
-  let selectionBoost = 1.0 + isHighlighted * 1.5;
+  let stationBoost = select(1.0, 1.28, stationVisible && isHighlighted < 0.5);
+  let selectionBoost = (1.0 + isHighlighted * 1.5) * stationBoost;
 
   // Solar panel glint simulation
   let glintHash = hashU32(satIdx);
@@ -532,13 +538,16 @@ fn satellite_vs(
         sample = PatternSample(col, 1.0, PATTERN_TIER_BG, 0.0);
       }
     }
-    out.color = sample.rgb;
+    out.color = select(sample.rgb, mix(sample.rgb, vec3f(0.15, 0.95, 1.0), 0.68), stationVisible && isHighlighted < 0.5);
     out.bright = patternVertexBright(sample, atten, selectionBoost, params.pattern_mode);
     out.pattern_feature = sample.feature;
   } else {
     out.color = col;
     out.bright = (pattern * atten + glint * atten) * selectionBoost;
     out.pattern_feature = 0.0;
+  }
+  if (isHighlighted > 0.5) {
+    out.color = mix(out.color, vec3f(1.0, 0.92, 0.6), 0.78);
   }
 
   let trailFade = 1.0 - clamp(trailingMask * motionLen * 90.0, 0.0, 0.5);

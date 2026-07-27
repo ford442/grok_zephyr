@@ -67,6 +67,7 @@ export class UIManager {
     onLoopToggle: null,
     onDemoToggle: null,
     onDemoAutoToggle: null,
+    onEnterVrToggle: null,
     onAudioToggle: null,
     onTrailsToggle: null,
     onTrailLengthChange: null,
@@ -420,6 +421,32 @@ export class UIManager {
 
   onDemoAutoToggle(callback: (enabled: boolean) => void): void {
     this.callbacks.onDemoAutoToggle = callback;
+  }
+
+  onEnterVrToggle(callback: () => void): void {
+    this.callbacks.onEnterVrToggle = callback;
+  }
+
+  /** Show/hide the Enter VR control (capability-gated). */
+  setEnterVrVisible(visible: boolean): void {
+    const btn = this.elements.enterVrButton;
+    if (!btn) return;
+    btn.style.display = visible ? '' : 'none';
+  }
+
+  setEnterVrActive(active: boolean): void {
+    const btn = this.elements.enterVrButton;
+    if (!btn) return;
+    btn.classList.toggle('active', active);
+    btn.textContent = active ? 'EXIT VR' : 'ENTER VR';
+    btn.setAttribute('aria-label', active ? 'Exit immersive VR' : 'Enter immersive VR');
+  }
+
+  setEnterVrEnabled(enabled: boolean, title?: string): void {
+    const btn = this.elements.enterVrButton;
+    if (!btn) return;
+    btn.disabled = !enabled;
+    if (title) btn.title = title;
   }
 
   onAudioToggle(callback: (muted: boolean) => void): void {

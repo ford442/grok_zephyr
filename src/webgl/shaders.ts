@@ -118,6 +118,11 @@ uniform vec3 uHostVelocity;
 uniform vec4 uGroupA[8]; // rgb + brightness
 uniform vec4 uGroupB[8]; // sizeScale, visible, pad
 uniform float uMultiGroupColor;
+uniform int uStationActive;
+uniform vec3 uStationPosition;
+uniform vec3 uStationZenith;
+uniform float uStationMinSin;
+uniform int uSelectedSatellite;
 out vec3 vColor;
 out float vFade;
 out float vWorldDist;
@@ -144,7 +149,10 @@ void main() {
     return;
   }
   float sizeScale = uGroupB[gid].x;
+  bool stationVisible = uStationActive == 1 && dot(normalize(pos - uStationPosition), uStationZenith) >= uStationMinSin;
+  bool selected = gl_VertexID == uSelectedSatellite;
   float size = clamp((uScreen.y * 4.0) / dist, 1.0, 32.0) * uPointScale * sizeScale;
+  if (stationVisible && !selected) size *= 1.18;
   gl_PointSize = size;
 
   int shell = decodeShellIndex(aElem.w);
@@ -156,8 +164,10 @@ void main() {
     float band = clamp(floor(dist / 8000.0), 0.0, 3.0);
     base = mix(vec3(1.0, 1.0, 0.2), vec3(1.0, 0.1, 0.6), band / 3.0);
   }
+  if (stationVisible && !selected) base = mix(base, vec3(0.15, 0.95, 1.0), 0.68);
+  if (selected) base = mix(base, vec3(1.0, 0.92, 0.6), 0.78);
   vColor = base;
-  vFade = clamp(20000.0 / dist, 0.15, 1.0);
+  vFade = clamp(20000.0 / dist, 0.15, 1.0) * (stationVisible && !selected ? 1.28 : (selected ? 1.5 : 1.0));
   bool isFleetView = (uViewMode & 0xFFFF) == 2;
   if (isFleetView) {
     float nearFleet = 1.0 - smoothstep(FLEET_LOD_NEAR_KM * 0.35, FLEET_LOD_NEAR_KM, dist);

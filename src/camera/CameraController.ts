@@ -27,10 +27,12 @@ import {
   calculateFocusedView,
   calculateGodView,
   calculateGroundView,
+  calculateStationGroundView,
   calculateHorizonView,
   calculateMoonView,
   calculateSkylineView,
 } from './viewPoses.js';
+import type { GroundStation } from '@/ground/GroundStation.js';
 
 export type { CameraState, GodViewParams, CameraAngles, MouseState } from './cameraTypes.js';
 
@@ -93,9 +95,16 @@ export class CameraController implements CameraInputDelegate {
   private readonly input: CameraInput;
   private readonly pan = new CameraPan();
   private readonly cinematic = new CameraCinematic();
+  private groundStation: GroundStation | null = null;
+  private groundStationUtcMs = 0;
 
   constructor() {
     this.input = new CameraInput(this);
+  }
+
+  setGroundStation(station: GroundStation | null, utcMs: number): void {
+    this.groundStation = station;
+    this.groundStationUtcMs = utcMs;
   }
 
   // --- CameraInputDelegate ---
@@ -460,7 +469,9 @@ export class CameraController implements CameraInputDelegate {
         return result.camera;
       }
       case 'ground':
-        return calculateGroundView(this.cameraAngles);
+        return this.groundStation
+          ? calculateStationGroundView(this.cameraAngles, this.groundStation, this.groundStationUtcMs)
+          : calculateGroundView(this.cameraAngles);
       case 'moon':
         return calculateMoonView(this.cameraAngles);
       case 'skyline':

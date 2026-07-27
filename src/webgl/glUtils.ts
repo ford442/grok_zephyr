@@ -26,7 +26,9 @@ export function acquireGL(canvas: HTMLCanvasElement): GLContext {
     premultipliedAlpha: false,
     preserveDrawingBuffer: true, // allow Playwright / toDataURL readback
     powerPreference: 'high-performance',
-  });
+    // Enable WebXR layer binding when the UA supports it (ignored if unsupported).
+    xrCompatible: true,
+  } as WebGLContextAttributes);
   if (!gl) {
     throw new Error('WebGL2 is not supported in this browser.');
   }

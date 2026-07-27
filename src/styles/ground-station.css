@@ -1,0 +1,32 @@
+#ground-station-panel {
+  position: fixed;
+  z-index: 45;
+  right: 16px;
+  bottom: 16px;
+  width: min(390px, calc(100vw - 32px));
+  color: #dffcff;
+  background: rgba(3, 12, 20, 0.9);
+  border: 1px solid rgba(71, 224, 255, 0.35);
+  border-radius: 8px;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.45);
+  font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+  backdrop-filter: blur(12px);
+}
+#ground-station-panel summary { cursor: pointer; padding: 10px 12px; color: #65ecff; letter-spacing: .12em; }
+#ground-station-panel .gs-body { padding: 0 12px 12px; }
+#ground-station-panel label { display: grid; gap: 3px; color: #9bb6bd; }
+#ground-station-panel select, #ground-station-panel input { min-width: 0; color: #eefeff; background: #071b25; border: 1px solid #284a56; border-radius: 3px; padding: 5px; }
+#ground-station-panel .gs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin: 9px 0; }
+#ground-station-panel .gs-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+#ground-station-panel button { color: #bff8ff; background: #0c3442; border: 1px solid #28758b; border-radius: 3px; padding: 5px 8px; cursor: pointer; }
+#ground-station-panel button:disabled { opacity: .4; cursor: default; }
+#ground-station-panel .gs-toggles { display: flex; gap: 16px; margin: 9px 0; }
+#ground-station-panel .gs-toggles label { display: flex; align-items: center; gap: 5px; }
+#ground-station-panel .gs-coords, #ground-station-panel #gs-status { margin-top: 7px; color: #a8cbd1; }
+#ground-station-panel .gs-pass { display: grid; gap: 2px; border-top: 1px solid #173944; margin-top: 7px; padding-top: 7px; }
+#ground-station-panel .gs-pass strong { color: #63eaff; } #ground-station-panel .gs-pass small { color: #728f96; }
+@media (max-width: 700px) { #ground-station-panel { right: 8px; bottom: 60px; width: calc(100vw - 16px); max-height: 55vh; overflow: auto; } }
+#ground-station-guides { position: fixed; z-index: 8; pointer-events: none; overflow: visible; }
+#ground-station-guides .station-footprint { fill: none; stroke: rgba(55, 231, 255, .82); stroke-width: 1.5; filter: drop-shadow(0 0 3px #30dff5); }
+#ground-station-guides .station-los { stroke: #ff5d69; stroke-width: 1.5; stroke-dasharray: 5 4; }
+#ground-station-guides .station-los.visible { stroke: #38f4d2; }

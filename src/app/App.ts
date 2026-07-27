@@ -62,6 +62,9 @@ import {
 } from '@/app/GroundObserverUI.js';
 import { writeUniforms } from '@/app/UniformWriter.js';
 import type { CameraState } from '@/camera/CameraController.js';
+import { GroundStationPanel } from '@/ui/GroundStationPanel.js';
+import { GroundStationGuides } from '@/render/GroundStationGuides.js';
+import { isImmersiveVrSupported, XrSessionManager } from '@/xr/index.js';
 
 export class App implements AppRuntime {
   readonly canvas: HTMLCanvasElement;
@@ -94,6 +97,9 @@ export class App implements AppRuntime {
   webglOrbital = null as AppRuntime['webglOrbital'];
   webglDebugOverlay = null as AppRuntime['webglDebugOverlay'];
   captureManager: CaptureManager | null = null;
+  groundStationPanel: GroundStationPanel | null = null;
+  readonly groundStationGuides: GroundStationGuides;
+  xrSession: XrSessionManager | null = null;
 
   earthVertexBuffer: GPUBuffer | null = null;
   earthIndexBuffer: GPUBuffer | null = null;
@@ -141,6 +147,7 @@ export class App implements AppRuntime {
       throw new Error('Canvas element #gpu-canvas not found');
     }
     this.canvas = canvas;
+    this.groundStationGuides = new GroundStationGuides(canvas);
     this.camera = new CameraController();
     this.groundObserver = new GroundObserverCamera();
     this.ui = new UIManager();
@@ -148,6 +155,11 @@ export class App implements AppRuntime {
     this.audio = new AudioEngine();
     this.patternNameDisplay = document.getElementById('patternName');
     setupCallbacks(this);
+    this.groundStationPanel = new GroundStationPanel(this);
+    this.xrSession = new XrSessionManager(this);
+    this.xrSession.setPhaseChangeListener((phase) => {
+      this.ui.setEnterVrActive(phase === 'active' || phase === 'starting');
+    });
   }
 
   handleResize(): void {
@@ -265,6 +277,7 @@ export class App implements AppRuntime {
           this.orientationChangeListener,
           this.orientationLockGestureListener,
         );
+        void this.initXrUi();
         return;
       }
       await bootWebGPU(
@@ -278,8 +291,30 @@ export class App implements AppRuntime {
           startRenderLoop: () => this.start(),
         },
       );
+      void this.initXrUi();
     } catch (error) {
       this.handleError(error);
+    }
+  }
+
+  /** Capability-gate the Enter VR button; WebGL is required for Stage 2 XR. */
+  private async initXrUi(): Promise<void> {
+    const supported = await isImmersiveVrSupported();
+    if (!supported) {
+      this.ui.setEnterVrVisible(false);
+      return;
+    }
+    this.ui.setEnterVrVisible(true);
+    if (this.backend !== 'webgl') {
+      this.ui.setEnterVrEnabled(
+        false,
+        'VR preview requires WebGL — open with ?renderer=webgl then Enter VR',
+      );
+    } else {
+      this.ui.setEnterVrEnabled(
+        true,
+        'Enter VR — look around from 720km; trigger/[ ] cycle anchors',
+      );
     }
   }
 
@@ -411,6 +446,9 @@ export class App implements AppRuntime {
   }
 
   destroy(): void {
+    if (this.xrSession?.isActive()) {
+      void this.xrSession.exit();
+    }
     this.stop();
     destroyGpuResources(this);
     window.removeEventListener('resize', this.resizeListener);

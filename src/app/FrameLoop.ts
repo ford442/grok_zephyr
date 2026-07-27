@@ -17,9 +17,11 @@ import {
 import {
   buildConstellationStats,
   calculateSunPosition,
+  resolveViewDescriptor,
   writeUniforms,
 } from '@/app/UniformWriter.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
+import { stationGpuState } from '@/ground/GroundStation.js';
 
 export class FrameLoopState {
   animationId = 0;
@@ -131,13 +133,17 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
     }
 
     rt.camera.setFleetHostIndex(rt.fleetHostIndex);
+    rt.camera.setGroundStation(rt.simulation.groundStations.active, rt.simulation.clock.simUtcMs);
     const cameraState = rt.camera.calculateCamera(
       (idx, t) => rt.buffers!.calculateSatellitePosition(idx, t),
       (idx, t) => rt.buffers!.calculateSatelliteVelocity(idx, t),
       time,
     );
-    const aspect = width / height;
-    const { viewProjection } = rt.camera.buildViewProjection(cameraState, aspect);
+    // Mono path: one ViewDescriptor from camera (stereo/XR can pass explicit descriptors).
+    const viewDesc = resolveViewDescriptor(rt, time, cameraState, width, height);
+    const viewProjection = viewDesc.viewProjection;
+    const guideSatellite = rt.selectedSatelliteIndex >= 0 ? rt.buffers!.calculateSatellitePosition(rt.selectedSatelliteIndex, simTime) : null;
+    rt.groundStationGuides.update({ station: rt.simulation.groundStations.active, utcMs: rt.simulation.clock.simUtcMs, satellite: guideSatellite, camera: cameraState, viewProjection, showFootprint: rt.simulation.groundStations.showFootprint, showLos: rt.simulation.groundStations.showLos });
     const sunPos = calculateSunPosition(simTime);
     applyHorizonViewEffects(rt, cameraState, viewProjection, sunPos, height);
     applyGodViewEffects(rt, cameraState);
@@ -149,6 +155,7 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
       rt.focusManager.setConstellationStats(buildConstellationStats(rt));
       rt.focusManager.update(simTime);
     }
+    rt.groundStationPanel?.tick();
 
     if (rt.trailRenderer) {
       const forward = new Float32Array([
@@ -166,7 +173,7 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
         forward,
       );
     }
-    writeUniforms(rt, time, deltaTime, cameraState);
+    writeUniforms(rt, time, deltaTime, cameraState, viewDesc);
     rt.buffers?.tickSgp4Reanchor(simTime);
     rt.pipeline.updateDepthOfFieldFocus(
       cameraState.position,
@@ -374,12 +381,15 @@ export function createWebGLRenderLoop(rt: AppRuntime): (timestamp: number) => vo
     const aspect = rt.canvas.width / Math.max(1, rt.canvas.height);
     const orbital = rt.webglOrbital;
     rt.camera.setFleetHostIndex(rt.fleetHostIndex);
+    rt.camera.setGroundStation(rt.simulation.groundStations.active, rt.simulation.clock.simUtcMs);
     const cameraState = rt.camera.calculateCamera(
       (idx, t) => orbital.calculatePosition(idx, t),
       (idx, t) => orbital.calculateVelocity(idx, t),
       time,
     );
     const { viewProjection } = rt.camera.buildViewProjection(cameraState, aspect);
+    const guideSatellite = rt.selectedSatelliteIndex >= 0 ? orbital.calculatePosition(rt.selectedSatelliteIndex, simTime) : null;
+    rt.groundStationGuides.update({ station: rt.simulation.groundStations.active, utcMs: rt.simulation.clock.simUtcMs, satellite: guideSatellite, camera: cameraState, viewProjection, showFootprint: rt.simulation.groundStations.showFootprint, showLos: rt.simulation.groundStations.showLos });
     const sun = calculateSunPosition(simTime);
     applyHorizonViewEffects(rt, cameraState, viewProjection, sun, rt.canvas.height);
     applyGodViewEffects(rt, cameraState);
@@ -390,6 +400,7 @@ export function createWebGLRenderLoop(rt: AppRuntime): (timestamp: number) => vo
       rt.focusManager.setConstellationStats(buildConstellationStats(rt));
       rt.focusManager.update(simTime);
     }
+    rt.groundStationPanel?.tick();
 
     const sunLen = Math.hypot(sun[0], sun[1], sun[2]) || 1;
     const fleetHostVel =
@@ -407,6 +418,8 @@ export function createWebGLRenderLoop(rt: AppRuntime): (timestamp: number) => vo
       viewMode: rt.camera.getViewModeIndex(),
       timeScale: rt.simulation.clock.rate,
       hostVelocity: fleetHostVel,
+      station: stationGpuState(rt.simulation.groundStations.active, rt.simulation.clock.simUtcMs),
+      selectedSatellite: rt.selectedSatelliteIndex,
     });
 
     rt.ui.updateSimClock(rt.simulation.clock);

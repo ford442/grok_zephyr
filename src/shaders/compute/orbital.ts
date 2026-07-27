@@ -11,6 +11,8 @@ export const ORBITAL_CS =
 @group(0) @binding(1) var<storage, read>       orb_elem : array<vec4f>;
 @group(0) @binding(2) var<storage, read>       ext_elem : array<vec4f>;
 @group(0) @binding(3) var<storage, read_write> sat_pos  : array<vec4f>;
+struct StationUniform { position_active: vec4f, zenith_min_sin: vec4f }
+@group(0) @binding(4) var<uniform> station: StationUniform;
 
 const REALISM_FLAG_BIT : u32 = 20u;
 
@@ -87,6 +89,13 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     );
   }
 
-  sat_pos[i] = vec4f(pos, colorIndex);
+  var packed = u32(colorIndex) & 255u;
+  if (station.position_active.w > 0.5) {
+    let toSat = normalize(pos - station.position_active.xyz);
+    if (dot(toSat, station.zenith_min_sin.xyz) >= station.zenith_min_sin.w) {
+      packed |= 256u;
+    }
+  }
+  sat_pos[i] = vec4f(pos, f32(packed));
 }
 `;

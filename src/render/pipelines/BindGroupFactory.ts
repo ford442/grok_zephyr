@@ -61,6 +61,7 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
         { binding: 1, resource: { buffer: buffers.orbitalElements } },
         { binding: 2, resource: { buffer: buffers.extendedElements } },
         { binding: 3, resource: { buffer: posBuffer } },
+        { binding: 4, resource: { buffer: buffers.stationUniform } },
       ],
     }),
 

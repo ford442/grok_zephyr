@@ -134,6 +134,7 @@ export function handleFocusSelectionChange(rt: AppRuntime, selection: FocusSelec
   if (selection) {
     rt.audio.playFocusChime(selection.altitude);
   }
+  rt.groundStationPanel?.selectionChanged();
 }
 
 export function setGroundViewEnabled(rt: AppRuntime, enabled: boolean): void {

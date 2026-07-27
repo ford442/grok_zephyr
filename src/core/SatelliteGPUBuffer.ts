@@ -71,6 +71,8 @@ export interface SatelliteBufferSet {
   positions: GPUBuffer | BufferPair;
   /** Uniform buffer for frame data */
   uniforms: GPUBuffer;
+  /** Ground station position/zenith/threshold (32 bytes). */
+  stationUniform: GPUBuffer;
   /** Bloom uniform buffers (H and V passes) */
   bloomUniforms: {
     horizontal: GPUBuffer;
@@ -340,6 +342,8 @@ export class SatelliteGPUBuffer {
 
     // Create uniform buffer (256 bytes, aligned)
     const uniforms = this.context.createUniformBuffer(BUFFER_SIZES.UNIFORM);
+    const stationUniform = this.context.createUniformBuffer(32);
+    this.context.writeBuffer(stationUniform, new Float32Array(8));
 
     // Create bloom uniform buffers
     const bloomUniforms = {
@@ -461,6 +465,7 @@ export class SatelliteGPUBuffer {
       extendedElements,
       positions,
       uniforms,
+      stationUniform,
       bloomUniforms,
       beams,
       beamParams,
@@ -926,6 +931,7 @@ export class SatelliteGPUBuffer {
       this.elementBufferSize + // orbitalElements (16 MB)
       this.extendedElementBufferSize + // extendedElements (32 MB)
       BUFFER_SIZES.UNIFORM + // uniforms (256 bytes)
+      32 + // stationUniform
       BUFFER_SIZES.BLOOM_UNIFORM * 2; // bloomUniforms H/V (2 × buffer)
 
     // Position buffer (single or double)
@@ -960,6 +966,7 @@ export class SatelliteGPUBuffer {
       this.buffers.orbitalElements.destroy();
       this.buffers.extendedElements.destroy();
       this.buffers.uniforms.destroy();
+      this.buffers.stationUniform.destroy();
       this.buffers.bloomUniforms.horizontal.destroy();
       this.buffers.bloomUniforms.vertical.destroy();
       this.buffers.beams.destroy();
