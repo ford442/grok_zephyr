@@ -2,6 +2,7 @@ import { clamp } from '@/utils/math.js';
 import { saveImageTuning } from '@/core/ImageTuning.js';
 import { applyExposureSettings as applyExposureSettingsImpl } from '@/core/ExposureRuntime.js';
 import { CaptureManager } from '@/capture/CaptureManager.js';
+import { A11yController } from '@/a11y/A11yController.js';
 import {
   setupGroundPresetButtons,
   setupTAAToggle,
@@ -47,6 +48,7 @@ export function setupCallbacks(rt: AppRuntime): void {
 
   rt.camera.onModeChange((_mode, name, altitude) => {
     rt.ui.setViewMode(name, altitude);
+    rt.a11y?.setViewMode(name);
     rt.ui.setActiveButton(rt.camera.getViewModeIndex());
     updateGroundObserverOverlay(rt);
     rt.applyGroundPresetEffects(0);
@@ -199,6 +201,15 @@ export function setupCallbacks(rt: AppRuntime): void {
 
   rt.captureManager = new CaptureManager(rt);
   rt.captureManager.setupCaptureControls();
+
+  rt.a11y = new A11yController({
+    canvas: rt.canvas,
+    onSelectViewMode: (index) => {
+      rt.registerUserActivity(true);
+      rt.camera.setViewMode(index);
+    },
+  });
+  rt.a11y.install();
 
   rt.ui.onQualityChange((level) => {
     rt.applyQualityPreset(level);

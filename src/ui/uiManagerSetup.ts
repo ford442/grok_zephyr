@@ -466,12 +466,12 @@ export function createAnimationControls(
   container.className = 'animation-controls-extended';
   container.innerHTML = `
       <div class="anim-controls-row">
-        <label>Speed:</label>
+        <label for="animSpeed">Speed:</label>
         <input type="range" id="animSpeed" min="0.25" max="4.0" step="0.25" value="1.0">
         <span id="animSpeedValue">1.0x</span>
       </div>
       <div class="anim-controls-row">
-        <label>Loop:</label>
+        <label for="animLoop">Loop:</label>
         <input type="checkbox" id="animLoop" checked>
       </div>
     `;

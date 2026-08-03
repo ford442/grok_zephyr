@@ -17,6 +17,12 @@ export default defineConfig({
     deviceScaleFactor: 1,
     colorScheme: 'dark',
     launchOptions: {
+      // Sandboxes and prebuilt images often ship a Chromium that does not match
+      // the version Playwright would download. Point at it with
+      // PW_CHROMIUM_PATH; unset (the CI default) keeps Playwright's own build.
+      ...(process.env.PW_CHROMIUM_PATH
+        ? { executablePath: process.env.PW_CHROMIUM_PATH }
+        : {}),
       args: [
         '--use-gl=angle',
         '--use-angle=swiftshader',

@@ -114,10 +114,16 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
 
     applyViewTuning(rt, time);
     applyGroundPresetEffects(rt, deltaTime);
-    rt.camera.updateHorizonDrift(time, deltaTime);
-    rt.camera.updateGodIdleOrbit(time, deltaTime);
+    // Reduced motion suppresses camera motion the user did not ask for:
+    // idle drift, idle orbit, and the auto-starting cinematic.
+    const calmMotion = rt.a11y?.prefersReducedMotion ?? false;
+    if (!calmMotion) {
+      rt.camera.updateHorizonDrift(time, deltaTime);
+      rt.camera.updateGodIdleOrbit(time, deltaTime);
+    }
 
     if (
+      !calmMotion &&
       rt.simulation.demoAutoEnabled &&
       !rt.camera.isCinematicActive() &&
       time - rt.simulation.lastUserActivityTime >= rt.demoIdleTimeoutSeconds
@@ -362,10 +368,16 @@ export function createWebGLRenderLoop(rt: AppRuntime): (timestamp: number) => vo
 
     applyViewTuning(rt, time);
     applyGroundPresetEffects(rt, deltaTime);
-    rt.camera.updateHorizonDrift(time, deltaTime);
-    rt.camera.updateGodIdleOrbit(time, deltaTime);
+    // Reduced motion suppresses camera motion the user did not ask for:
+    // idle drift, idle orbit, and the auto-starting cinematic.
+    const calmMotion = rt.a11y?.prefersReducedMotion ?? false;
+    if (!calmMotion) {
+      rt.camera.updateHorizonDrift(time, deltaTime);
+      rt.camera.updateGodIdleOrbit(time, deltaTime);
+    }
 
     if (
+      !calmMotion &&
       rt.simulation.demoAutoEnabled &&
       !rt.camera.isCinematicActive() &&
       time - rt.simulation.lastUserActivityTime >= rt.demoIdleTimeoutSeconds
