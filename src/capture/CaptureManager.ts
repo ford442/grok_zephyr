@@ -22,6 +22,7 @@ export class CaptureManager {
   private captureVideoButton: HTMLButtonElement | null = null;
   private captureInProgress = false;
   private captureHideElements: HTMLElement[] = [];
+  private stillShortcutHandler: ((event: KeyboardEvent) => void) | null = null;
 
   constructor(private readonly rt: AppRuntime) {}
 
@@ -53,9 +54,26 @@ export class CaptureManager {
       const seconds = parseInt(this.captureVideoLength?.value ?? '5', 10) || 5;
       void this.captureVideoClip(seconds);
     });
+
+    this.stillShortcutHandler = (event: KeyboardEvent): void => {
+      if (event.key !== 'p' && event.key !== 'P') return;
+      // Never steal the key from text entry or from browser/OS chords.
+      if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable) return;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      event.preventDefault();
+      void this.captureStillImage(1);
+    };
+    window.addEventListener('keydown', this.stillShortcutHandler);
   }
 
   destroyGallery(): void {
+    if (this.stillShortcutHandler) {
+      window.removeEventListener('keydown', this.stillShortcutHandler);
+      this.stillShortcutHandler = null;
+    }
     if (!this.captureGallery) return;
     this.captureGallery
       .querySelectorAll<HTMLAnchorElement>('.capture-gallery-item')
