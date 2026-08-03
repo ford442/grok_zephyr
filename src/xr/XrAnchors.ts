@@ -64,12 +64,12 @@ export function stageMatrixFromCameraState(camera: CameraState): Float32Array {
 
 export function nextAnchorId(current: XrAnchorId): XrAnchorId {
   const i = XR_ANCHOR_IDS.indexOf(current);
-  return XR_ANCHOR_IDS[(i + 1) % XR_ANCHOR_IDS.length]!;
+  return XR_ANCHOR_IDS[(i + 1) % XR_ANCHOR_IDS.length];
 }
 
 export function previousAnchorId(current: XrAnchorId): XrAnchorId {
   const i = XR_ANCHOR_IDS.indexOf(current);
-  return XR_ANCHOR_IDS[(i - 1 + XR_ANCHOR_IDS.length) % XR_ANCHOR_IDS.length]!;
+  return XR_ANCHOR_IDS[(i - 1 + XR_ANCHOR_IDS.length) % XR_ANCHOR_IDS.length];
 }
 
 /** Default near/far for orbital XR projection rebuild (km). */

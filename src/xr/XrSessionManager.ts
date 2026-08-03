@@ -27,7 +27,7 @@ export class XrSessionManager {
   private hiddenEls: { el: HTMLElement; prev: string }[] = [];
   private onPhaseChange: ((phase: XrSessionPhase) => void) | null = null;
   private readonly onSessionEnd = (): void => {
-    void this.handleSessionEnded();
+    this.handleSessionEnded();
   };
 
   constructor(private readonly rt: AppRuntime) {}
@@ -123,7 +123,7 @@ export class XrSessionManager {
     try {
       await this.session.end();
     } catch {
-      await this.handleSessionEnded();
+      this.handleSessionEnded();
     }
   }
 
@@ -141,7 +141,7 @@ export class XrSessionManager {
     });
   }
 
-  private async handleSessionEnded(): Promise<void> {
+  private handleSessionEnded(): void {
     if (this.phase === 'idle') return;
     const session = this.session;
     if (session) {

@@ -153,6 +153,45 @@ export function mat4persp(fovy: number, aspect: number, near: number, far: numbe
 }
 
 /**
+ * Create an off-axis (asymmetric) perspective projection from frustum bounds
+ * on the near plane (WebGPU style, z in [0, 1]).
+ *
+ * `mat4persp` is the special case where the bounds are symmetric; this form is
+ * needed for XR, where each eye's frustum is off-center.
+ */
+export function mat4frustum(
+  left: number,
+  right: number,
+  bottom: number,
+  top: number,
+  near: number,
+  far: number,
+): Mat4 {
+  const rl = 1 / (right - left);
+  const tb = 1 / (top - bottom);
+  const range = 1 / (near - far);
+
+  return new Float32Array([
+    2 * near * rl,
+    0,
+    0,
+    0,
+    0,
+    2 * near * tb,
+    0,
+    0,
+    (right + left) * rl,
+    (top + bottom) * tb,
+    far * range,
+    -1,
+    0,
+    0,
+    near * far * range,
+    0,
+  ]);
+}
+
+/**
  * Matrix multiplication (column-major)
  *
  * Returns a * b (apply b first, then a)

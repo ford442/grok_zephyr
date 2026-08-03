@@ -31,7 +31,7 @@ interface XRFrame {
   ): { transform: XRRigidTransform } | null;
 }
 
-interface XRSpace {}
+type XRSpace = object;
 
 interface XRReferenceSpace extends XRSpace {
   getOffsetReferenceSpace(originOffset: XRRigidTransform): XRReferenceSpace;

@@ -19,7 +19,7 @@ describe('XrSupport', () => {
   it('isImmersiveVrSupported reads isSessionSupported', async () => {
     vi.stubGlobal('navigator', {
       xr: {
-        isSessionSupported: vi.fn(async (mode: string) => mode === 'immersive-vr'),
+        isSessionSupported: vi.fn((mode: string) => Promise.resolve(mode === 'immersive-vr')),
         requestSession: vi.fn(),
       },
     });
