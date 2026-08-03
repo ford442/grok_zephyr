@@ -18,6 +18,7 @@ export interface UIManagerSetupCallbacks {
   onRealismChange: ((enabled: boolean) => void) | null;
   onConstellationChipClick: ((catalogId: ChipCatalogId, shiftKey: boolean) => void) | null;
   onQualityChange: ((level: QualityLevel) => void) | null;
+  onAutoQualityChange?: (() => void) | null;
   onSpeedChange: ((speed: number) => void) | null;
   onLoopToggle: ((loop: boolean) => void) | null;
   onDemoToggle: (() => void) | null;
@@ -44,6 +45,7 @@ export interface UIManagerSetupActions {
   setActivePhysicsButton(mode: number): void;
   setActiveRealismButton(enabled: boolean): void;
   setActiveQualityButton(level: QualityLevel): void;
+  setAutoQuality(): void;
   setAudioMuted(muted: boolean): void;
   setTrailsEnabled(enabled: boolean): void;
   setDemoAutoEnabled(enabled: boolean): void;
@@ -107,6 +109,7 @@ export function getElements(): UIElements {
       document.getElementById('realism1') as HTMLButtonElement,
     ],
     qualityButtons: [
+      document.getElementById('qauto') as HTMLButtonElement,
       document.getElementById('qlow') as HTMLButtonElement,
       document.getElementById('qbal') as HTMLButtonElement,
       document.getElementById('qhigh') as HTMLButtonElement,
@@ -294,7 +297,13 @@ export function setupEventListeners(ctx: UIManagerSetupContext): void {
   elements.qualityButtons.forEach((btn) => {
     btn?.addEventListener('click', (e) => {
       const target = e.target as HTMLButtonElement;
-      const level = (target.dataset.quality || 'high') as QualityLevel;
+      const choice = target.dataset.quality || 'high';
+      if (choice === 'auto') {
+        actions.setAutoQuality();
+        callbacks.onAutoQualityChange?.();
+        return;
+      }
+      const level = choice as QualityLevel;
       actions.setActiveQualityButton(level);
       if (callbacks.onQualityChange) {
         callbacks.onQualityChange(level);

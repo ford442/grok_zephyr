@@ -753,3 +753,30 @@ button:focus-visible {
   transition-duration: 0.001ms !important;
   scroll-behavior: auto !important;
 }
+
+/* Transient HUD hint (quality changes, etc.) */
+#hud-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 48px;
+  transform: translateX(-50%) translateY(8px);
+  z-index: 2500;
+  padding: 8px 18px;
+  border: 1px solid rgba(102, 204, 255, 0.5);
+  border-radius: 6px;
+  background: rgba(0, 12, 24, 0.92);
+  color: #cfe9ff;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+
+#hud-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

@@ -14,6 +14,7 @@ import type { QualityLevel } from '@/core/QualityPresets.js';
 import type { FocusManager, FocusSelection } from '@/focus.js';
 import type { CaptureManager } from '@/capture/CaptureManager.js';
 import type { A11yController } from '@/a11y/A11yController.js';
+import { PerformanceGovernor } from '@/core/PerformanceGovernor.js';
 import type { ChipCatalogId } from '@/data/ConstellationGroups.js';
 import type { TLEData } from '@/types/index.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
@@ -99,6 +100,7 @@ export class App implements AppRuntime {
   webglDebugOverlay = null as AppRuntime['webglDebugOverlay'];
   captureManager: CaptureManager | null = null;
   a11y: A11yController | null = null;
+  readonly governor = new PerformanceGovernor();
   groundStationPanel: GroundStationPanel | null = null;
   readonly groundStationGuides: GroundStationGuides;
   xrSession: XrSessionManager | null = null;

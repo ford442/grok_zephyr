@@ -23,6 +23,7 @@ import type { WebGLDebugOverlay } from '@/webgl/WebGLDebug.js';
 import type { RendererBackend } from '@/webgl/rendererSelection.js';
 import type { CaptureManager } from '@/capture/CaptureManager.js';
 import type { A11yController } from '@/a11y/A11yController.js';
+import type { PerformanceGovernor } from '@/core/PerformanceGovernor.js';
 import type { SimulationState } from '@/app/SimulationState.js';
 import type { ViewModeState } from '@/app/ViewModeCoordinator.js';
 import type { FrameLoopState } from '@/app/FrameLoop.js';
@@ -70,6 +71,7 @@ export interface AppRuntime {
   webglDebugOverlay: WebGLDebugOverlay | null;
   captureManager: CaptureManager | null;
   a11y: A11yController | null;
+  governor: PerformanceGovernor;
   groundStationPanel: GroundStationPanel | null;
   groundStationGuides: GroundStationGuides;
   xrSession: XrSessionManager | null;

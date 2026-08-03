@@ -94,7 +94,7 @@ export interface AnimationUIState {
 export interface IDashboard {
   initialize(): void;
   updateStats(stats: PerformanceStats): void;
-  updateQualityPreset(level: QualityLevel): void;
+  updateQualityPreset(level: QualityLevel, governorMode?: 'auto' | 'manual'): void;
   updatePresentationMode(mode: PresentationMode): void;
   updateSgp4Benchmark(result: Sgp4BenchmarkResult | null, backend: 'wasm' | 'js'): void;
   destroy(): void;

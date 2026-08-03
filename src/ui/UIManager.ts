@@ -63,6 +63,7 @@ export class UIManager {
     onRealismChange: null,
     onConstellationChipClick: null,
     onQualityChange: null,
+    onAutoQualityChange: null,
     onSpeedChange: null,
     onLoopToggle: null,
     onDemoToggle: null,
@@ -94,6 +95,7 @@ export class UIManager {
   private dashboard: IDashboard | null = null;
   private currentQualityLevel: QualityLevel = 'high';
   private demoAutoEnabled = true;
+  private toastTimeout: number | null = null;
   private getClock: (() => SimClock) | null = null;
 
   constructor() {
@@ -170,10 +172,24 @@ export class UIManager {
 
   setActiveQualityButton(level: QualityLevel): void {
     this.elements.qualityButtons.forEach((btn) => {
-      const btnLevel = btn?.dataset.quality as QualityLevel | undefined;
+      const btnLevel = btn?.dataset.quality;
       btn?.classList.toggle('active', btnLevel === level);
     });
     this.setQualityDisplay(level);
+  }
+
+  /** Highlight AUTO; the level readout keeps tracking whatever the governor picks. */
+  setAutoQuality(): void {
+    this.elements.qualityButtons.forEach((btn) => {
+      btn?.classList.toggle('active', btn?.dataset.quality === 'auto');
+    });
+  }
+
+  /** True while AUTO is the selected mode. */
+  isAutoQuality(): boolean {
+    return this.elements.qualityButtons.some(
+      (btn) => btn?.dataset.quality === 'auto' && btn.classList.contains('active'),
+    );
   }
 
   setQualityDisplay(level: QualityLevel): void {
@@ -184,7 +200,7 @@ export class UIManager {
 
     this.currentQualityLevel = level;
     if (this.dashboard) {
-      this.dashboard.updateQualityPreset(level);
+      this.dashboard.updateQualityPreset(level, this.isAutoQuality() ? 'auto' : 'manual');
     }
   }
 
@@ -345,7 +361,10 @@ export class UIManager {
       const { PerformanceDashboard } = await import('@/ui/PerformanceDashboard.js');
       this.dashboard = new PerformanceDashboard(profiler);
       this.dashboard.initialize();
-      this.dashboard.updateQualityPreset(this.currentQualityLevel);
+      this.dashboard.updateQualityPreset(
+        this.currentQualityLevel,
+        this.isAutoQuality() ? 'auto' : 'manual',
+      );
     }
   }
 
@@ -401,6 +420,29 @@ export class UIManager {
     callback: (catalogId: ChipCatalogId, shiftKey: boolean) => void,
   ): void {
     this.callbacks.onConstellationChipClick = callback;
+  }
+
+  onAutoQualityChange(callback: () => void): void {
+    this.callbacks.onAutoQualityChange = callback;
+  }
+
+  /** Transient HUD hint, e.g. when the governor changes level. */
+  showToast(message: string, durationMs = 2600): void {
+    let toast = document.getElementById('hud-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'hud-toast';
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.add('visible');
+    if (this.toastTimeout !== null) clearTimeout(this.toastTimeout);
+    this.toastTimeout = window.setTimeout(() => {
+      toast?.classList.remove('visible');
+      this.toastTimeout = null;
+    }, durationMs);
   }
 
   onQualityChange(callback: (level: QualityLevel) => void): void {
