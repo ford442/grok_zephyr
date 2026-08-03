@@ -9,7 +9,7 @@
 import type { ViewDescriptor } from '@/camera/ViewDescriptor.js';
 import { viewDescriptorFromMatrices } from '@/camera/ViewDescriptor.js';
 import type { Vec3 } from '@/types/index.js';
-import { mat4inv, mat4mul, mat4persp } from '@/utils/math.js';
+import { mat4frustum, mat4inv, mat4mul, mat4persp } from '@/utils/math.js';
 import { XR_FAR_KM, XR_NEAR_KM } from '@/xr/XrAnchors.js';
 
 const M_TO_KM = 0.001;
@@ -71,8 +71,18 @@ export function cameraPosFromView(view: Float32Array): Vec3 {
 }
 
 /**
- * Rebuild a symmetric perspective from an XR projection matrix diagonal,
- * using orbital near/far in kilometers. Asymmetric FOV is approximated.
+ * Rebuild the eye projection with orbital near/far in kilometers, preserving
+ * the headset's exact frustum shape.
+ *
+ * Headset eye frusta are off-axis (the lens axis is not the viewport center),
+ * so collapsing them to a symmetric perspective skews binocular disparity and
+ * misaligns the stereo pair. Instead the four frustum tangents are recovered
+ * from the XR matrix and re-emitted against the orbital depth range.
+ *
+ * The entries read here (m00, m11, m[8], m[9]) are identical under both the
+ * GL z in [-1, 1] and WebGPU z in [0, 1] conventions -- only the depth row
+ * differs -- so this works regardless of which convention the runtime emits,
+ * and the result always uses the app-wide WebGPU-style convention.
  */
 export function projectionFromXrFov(
   xrProjection: Float32Array,
@@ -85,9 +95,30 @@ export function projectionFromXrFov(
   if (!Number.isFinite(m00) || !Number.isFinite(m11) || Math.abs(m00) < 1e-8 || Math.abs(m11) < 1e-8) {
     return mat4persp((70 * Math.PI) / 180, 1, nearKm, farKm);
   }
-  const fovY = 2 * Math.atan(1 / Math.abs(m11));
-  const aspect = Math.abs(m11 / m00);
-  return mat4persp(fovY, aspect > 1e-4 ? aspect : 1, nearKm, farKm);
+  const offsetX = Number.isFinite(xrProjection[8]) ? xrProjection[8] : 0;
+  const offsetY = Number.isFinite(xrProjection[9]) ? xrProjection[9] : 0;
+
+  // Tangents of the frustum edges, in near-plane units (right/near, etc).
+  const right = (1 + offsetX) / m00;
+  const left = (offsetX - 1) / m00;
+  const top = (1 + offsetY) / m11;
+  const bottom = (offsetY - 1) / m11;
+
+  // A mirrored/degenerate frustum would invert the image; fall back instead.
+  if (!(right > left) || !(top > bottom)) {
+    const fovY = 2 * Math.atan(1 / Math.abs(m11));
+    const aspect = Math.abs(m11 / m00);
+    return mat4persp(fovY, aspect > 1e-4 ? aspect : 1, nearKm, farKm);
+  }
+
+  return mat4frustum(
+    left * nearKm,
+    right * nearKm,
+    bottom * nearKm,
+    top * nearKm,
+    nearKm,
+    farKm,
+  );
 }
 
 export interface XrEyePoseInput {
