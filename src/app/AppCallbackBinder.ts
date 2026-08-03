@@ -3,6 +3,7 @@ import { saveImageTuning } from '@/core/ImageTuning.js';
 import { applyExposureSettings as applyExposureSettingsImpl } from '@/core/ExposureRuntime.js';
 import { CaptureManager } from '@/capture/CaptureManager.js';
 import { A11yController } from '@/a11y/A11yController.js';
+import { QUALITY_PRESETS } from '@/core/QualityPresets.js';
 import {
   setupGroundPresetButtons,
   setupTAAToggle,
@@ -185,9 +186,26 @@ export function setupCallbacks(rt: AppRuntime): void {
   rt.ui.setDemoAutoEnabled(rt.simulation.demoAutoEnabled);
   rt.ui.setExposureControls(rt.exposureSettings);
 
+  // Closed-loop quality. Frame time comes from the profiler, which prefers GPU
+  // timestamp-query totals and falls back to rAF deltas, so this works on
+  // devices without the timestamp-query feature.
+  let lastGovernorSampleMs = performance.now();
+  rt.governor.subscribe((change) => {
+    rt.applyQualityPreset(change.to);
+    rt.ui.setQualityDisplay(change.to);
+    if (change.reason !== 'manual') {
+      rt.ui.showToast?.(`Performance mode: ${QUALITY_PRESETS[change.to].label.toLowerCase()}`);
+    }
+  });
+
   rt.profiler.onStatsUpdate((stats) => {
     rt.ui.updateStats(stats);
     rt.lastVisibleCount = stats.visibleSatellites;
+
+    const now = performance.now();
+    const deltaSec = (now - lastGovernorSampleMs) / 1000;
+    lastGovernorSampleMs = now;
+    rt.governor.sample(stats.frameTime, deltaSec);
   });
 
   setupPatternButtons(rt);
@@ -211,8 +229,13 @@ export function setupCallbacks(rt: AppRuntime): void {
   });
   rt.a11y.install();
 
+  // Picking a preset pins the governor; AUTO hands control back.
   rt.ui.onQualityChange((level) => {
+    rt.governor.setManual(level);
     rt.applyQualityPreset(level);
+  });
+  rt.ui.onAutoQualityChange(() => {
+    rt.governor.setAuto();
   });
 
   setupTAAToggle(rt);

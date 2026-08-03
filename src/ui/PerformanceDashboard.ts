@@ -353,11 +353,13 @@ export class PerformanceDashboard {
   /**
    * Update quality preset display and track transitions
    */
-  updateQualityPreset(level: QualityLevel): void {
+  updateQualityPreset(level: QualityLevel, governorMode?: 'auto' | 'manual'): void {
     if (!this.elements) return;
 
     const preset = QUALITY_PRESETS[level];
-    this.elements.presetLabel.textContent = preset.label;
+    // Show who is driving, so an unexpected level is traceable to the governor.
+    this.elements.presetLabel.textContent =
+      governorMode === 'auto' ? `${preset.label} (AUTO)` : preset.label;
 
     // Add transition animation class for visual feedback
     const presetEl = this.elements.presetLabel;
