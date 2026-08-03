@@ -4,10 +4,13 @@
  * Handles first-run experience including intro overlay and dismissal persistence.
  */
 
+import { createFocusTrap, type FocusTrap } from '@/a11y/FocusTrap.js';
+
 export class OnboardingManager {
   private static readonly STORAGE_KEY = 'grok-zephyr-onboarding-dismissed';
   private overlayElement: HTMLElement | null = null;
   private escapeHandler: ((e: KeyboardEvent) => void) | null = null;
+  private focusTrap: FocusTrap | null = null;
   private isDismissing = false;
   private dismissTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -55,7 +58,7 @@ export class OnboardingManager {
           <p class="onboarding-subtitle">WebGPU Orbital Simulation</p>
         </div>
 
-        <div class="onboarding-body">
+        <div class="onboarding-body" tabindex="0" role="group" aria-label="Introduction">
           <div class="onboarding-section">
             <h2>What You're Seeing</h2>
             <p>1,048,576 simulated satellites orbiting Earth in real-time, rendered with WebGPU for stunning performance.</p>
@@ -120,6 +123,10 @@ export class OnboardingManager {
     this.overlayElement = overlay;
     document.body.appendChild(overlay);
 
+    // Contain Tab inside the modal; without this a keyboard user tabs straight
+    // out into the controls behind it while it is still covering the screen.
+    this.focusTrap = createFocusTrap(overlay);
+
     // Focus the close button for accessibility
     closeBtn.focus();
 
@@ -143,6 +150,9 @@ export class OnboardingManager {
         document.removeEventListener('keydown', this.escapeHandler);
         this.escapeHandler = null;
       }
+      // Releasing also restores focus to wherever it was before the modal.
+      this.focusTrap?.release();
+      this.focusTrap = null;
       // Clear any pending timeout
       if (this.dismissTimeoutId !== null) {
         clearTimeout(this.dismissTimeoutId);

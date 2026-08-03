@@ -22,6 +22,7 @@
     "deploy:pages": "echo 'GitHub Pages: push to main (after Test passes) or run the Deploy workflow in Actions.'"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.52.0",
     "@types/node": "^20.10.0",

@@ -13,6 +13,7 @@ import { parseSavedExposureSettings } from '@/core/ExposureRuntime.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
 import type { FocusManager, FocusSelection } from '@/focus.js';
 import type { CaptureManager } from '@/capture/CaptureManager.js';
+import type { A11yController } from '@/a11y/A11yController.js';
 import type { ChipCatalogId } from '@/data/ConstellationGroups.js';
 import type { TLEData } from '@/types/index.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
@@ -97,6 +98,7 @@ export class App implements AppRuntime {
   webglOrbital = null as AppRuntime['webglOrbital'];
   webglDebugOverlay = null as AppRuntime['webglDebugOverlay'];
   captureManager: CaptureManager | null = null;
+  a11y: A11yController | null = null;
   groundStationPanel: GroundStationPanel | null = null;
   readonly groundStationGuides: GroundStationGuides;
   xrSession: XrSessionManager | null = null;
@@ -458,6 +460,7 @@ export class App implements AppRuntime {
     );
     this.ui.destroyDashboard();
     this.captureManager?.destroyGallery();
+    this.a11y?.dispose();
     this.webglDebugOverlay?.destroy();
     this.webglRenderer?.destroy();
     this.hideDeviceRecoveryOverlay();
