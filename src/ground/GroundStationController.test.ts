@@ -15,7 +15,7 @@ describe('GroundStationController', () => {
     controller.setActive({ name: 'My Location', latitudeDeg: 1, longitudeDeg: 2, altitudeM: 0, minimumElevationDeg: 0, source: 'geolocation' }, false);
     expect(storage.value).toBeNull();
     controller.saveActive('Home');
-    expect(JSON.parse(storage.value!)["active"].name).toBe('Home');
+    expect((JSON.parse(storage.value!) as { active: { name: string } }).active.name).toBe('Home');
     expect(GROUND_STATION_STORAGE_KEY).toContain('.v1');
   });
 });
