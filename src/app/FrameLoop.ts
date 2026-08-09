@@ -1,9 +1,9 @@
-import { resolveBackgroundMode, setBackgroundMode } from '@/background.js';
+import { resolveBackgroundMode, setBackgroundMode } from '@/core/background.js';
 import { CONSTANTS } from '@/types/constants.js';
 import type { CameraState } from '@/camera/CameraController.js';
 import { skylineEmissiveScale } from '@/core/ViewTuningProfile.js';
 import { v3dot, v3norm, smoothstep } from '@/utils/math.js';
-import { getBackgroundModeIndex } from '@/background.js';
+import { getBackgroundModeIndex } from '@/core/background.js';
 import { estimateVisibleSatellites, recordPassTimings } from '@/app/FrameProfilerEstimates.js';
 import { resolveCullBenchmarkMode } from '@/core/CullingOptions.js';
 import { getDrawableSize } from '@/app/MobilePresentation.js';

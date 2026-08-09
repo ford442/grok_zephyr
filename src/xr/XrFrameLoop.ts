@@ -2,7 +2,7 @@
  * WebXR frame loop — dual-eye WebGL draw into XRWebGLLayer.
  */
 
-import { getBackgroundModeIndex } from '@/background.js';
+import { getBackgroundModeIndex } from '@/core/background.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 import { calculateSunPosition } from '@/app/UniformWriter.js';
 import { stationGpuState } from '@/ground/GroundStation.js';

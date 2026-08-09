@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseVisualHarnessParams } from '@/visualHarness.js';
+import { parseVisualHarnessParams } from '@/testing/visualHarness.js';
 import { GroundObserverPreset } from '@/camera/GroundObserverCamera.js';
 
 describe('parseVisualHarnessParams', () => {

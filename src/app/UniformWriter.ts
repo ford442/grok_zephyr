@@ -1,11 +1,11 @@
-import { getBackgroundModeIndex } from '@/background.js';
+import { getBackgroundModeIndex } from '@/core/background.js';
 import { groundPresetMotionBlurWeight } from '@/camera/groundPresetEffects.js';
 import type { CameraState } from '@/camera/CameraController.js';
 import {
   viewDescriptorFromCameraState,
   type ViewDescriptor,
 } from '@/camera/ViewDescriptor.js';
-import type { ConstellationStats } from '@/focus.js';
+import type { ConstellationStats } from '@/camera/FocusManager.js';
 import { BUFFER_SIZES } from '@/types/constants.js';
 import { mat4inv } from '@/utils/math.js';
 import { CONSTANTS } from '@/types/constants.js';
