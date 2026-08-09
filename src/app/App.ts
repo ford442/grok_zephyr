@@ -11,7 +11,7 @@ import { WebGPUCompatibilityManager } from '@/ui/WebGPUCompatibilityManager.js';
 import { resolveRendererBackend } from '@/webgl/rendererSelection.js';
 import { parseSavedExposureSettings } from '@/core/ExposureRuntime.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
-import type { FocusManager, FocusSelection } from '@/focus.js';
+import type { FocusManager, FocusSelection } from '@/camera/FocusManager.js';
 import type { CaptureManager } from '@/capture/CaptureManager.js';
 import type { A11yController } from '@/a11y/A11yController.js';
 import { PerformanceGovernor } from '@/core/PerformanceGovernor.js';

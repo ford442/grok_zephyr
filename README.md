@@ -211,9 +211,9 @@ You can also:
 - **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Detailed system design and module descriptions
 - **[docs/WEBGL_FALLBACK.md](./docs/WEBGL_FALLBACK.md)** - WebGL2 fallback renderer, usage, and WebGL→WebGPU porting notes
 - **[AGENTS.md](./AGENTS.md)** - AI agent configurations and swarm logic
-- **[SWARM_PROMPT.md](./SWARM_PROMPT.md)** - Multi-agent collaboration specifications
-- **[initial_plan.md](./initial_plan.md)** - Project genesis and design decisions
-- **[update_plan.md](./update_plan.md)** - Recent updates and roadmap
+- **[SWARM_PROMPT.md](./plans/SWARM_PROMPT.md)** - Multi-agent collaboration specifications
+- **[initial_plan.md](./plans/initial_plan.md)** - Project genesis and design decisions
+- **[update_plan.md](./plans/update_plan.md)** - Recent updates and roadmap
 
 ## 🤝 Contributing
 
@@ -227,7 +227,7 @@ This is an active project with exciting opportunities for contribution:
 
 ### Labels & Issue Organization
 
-We maintain a comprehensive label system for organizing issues and PRs. See [LABELS.md](./LABELS.md) for details on our label categories, colors, and usage guidelines. Labels help us track:
+We maintain a comprehensive label system for organizing issues and PRs. See [LABELS.md](./docs/LABELS.md) for details on our label categories, colors, and usage guidelines. Labels help us track:
 
 - Visual upgrades and rendering work
 - Performance improvements

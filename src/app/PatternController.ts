@@ -1,5 +1,5 @@
-import { getBeamPatternTitle } from '@/patterns.js';
-import type { FocusSelection } from '@/focus.js';
+import { getBeamPatternTitle } from '@/patterns/index.js';
+import type { FocusSelection } from '@/camera/FocusManager.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 import { syncVolumetricBeamConfig } from '@/app/QualityController.js';
 

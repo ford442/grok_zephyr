@@ -1,4 +1,4 @@
-import { getBeamPatternTitle } from '@/patterns.js';
+import { getBeamPatternTitle } from '@/patterns/index.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 
 const CAPTURE_UI_HIDE_IDS = [

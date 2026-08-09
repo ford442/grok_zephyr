@@ -2,7 +2,7 @@
  * Satellite selection — GPU picking, inspector, search, and camera framing.
  */
 
-import type { FocusSelection } from '@/focus.js';
+import type { FocusSelection } from '@/camera/FocusManager.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 import { updateSelectedSatelliteIndex } from '@/app/PatternController.js';
 import { CAMERA } from '@/types/constants.js';

@@ -1,5 +1,5 @@
 import { parseQualityParam, type QualityLevel } from '@/core/QualityPresets.js';
-import { parseVisualHarnessParams, type VisualHarnessParams } from '@/visualHarness.js';
+import { parseVisualHarnessParams, type VisualHarnessParams } from '@/testing/visualHarness.js';
 import { applySimClockFromUrl } from '@/app/SimClockController.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 
