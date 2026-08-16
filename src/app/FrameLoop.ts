@@ -1,5 +1,5 @@
 import { resolveBackgroundMode, setBackgroundMode } from '@/core/background.js';
-import { CONSTANTS } from '@/types/constants.js';
+import { getActiveFleetSize } from '@/core/FleetScale.js';
 import type { CameraState } from '@/camera/CameraController.js';
 import { skylineEmissiveScale } from '@/core/ViewTuningProfile.js';
 import { v3dot, v3norm, smoothstep } from '@/utils/math.js';
@@ -16,12 +16,19 @@ import {
 } from '@/app/ViewModeCoordinator.js';
 import {
   buildConstellationStats,
-  calculateSunPosition,
   resolveViewDescriptor,
+  sunPositionForRuntime,
   writeUniforms,
 } from '@/app/UniformWriter.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
+import { writeIslParams } from '@/app/IslController.js';
+import { tickGrowth } from '@/growth/GrowthController.js';
+import type { SatelliteFrameBuffers } from '@/core/buffer/bufferTypes.js';
 import { stationGpuState } from '@/ground/GroundStation.js';
+
+function frameBuffers(rt: AppRuntime): SatelliteFrameBuffers | null {
+  return rt.buffers;
+}
 
 export class FrameLoopState {
   animationId = 0;
@@ -37,12 +44,13 @@ export function recordTrailSamplesForCamera(
   time: number,
   cameraState: CameraState,
 ): void {
-  if (!rt.trailRenderer || !rt.buffers || !rt.trailRenderer.isEnabled()) return;
+  const buffers = frameBuffers(rt);
+  if (!rt.trailRenderer || !buffers || !rt.trailRenderer.isEnabled()) return;
 
-  const orbitalData = rt.buffers.getOrbitalElementData();
+  const orbitalData = buffers.getOrbitalElementData();
   const sampleCount = rt.trailRenderer.getSamplingBudget();
   if (sampleCount <= 0) return;
-  const sampleStride = Math.max(1, Math.floor(CONSTANTS.NUM_SATELLITES / sampleCount));
+  const sampleStride = Math.max(1, Math.floor(getActiveFleetSize() / sampleCount));
   const phase = rt.trailSamplePhase % sampleStride;
   rt.trailSamplePhase++;
 
@@ -65,8 +73,8 @@ export function recordTrailSamplesForCamera(
         : 90000;
   const visibilityDotThreshold = rt.camera.getViewMode() === 'god' ? -0.35 : -0.2;
 
-  for (let idx = phase; idx < CONSTANTS.NUM_SATELLITES; idx += sampleStride) {
-    const satPos = rt.buffers.calculateSatellitePosition(idx, time);
+  for (let idx = phase; idx < getActiveFleetSize(); idx += sampleStride) {
+    const satPos = buffers.calculateSatellitePosition(idx, time);
     const dx = satPos[0] - cameraPos[0];
     const dy = satPos[1] - cameraPos[1];
     const dz = satPos[2] - cameraPos[2];
@@ -110,6 +118,7 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
     const deltaTime = Math.min(time - rt.loop.lastTime, 0.1);
     rt.loop.lastTime = time;
     rt.simulation.clock.tick(deltaTime);
+    tickGrowth(rt, deltaTime);
     const simTime = rt.simulation.clock.simTime;
 
     applyViewTuning(rt, time);
@@ -140,17 +149,18 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
 
     rt.camera.setFleetHostIndex(rt.fleetHostIndex);
     rt.camera.setGroundStation(rt.simulation.groundStations.active, rt.simulation.clock.simUtcMs);
+    const simBuffers = frameBuffers(rt);
     const cameraState = rt.camera.calculateCamera(
-      (idx, t) => rt.buffers!.calculateSatellitePosition(idx, t),
-      (idx, t) => rt.buffers!.calculateSatelliteVelocity(idx, t),
+      (idx, t) => simBuffers!.calculateSatellitePosition(idx, t),
+      (idx, t) => simBuffers!.calculateSatelliteVelocity(idx, t),
       time,
     );
     // Mono path: one ViewDescriptor from camera (stereo/XR can pass explicit descriptors).
     const viewDesc = resolveViewDescriptor(rt, time, cameraState, width, height);
     const viewProjection = viewDesc.viewProjection;
-    const guideSatellite = rt.selectedSatelliteIndex >= 0 ? rt.buffers!.calculateSatellitePosition(rt.selectedSatelliteIndex, simTime) : null;
+    const guideSatellite = rt.selectedSatelliteIndex >= 0 ? simBuffers!.calculateSatellitePosition(rt.selectedSatelliteIndex, simTime) : null;
     rt.groundStationGuides.update({ station: rt.simulation.groundStations.active, utcMs: rt.simulation.clock.simUtcMs, satellite: guideSatellite, camera: cameraState, viewProjection, showFootprint: rt.simulation.groundStations.showFootprint, showLos: rt.simulation.groundStations.showLos });
-    const sunPos = calculateSunPosition(simTime);
+    const sunPos = sunPositionForRuntime(rt);
     applyHorizonViewEffects(rt, cameraState, viewProjection, sunPos, height);
     applyGodViewEffects(rt, cameraState);
     applyFleetViewEffects(rt, simTime);
@@ -180,13 +190,16 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
       );
     }
     writeUniforms(rt, time, deltaTime, cameraState, viewDesc);
-    rt.buffers?.tickSgp4Reanchor(simTime);
+    simBuffers?.tickSgp4Reanchor(simTime);
+    if (rt.buffers) {
+      rt.ui.updateSgp4Reanchor(rt.buffers.getLastReanchorMainMs());
+    }
     rt.pipeline.updateDepthOfFieldFocus(
       cameraState.position,
       rt.selectedSatelliteIndex,
       time,
       deltaTime,
-      (idx, t) => rt.buffers!.calculateSatellitePosition(idx, t),
+      (idx, t) => simBuffers!.calculateSatellitePosition(idx, t),
     );
 
     const encoder = rt.context.createCommandEncoder('frame');
@@ -198,6 +211,11 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
     rt.profiler.beginGPUTimestamp(encoder, 'beam');
     rt.pipeline.encodeBeamComputePass(encoder);
     rt.profiler.endGPUTimestamp(encoder, 'beam');
+
+    if (rt.simulation.islEnabled && rt.camera.getViewMode() !== 'ground') {
+      writeIslParams(rt);
+      rt.pipeline.encodeIslComputePass(encoder);
+    }
 
     if (rt.pipeline.isGpuCullingEnabled()) {
       rt.profiler.beginGPUTimestamp(encoder, 'cull');
@@ -218,6 +236,9 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
         rt.earthIndexCount,
         rt.camera.getViewMode() === 'moon',
       );
+      if (rt.simulation.islEnabled) {
+        rt.pipeline.encodeIslPass(encoder);
+      }
     }
 
     if (rt.trailRenderer) {
@@ -251,7 +272,7 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
         canvasW / canvasH,
         cameraState.fov,
       );
-      const sunPosSky = calculateSunPosition(simTime);
+      const sunPosSky = sunPositionForRuntime(rt);
       const sunDir = v3norm(sunPosSky);
       const up = v3norm(cameraState.position);
       let nightFactor = smoothstep(0.1, -0.1, v3dot(up, sunDir));
@@ -364,6 +385,7 @@ export function createWebGLRenderLoop(rt: AppRuntime): (timestamp: number) => vo
     const deltaTime = Math.min(time - rt.loop.lastTime, 0.1);
     rt.loop.lastTime = time;
     rt.simulation.clock.tick(deltaTime);
+    tickGrowth(rt, deltaTime);
     const simTime = rt.simulation.clock.simTime;
 
     applyViewTuning(rt, time);
@@ -402,7 +424,7 @@ export function createWebGLRenderLoop(rt: AppRuntime): (timestamp: number) => vo
     const { viewProjection } = rt.camera.buildViewProjection(cameraState, aspect);
     const guideSatellite = rt.selectedSatelliteIndex >= 0 ? orbital.calculatePosition(rt.selectedSatelliteIndex, simTime) : null;
     rt.groundStationGuides.update({ station: rt.simulation.groundStations.active, utcMs: rt.simulation.clock.simUtcMs, satellite: guideSatellite, camera: cameraState, viewProjection, showFootprint: rt.simulation.groundStations.showFootprint, showLos: rt.simulation.groundStations.showLos });
-    const sun = calculateSunPosition(simTime);
+    const sun = sunPositionForRuntime(rt);
     applyHorizonViewEffects(rt, cameraState, viewProjection, sun, rt.canvas.height);
     applyGodViewEffects(rt, cameraState);
     applyFleetViewEffects(rt, simTime);

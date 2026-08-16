@@ -30,8 +30,12 @@ export interface UIElements {
   animationButtons: HTMLButtonElement[];
   physicsButtons: HTMLButtonElement[];
   realismButtons: HTMLButtonElement[];
+  sunButtons: HTMLButtonElement[];
   qualityButtons: HTMLButtonElement[];
   audioToggleButton?: HTMLButtonElement;
+  islToggleButton?: HTMLButtonElement;
+  islDensitySlider?: HTMLInputElement;
+  islDensityValue?: HTMLElement;
   trailsToggleButton?: HTMLButtonElement;
   trailsLengthSelect?: HTMLSelectElement;
   exposureModeSelect?: HTMLSelectElement;
@@ -80,6 +84,9 @@ export interface UIElements {
   simPlayPauseButton?: HTMLButtonElement;
   simNowButton?: HTMLButtonElement;
   simTimelineSlider?: HTMLInputElement;
+  growthPlayButton?: HTMLButtonElement;
+  growthScrubSlider?: HTMLInputElement;
+  growthEraLabel?: HTMLElement;
 }
 
 /** Animation control options */
@@ -96,6 +103,8 @@ export interface IDashboard {
   updateStats(stats: PerformanceStats): void;
   updateQualityPreset(level: QualityLevel, governorMode?: 'auto' | 'manual'): void;
   updatePresentationMode(mode: PresentationMode): void;
+  updateGpuCapabilities(line: string): void;
   updateSgp4Benchmark(result: Sgp4BenchmarkResult | null, backend: 'wasm' | 'js'): void;
+  updateSgp4Reanchor(mainThreadMs: number): void;
   destroy(): void;
 }

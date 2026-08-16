@@ -139,6 +139,32 @@
   letter-spacing: 0.5px;
 }
 
+.growth-label {
+  font-size: 9px;
+  color: #66ccff;
+  letter-spacing: 1.5px;
+  margin-top: 8px;
+  margin-bottom: 3px;
+}
+
+.growth-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.growth-row input[type='range'] {
+  flex: 1;
+  height: 4px;
+}
+
+.growth-display {
+  font-size: 10px;
+  color: #c8e8ff;
+  font-family: 'Courier New', monospace;
+  margin-top: 3px;
+}
+
 .sim-timeline-now-marker {
   font-size: 8px;
   color: rgba(0, 255, 204, 0.45);

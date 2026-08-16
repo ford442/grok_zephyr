@@ -4,39 +4,46 @@
  * and related shader modules — define offsets here once.
  */
 
+import { UniformBufferWriter } from './uniformSchema.js';
+import {
+  BLOOM_COMPOSITE_UNI_LAYOUT,
+  BLOOM_COMPOSITE_UNI_SCHEMA,
+  KAWASE_UNI_LAYOUT,
+  KAWASE_UNI_SCHEMA,
+  THRESHOLD_UNI_LAYOUT,
+  THRESHOLD_UNI_SCHEMA,
+} from './schemas/bloom.js';
+
 /** WGSL: ThresholdUni — bloomThreshold.ts */
-export const THRESHOLD_UNI_BYTE_SIZE = 16;
+export const THRESHOLD_UNI_BYTE_SIZE = THRESHOLD_UNI_LAYOUT.byteSize;
 
 export function packThresholdUni(
   threshold: number,
   knee: number,
   enforceFloors: boolean,
 ): ArrayBuffer {
-  const ab = new ArrayBuffer(THRESHOLD_UNI_BYTE_SIZE);
-  const data = new Float32Array(ab);
-  data[0] = threshold;
-  data[1] = knee;
-  data[2] = enforceFloors ? 1.0 : 0.0;
-  data[3] = 0.0;
-  return ab;
+  return new UniformBufferWriter(THRESHOLD_UNI_SCHEMA)
+    .set('threshold', threshold)
+    .set('knee', knee)
+    .set('enforce_floors', enforceFloors ? 1.0 : 0.0)
+    .set('pad0', 0.0)
+    .bytes();
 }
 
 /** WGSL: BloomCompositeUni — composite.ts */
-export const BLOOM_COMPOSITE_UNI_BYTE_SIZE = 16;
+export const BLOOM_COMPOSITE_UNI_BYTE_SIZE = BLOOM_COMPOSITE_UNI_LAYOUT.byteSize;
 
 export function packBloomCompositeUni(
   bloomIntensity: number,
   anamorphicEnabled: boolean,
   anamorphicRatio: number,
 ): ArrayBuffer {
-  const ab = new ArrayBuffer(BLOOM_COMPOSITE_UNI_BYTE_SIZE);
-  const f32 = new Float32Array(ab);
-  const u32 = new Uint32Array(ab);
-  f32[0] = bloomIntensity;
-  u32[1] = anamorphicEnabled ? 1 : 0;
-  f32[2] = anamorphicRatio;
-  f32[3] = 0.0;
-  return ab;
+  return new UniformBufferWriter(BLOOM_COMPOSITE_UNI_SCHEMA)
+    .set('bloomIntensity', bloomIntensity)
+    .setU32('anamorphicEnabled', anamorphicEnabled ? 1 : 0)
+    .set('anamorphicRatio', anamorphicRatio)
+    .set('pad', 0.0)
+    .bytes();
 }
 
 /** WGSL: TonemapUni — composite.ts */
@@ -127,16 +134,13 @@ export function packAtmosphereSettings(
 }
 
 /** WGSL: KawaseUni — bloomDownsample.ts / bloomUpsample.ts */
-export const KAWASE_UNI_BYTE_SIZE = 16;
+export const KAWASE_UNI_BYTE_SIZE = KAWASE_UNI_LAYOUT.byteSize;
 
 export function packKawaseUni(invWidth: number, invHeight: number): ArrayBuffer {
-  const ab = new ArrayBuffer(KAWASE_UNI_BYTE_SIZE);
-  const data = new Float32Array(ab);
-  data[0] = invWidth;
-  data[1] = invHeight;
-  data[2] = 0.0;
-  data[3] = 0.0;
-  return ab;
+  return new UniformBufferWriter(KAWASE_UNI_SCHEMA)
+    .set('srcTexelSize', [invWidth, invHeight])
+    .set('pad', [0.0, 0.0])
+    .bytes();
 }
 
 /** WGSL: MotionBlurUni — motionBlur.ts / satellites.ts */

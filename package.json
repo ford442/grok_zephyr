@@ -18,6 +18,7 @@
     "test:visual": "playwright test",
     "test:visual:update": "UPDATE_BASELINES=1 playwright test",
     "build:wasm": "bash native/build.sh",
+    "build:wasm:debug": "bash native/build.sh debug",
     "deploy": "python deploy.py",
     "deploy:pages": "echo 'GitHub Pages: push to main (after Test passes) or run the Deploy workflow in Actions.'"
   },

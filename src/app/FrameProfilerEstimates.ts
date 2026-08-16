@@ -1,4 +1,4 @@
-import { CONSTANTS } from '@/types/constants.js';
+import { getActiveFleetSize } from '@/core/FleetScale.js';
 import type { TrailConfig } from '@/types/animation.js';
 import { QUALITY_PRESETS, type QualityLevel } from '@/core/QualityPresets.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
@@ -61,16 +61,16 @@ export function recordPassTimings(rt: AppRuntime): void {
 export function estimateVisibleSatellites(rt: AppRuntime): number {
   const mode = rt.camera.getViewModeIndex();
   if (mode === 0) {
-    return Math.floor(CONSTANTS.NUM_SATELLITES * 0.12);
+    return Math.floor(getActiveFleetSize() * 0.12);
   }
   if (mode === 2) {
-    return Math.floor(CONSTANTS.NUM_SATELLITES * 0.001);
+    return Math.floor(getActiveFleetSize() * 0.001);
   }
   if (mode === 3) {
-    return Math.floor(CONSTANTS.NUM_SATELLITES * 0.15);
+    return Math.floor(getActiveFleetSize() * 0.15);
   }
   if (mode === 4) {
-    return Math.floor(CONSTANTS.NUM_SATELLITES * 0.45);
+    return Math.floor(getActiveFleetSize() * 0.45);
   }
-  return Math.floor(CONSTANTS.NUM_SATELLITES * 0.25);
+  return Math.floor(getActiveFleetSize() * 0.25);
 }

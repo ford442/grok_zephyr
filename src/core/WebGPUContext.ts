@@ -5,7 +5,21 @@
  * canvas context setup, and error handling.
  */
 
-import { CONSTANTS, RENDER } from '@/types/constants.js';
+import { RENDER } from '@/types/constants.js';
+import type { QualityLevel } from '@/core/QualityPresets.js';
+import {
+  fleetLimitsForCount,
+  installActiveFleetScale,
+  persistSuccessfulFleetSize,
+  type FleetScale,
+} from '@/core/FleetScale.js';
+import {
+  adapterPowerFallbackOrder,
+  chooseAdapterCandidate,
+  REQUESTED_OPTIONAL_FEATURES,
+  snapshotAdapter,
+  type GpuCapabilityProfile,
+} from '@/core/GpuCapabilities.js';
 import type { CanvasPresentationOptions, PresentationMode } from '@/core/HdrPresentation.js';
 import {
   WebGPUErrorReporter,
@@ -67,11 +81,11 @@ export interface WebGPUContextOptions {
   onErrorReport?: WebGPUErrorReportHandler;
   /** Swapchain / canvas presentation (format, tone mapping, color space). */
   canvas?: CanvasPresentationOptions;
+  /** Quality used when `?sats=` is absent. */
+  qualityLevel?: QualityLevel;
+  /** Location search string for `?sats=` (defaults to window.location.search). */
+  search?: string;
 }
-
-const MAX_BEAMS = 65536;
-const TRAIL_HISTORY_FRAMES = 2;
-const ORBITAL_COMPUTE_WORKGROUP_SIZE = 64;
 
 /**
  * WebGPU Context Manager
@@ -92,13 +106,15 @@ export class WebGPUContext {
   private lostHandler: ((info: GPUDeviceLostInfo) => void) | null = null;
   private suppressDeviceLostCallback = false;
   private readonly errorReporter: WebGPUErrorReporter;
+  private fleetScale: FleetScale | null = null;
+  private capabilityProfile: GpuCapabilityProfile | null = null;
 
   constructor(canvas: HTMLCanvasElement, options: WebGPUContextOptions = {}) {
     this.canvas = canvas;
     this.options = {
       powerPreference: 'high-performance',
       requiredFeatures: [],
-      optionalFeatures: ['timestamp-query'],
+      optionalFeatures: [...REQUESTED_OPTIONAL_FEATURES],
       ...options,
     };
     this.errorReporter = new WebGPUErrorReporter((report) => {
@@ -130,32 +146,29 @@ export class WebGPUContext {
     }
 
     try {
-      // Request adapter
-      this.adapter = await navigator.gpu.requestAdapter({
-        powerPreference: this.options.powerPreference,
-      });
+      const selected = await this.selectAdapterAndProfile();
+      this.adapter = selected.adapter;
+      this.capabilityProfile = selected.profile;
+      this.fleetScale = selected.profile.fleet;
+      installActiveFleetScale(this.fleetScale);
 
-      if (!this.adapter) {
-        throw new WebGPUError('No WebGPU adapter found. Your GPU may not support WebGPU.');
+      console.log(
+        `[WebGPU] Adapter: ${selected.profile.vendor} ${selected.profile.architecture} (${selected.profile.powerPreference})`,
+      );
+      if (selected.profile.missingOptional.length > 0) {
+        console.warn(
+          '[WebGPU] Optional features unavailable:',
+          selected.profile.missingOptional.join(', '),
+        );
       }
 
-      const adapterInfo = await readAdapterInfo(this.adapter);
-      if (adapterInfo) {
-        console.log('[WebGPU] Adapter:', adapterInfo.vendor, adapterInfo.architecture);
-      }
-
-      const requiredLimits = this.buildRequiredLimits();
+      const requiredLimits = this.buildRequiredLimits(this.fleetScale.count);
       const requiredFeatures = this.getRequiredFeatures();
-      const optionalFeatures = this.getOptionalFeatures();
+      const optionalFeatures = selected.profile.enabledOptional.filter((feature) =>
+        (this.options.optionalFeatures ?? REQUESTED_OPTIONAL_FEATURES).includes(feature),
+      );
 
       this.validateAdapterRequirements(requiredLimits, requiredFeatures);
-
-      if (optionalFeatures.length !== (this.options.optionalFeatures?.length ?? 0)) {
-        const unavailable = (this.options.optionalFeatures ?? []).filter(
-          (feature) => !optionalFeatures.includes(feature),
-        );
-        console.warn('[WebGPU] Optional features unavailable:', unavailable.join(', '));
-      }
 
       // Request device with required limits plus supported optional features
       this.device = await this.adapter.requestDevice({
@@ -186,6 +199,13 @@ export class WebGPUContext {
       console.log('[WebGPU] Context initialized successfully');
       console.log(`[WebGPU] Format: ${this.format}`);
       console.log(`[WebGPU] Presentation: ${this.presentationMode}`);
+      persistSuccessfulFleetSize(this.fleetScale.count);
+      console.log(
+        `[WebGPU] Fleet size: ${this.fleetScale.count.toLocaleString()}` +
+          (this.fleetScale.autoReduced
+            ? ` (reduced from ${this.fleetScale.requested.toLocaleString()} — adapter limits)`
+            : ''),
+      );
       console.log(
         `[WebGPU] Max storage buffer: ${this.device.limits.maxStorageBufferBindingSize} bytes`,
       );
@@ -235,25 +255,72 @@ export class WebGPUContext {
     this.getDevice().destroy();
   }
 
-  private buildRequiredLimits(): Record<string, number> {
-    const perSatelliteBufferSize = CONSTANTS.NUM_SATELLITES * 16;
-    const extendedElementBufferSize = CONSTANTS.NUM_SATELLITES * 32;
-    const trailBufferSize = CONSTANTS.NUM_SATELLITES * 16 * TRAIL_HISTORY_FRAMES;
-    const beamBufferSize = MAX_BEAMS * 32;
-    const requiredStorageBufferSize = Math.max(
-      perSatelliteBufferSize,
-      extendedElementBufferSize,
-      trailBufferSize,
-      beamBufferSize,
+  getFleetScale(): FleetScale | null {
+    return this.fleetScale;
+  }
+
+  getNumSatellites(): number {
+    return this.fleetScale?.count ?? 0;
+  }
+
+  getCapabilities(): GpuCapabilityProfile | null {
+    return this.capabilityProfile;
+  }
+
+  getDepthFormat(): GPUTextureFormat {
+    return this.capabilityProfile?.depthFormat ?? RENDER.DEPTH_FORMAT;
+  }
+
+  private bootSearch(): string {
+    return this.options.search ?? (typeof window !== 'undefined' ? window.location.search : '');
+  }
+
+  private async selectAdapterAndProfile(): Promise<{
+    adapter: GPUAdapter;
+    profile: GpuCapabilityProfile;
+  }> {
+    const search = this.bootSearch();
+    const quality = this.options.qualityLevel ?? 'high';
+    const order = adapterPowerFallbackOrder(this.options.powerPreference ?? 'high-performance');
+    const seen = new Set<GPUAdapter>();
+    const gathered: { adapter: GPUAdapter; preference: GPUPowerPreference; snapshot: import('@/core/GpuCapabilities.js').AdapterSnapshot }[] =
+      [];
+
+    for (const preference of order) {
+      const adapter = await navigator.gpu.requestAdapter({ powerPreference: preference });
+      if (!adapter || seen.has(adapter)) continue;
+      seen.add(adapter);
+      const info = await readAdapterInfo(adapter);
+      gathered.push({ adapter, preference, snapshot: snapshotAdapter(adapter, info) });
+    }
+
+    if (gathered.length === 0) {
+      throw new WebGPUError('No WebGPU adapter found. Your GPU may not support WebGPU.');
+    }
+
+    const chosen = chooseAdapterCandidate(
+      gathered.map(({ preference, snapshot }) => ({ preference, snapshot })),
+      { search, quality },
     );
-    const requiredComputeWorkgroups = Math.ceil(
-      CONSTANTS.NUM_SATELLITES / ORBITAL_COMPUTE_WORKGROUP_SIZE,
-    );
-    const mergedLimits: Record<string, number> = {
-      maxStorageBufferBindingSize: requiredStorageBufferSize,
-      maxBufferSize: requiredStorageBufferSize,
-      maxComputeWorkgroupsPerDimension: requiredComputeWorkgroups,
-    };
+    if (!chosen) {
+      throw new WebGPUError(
+        'This GPU cannot allocate satellite storage buffers even at the minimum fleet size (16,384). ' +
+          'Tried high-performance and low-power adapters. Try a different browser or GPU.',
+      );
+    }
+
+    const adapter = gathered.find(
+      (c) => c.preference === chosen.preference && c.snapshot === chosen.snapshot,
+    )?.adapter;
+    if (!adapter) {
+      throw new WebGPUError('Failed to match the selected WebGPU adapter.');
+    }
+    return { adapter, profile: chosen.profile };
+  }
+
+  private buildRequiredLimits(numSatellites: number): Record<string, number> {
+    const fleetLimits = fleetLimitsForCount(numSatellites);
+    const mergedLimits: Record<string, number> = { ...fleetLimits };
 
     for (const [limit, value] of Object.entries(this.options.requiredLimits ?? {})) {
       mergedLimits[limit] = Math.max(mergedLimits[limit] ?? 0, value);
@@ -263,18 +330,15 @@ export class WebGPUContext {
   }
 
   private getRequiredFeatures(): GPUFeatureName[] {
-    return [...new Set(this.options.requiredFeatures ?? [])];
-  }
-
-  private getOptionalFeatures(): GPUFeatureName[] {
+    const requested = [...new Set(this.options.requiredFeatures ?? [])];
     const adapter = this.adapter;
-    if (!adapter) {
-      return [];
+    if (!adapter) return [];
+    const supported = requested.filter((feature) => adapter.features.has(feature));
+    const dropped = requested.filter((feature) => !adapter.features.has(feature));
+    if (dropped.length > 0) {
+      console.warn('[WebGPU] Dropped unsupported required features:', dropped.join(', '));
     }
-
-    return [...new Set(this.options.optionalFeatures ?? [])].filter((feature) =>
-      adapter.features.has(feature),
-    );
+    return supported;
   }
 
   private validateAdapterRequirements(
@@ -308,9 +372,8 @@ export class WebGPUContext {
         })
         .join('; ');
       throw new WebGPUError(
-        'This GPU cannot run the full 1,048,576-satellite WebGPU path. ' +
-          'Grok Zephyr stopped before allocating large buffers. ' +
-          `${details}. Try a newer browser, a more capable GPU, or a device with fuller WebGPU support.`,
+        'This GPU cannot meet the WebGPU limits for the selected fleet size. ' +
+          `${details}. Try ?sats=65536 or a more capable GPU.`,
       );
     }
   }
@@ -363,7 +426,9 @@ export class WebGPUContext {
   }
 
   private canvasUsage(): GPUTextureUsageFlags {
-    return GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST;
+    return (
+      GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC
+    );
   }
 
   private buildSdrCanvasConfiguration(): GPUCanvasConfiguration {

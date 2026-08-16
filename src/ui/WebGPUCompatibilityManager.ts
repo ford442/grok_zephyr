@@ -10,12 +10,21 @@ export interface CompatibilityCheckResult {
   message: string;
   suggestions: string[];
   severity: 'critical' | 'warning' | 'info';
+  featureLines?: string[];
 }
 
 export class WebGPUCompatibilityManager {
   /**
    * Detect browser and provide detailed compatibility information
    */
+  /** Enabled vs missing optional features for support overlays / logs. */
+  static describeOptionalFeatures(enabled: readonly string[], missing: readonly string[]): string[] {
+    const lines: string[] = [];
+    for (const name of enabled) lines.push(`${name}: enabled`);
+    for (const name of missing) lines.push(`${name}: missing (fallback)`);
+    return lines;
+  }
+
   static detectBrowser(): string {
     const ua = navigator.userAgent;
     // Check Edge before Chrome since Edge contains 'Chrome'
@@ -186,6 +195,14 @@ export class WebGPUCompatibilityManager {
         <p class="compatibility-message">
           ${this.escapeHtml(result.message)}
         </p>
+
+        ${
+          result.featureLines && result.featureLines.length > 0
+            ? `<ul class="compatibility-features">${result.featureLines
+                .map((line) => `<li>${this.escapeHtml(line)}</li>`)
+                .join('')}</ul>`
+            : ''
+        }
 
         ${
           result.suggestions.length > 0

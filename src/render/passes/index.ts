@@ -3,7 +3,8 @@
  */
 
 export type { FrameContext } from './types.js';
-export { encodeComputePass, encodeBeamComputePass } from './ComputePasses.js';
+export { encodeComputePass, encodeBeamComputePass, encodeIslComputePass } from './ComputePasses.js';
+export { encodeIslPass } from './IslPass.js';
 export { encodeCullPass } from './CullPass.js';
 export { encodeScenePass, invalidateSceneRenderBundle } from './ScenePass.js';
 export { encodeGroundScenePass, invalidateGroundSceneRenderBundle } from './GroundScenePass.js';

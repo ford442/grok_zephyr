@@ -38,6 +38,8 @@ interface DashboardElements {
   timingSource: HTMLElement;
   sgp4Backend: HTMLElement;
   sgp4Benchmark: HTMLElement;
+  sgp4Reanchor: HTMLElement;
+  gpuCaps: HTMLElement;
 }
 
 /**
@@ -136,6 +138,7 @@ export class PerformanceDashboard {
               <div class="perf-preset-label" id="perf-presentation">SDR (standard)</div>
               <div class="perf-preset-headroom" id="perf-headroom">--</div>
               <div class="perf-timing-source" id="perf-source">CPU Timing</div>
+              <div class="perf-preset-label" id="perf-gpu-caps">GPU: —</div>
             </div>
           </div>
 
@@ -145,6 +148,7 @@ export class PerformanceDashboard {
             <div class="perf-preset-info">
               <div class="perf-preset-label" id="perf-sgp4-backend">satellite.js</div>
               <div class="perf-preset-headroom" id="perf-sgp4-bench">--</div>
+              <div class="perf-preset-headroom" id="perf-sgp4-reanchor">re-anchor: --</div>
             </div>
           </div>
         </div>
@@ -171,6 +175,8 @@ export class PerformanceDashboard {
       timingSource: container.querySelector('#perf-source') as HTMLElement,
       sgp4Backend: container.querySelector('#perf-sgp4-backend') as HTMLElement,
       sgp4Benchmark: container.querySelector('#perf-sgp4-bench') as HTMLElement,
+      sgp4Reanchor: container.querySelector('#perf-sgp4-reanchor') as HTMLElement,
+      gpuCaps: container.querySelector('#perf-gpu-caps') as HTMLElement,
     };
 
     // Update timing source indicator
@@ -370,6 +376,11 @@ export class PerformanceDashboard {
   }
 
   /** Show active HDR / SDR canvas presentation mode. */
+  updateGpuCapabilities(line: string): void {
+    if (!this.elements) return;
+    this.elements.gpuCaps.textContent = line;
+  }
+
   updatePresentationMode(mode: PresentationMode): void {
     if (!this.elements) return;
 
@@ -398,6 +409,12 @@ export class PerformanceDashboard {
     const meetsTarget = result.activeBackend === 'wasm' && result.speedup >= 5;
     this.elements.sgp4Benchmark.textContent = speedupText;
     this.elements.sgp4Benchmark.style.color = meetsTarget ? '#00ff88' : '#ffff00';
+  }
+
+  updateSgp4Reanchor(mainThreadMs: number): void {
+    if (!this.elements?.sgp4Reanchor) return;
+    this.elements.sgp4Reanchor.textContent = `re-anchor main: ${mainThreadMs.toFixed(2)} ms`;
+    this.elements.sgp4Reanchor.style.color = mainThreadMs <= 2 ? '#00ff88' : '#ffaa00';
   }
 
   /**

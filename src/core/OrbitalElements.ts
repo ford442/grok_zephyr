@@ -86,7 +86,11 @@ export class OrbitalElements {
       const inclination = shells[inclinationShellIdx] + (random() - 0.5) * 0.008;
 
       for (let sat = 0; sat < SATELLITES_PER_PLANE; sat++) {
-        const idx = (plane * SATELLITES_PER_PLANE + sat) * 4;
+        const satIndex = plane * SATELLITES_PER_PLANE + sat;
+        if (satIndex >= this.numSatellites) {
+          return data;
+        }
+        const idx = satIndex * 4;
         const meanAnomaly = (sat / SATELLITES_PER_PLANE) * Math.PI * 2;
 
         const rand = random();

@@ -3,7 +3,7 @@
  * Indirect buffer contents update each frame; bundle records drawIndirect commands only once.
  */
 
-import { CONSTANTS } from '@/types/constants.js';
+import { getActiveFleetSize } from '@/core/FleetScale.js';
 import { MAX_BEAMS } from './pipelines/types.js';
 import type { SatelliteCullBuffers } from './SatelliteCullBuffers.js';
 import type { FrameContext } from './passes/types.js';
@@ -49,7 +49,7 @@ export class SceneRenderBundle {
     }
 
     const colorFormats: GPUTextureFormat[] = ['rgba16float'];
-    const depthStencilFormat: GPUTextureFormat = 'depth32float';
+    const depthStencilFormat: GPUTextureFormat = ctx.context.getDepthFormat();
 
     const bundleEncoder = device.createRenderBundleEncoder({
       label: `scene-bundle-${key.variant}`,
@@ -99,7 +99,7 @@ export class SceneRenderBundle {
     } else {
       bundleEncoder.setPipeline(ctx.pipelines.satellites);
       bundleEncoder.setBindGroup(0, ctx.bindGroups.satellites);
-      bundleEncoder.draw(6, CONSTANTS.NUM_SATELLITES);
+      bundleEncoder.draw(6, getActiveFleetSize());
 
       bundleEncoder.setPipeline(ctx.pipelines.beam);
       bundleEncoder.setBindGroup(0, ctx.bindGroups.beam);

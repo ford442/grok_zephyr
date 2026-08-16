@@ -57,6 +57,12 @@ export function createSimTransportControl(state: SimTransportState): void {
         <span class="sim-timeline-label">+12h</span>
       </div>
       <div class="sim-timeline-now-marker" aria-hidden="true">now</div>
+      <div class="growth-label">GROWTH ERA</div>
+      <div class="growth-row">
+        <button class="time-preset-btn" id="growthPlay" type="button" aria-label="Play constellation growth">GROW</button>
+        <input type="range" id="growthScrub" min="0" max="1" step="0.001" value="1" aria-label="Scrub constellation launch era">
+      </div>
+      <div class="growth-display" id="growthEraLabel">Full constellation</div>
     `;
 
   const animationControls = document.getElementById('animation-controls');
@@ -71,6 +77,9 @@ export function createSimTransportControl(state: SimTransportState): void {
   state.elements.simPlayPauseButton = document.getElementById('simPlayPause') as HTMLButtonElement;
   state.elements.simNowButton = document.getElementById('simNowBtn') as HTMLButtonElement;
   state.elements.simTimelineSlider = document.getElementById('simTimeline') as HTMLInputElement;
+  state.elements.growthPlayButton = document.getElementById('growthPlay') as HTMLButtonElement;
+  state.elements.growthScrubSlider = document.getElementById('growthScrub') as HTMLInputElement;
+  state.elements.growthEraLabel = document.getElementById('growthEraLabel') ?? undefined;
 
   const playPauseBtn = state.elements.simPlayPauseButton;
   const nowBtn = state.elements.simNowButton;

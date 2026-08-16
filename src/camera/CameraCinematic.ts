@@ -1,5 +1,6 @@
 import type { Vec3 } from '@/types/index.js';
 import { CONSTANTS, CAMERA, MATH } from '@/types/constants.js';
+import { getActiveFleetSize } from '@/core/FleetScale.js';
 import { v3add, v3scale, v3norm, v3cross } from '@/utils/math.js';
 import { smoothstep, lerpVec3 } from './cameraBlend.js';
 import type { CameraState, CinematicBlendOut, CinematicStep } from './cameraTypes.js';
@@ -174,8 +175,9 @@ export class CameraCinematic {
     const segment = time / this.fleetFlySatelliteSwitchSeconds;
     const step = Math.floor(segment);
     const mix = smoothstep(segment - step);
-    const idxA = (step * this.fleetFlySamplePrime) % CONSTANTS.NUM_SATELLITES;
-    const idxB = ((step + 1) * this.fleetFlySamplePrime) % CONSTANTS.NUM_SATELLITES;
+    const fleet = getActiveFleetSize();
+    const idxA = (step * this.fleetFlySamplePrime) % fleet;
+    const idxB = ((step + 1) * this.fleetFlySamplePrime) % fleet;
 
     const posA = getPosition(idxA, time);
     const posB = getPosition(idxB, time);
@@ -218,11 +220,14 @@ export class CameraCinematic {
     getPosition: (index: number, time: number) => Vec3,
     time: number,
   ): Vec3 {
+    const fleet = getActiveFleetSize();
+    const samples = CONSTELLATION_CENTER_SAMPLE_INDICES.filter((i) => i < fleet);
+    const list = samples.length > 0 ? samples : [0];
     let sum: Vec3 = [0, 0, 0];
-    for (const index of CONSTELLATION_CENTER_SAMPLE_INDICES) {
+    for (const index of list) {
       const p = getPosition(index, time);
       sum = [sum[0] + p[0], sum[1] + p[1], sum[2] + p[2]];
     }
-    return v3scale(sum, 1 / CONSTELLATION_CENTER_SAMPLE_INDICES.length);
+    return v3scale(sum, 1 / list.length);
   }
 }

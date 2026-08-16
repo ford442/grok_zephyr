@@ -4,7 +4,7 @@
 
 import { getBackgroundModeIndex } from '@/core/background.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
-import { calculateSunPosition } from '@/app/UniformWriter.js';
+import { sunPositionForRuntime } from '@/app/UniformWriter.js';
 import { stationGpuState } from '@/ground/GroundStation.js';
 import type { WebGLFrame } from '@/webgl/WebGLRenderer.js';
 import {
@@ -113,7 +113,7 @@ function buildWebGLFrame(
   wallTimeSec: number,
 ): WebGLFrame {
   const simTime = rt.simulation.clock.simTime;
-  const sun = calculateSunPosition(simTime);
+  const sun = sunPositionForRuntime(rt);
   const sunLen = Math.hypot(sun[0], sun[1], sun[2]) || 1;
   const orbital = rt.webglOrbital;
   const fleetHostVel =

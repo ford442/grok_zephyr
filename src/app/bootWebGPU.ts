@@ -45,6 +45,7 @@ export async function bootWebGPU(
 
   rt.context = new WebGPUContext(rt.canvas, {
     canvas: resolveCanvasPresentationOptions(initialQuality),
+    qualityLevel: initialQuality,
     onDeviceLost: (info) => {
       void hooks.onDeviceLost(info);
     },

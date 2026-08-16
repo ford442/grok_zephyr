@@ -15,12 +15,12 @@
  *   2 === srcSamp   (linear clamp sampler)
  */
 
-export const BLOOM_UPSAMPLE = /* wgsl */ `
-struct KawaseUni {
-  srcTexelSize : vec2f,
-  pad          : vec2f,
-};
+import { emitWgslStruct } from '../../uniformSchema.js';
+import { KAWASE_UNI_SCHEMA } from '../../schemas/bloom.js';
 
+export const BLOOM_UPSAMPLE =
+  emitWgslStruct(KAWASE_UNI_SCHEMA) +
+  /* wgsl */ `
 struct VSOut {
   @builtin(position) pos : vec4f,
   @location(0)       uv  : vec2f,

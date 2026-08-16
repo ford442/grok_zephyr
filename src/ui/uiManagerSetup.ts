@@ -16,6 +16,7 @@ export interface UIManagerSetupCallbacks {
   onAnimationChange: ((pattern: AnimationPattern) => void) | null;
   onPhysicsChange: ((mode: number) => void) | null;
   onRealismChange: ((enabled: boolean) => void) | null;
+  onSunModeChange: ((mode: import('@/physics/sun.js').SunLightingMode) => void) | null;
   onConstellationChipClick: ((catalogId: ChipCatalogId, shiftKey: boolean) => void) | null;
   onQualityChange: ((level: QualityLevel) => void) | null;
   onAutoQualityChange?: (() => void) | null;
@@ -26,6 +27,8 @@ export interface UIManagerSetupCallbacks {
   onEnterVrToggle: (() => void) | null;
   onAudioToggle: ((muted: boolean) => void) | null;
   onTrailsToggle: ((enabled: boolean) => void) | null;
+  onIslToggle: ((enabled: boolean) => void) | null;
+  onIslDensityChange: ((density: number) => void) | null;
   onTrailLengthChange: ((mode: 'short' | 'medium' | 'long') => void) | null;
   onExposureModeChange: ((mode: ExposureMode) => void) | null;
   onManualExposureChange: ((value: number) => void) | null;
@@ -44,10 +47,13 @@ export interface UIManagerSetupActions {
   setActiveAnimationButton(patternIdx: number): void;
   setActivePhysicsButton(mode: number): void;
   setActiveRealismButton(enabled: boolean): void;
+  setActiveSunButton(mode: import('@/physics/sun.js').SunLightingMode): void;
   setActiveQualityButton(level: QualityLevel): void;
   setAutoQuality(): void;
   setAudioMuted(muted: boolean): void;
   setTrailsEnabled(enabled: boolean): void;
+  setIslEnabled(enabled: boolean): void;
+  setIslDensity(density: number): void;
   setDemoAutoEnabled(enabled: boolean): void;
 }
 
@@ -108,6 +114,10 @@ export function getElements(): UIElements {
       document.getElementById('realism0') as HTMLButtonElement,
       document.getElementById('realism1') as HTMLButtonElement,
     ],
+    sunButtons: [
+      document.getElementById('sunArt') as HTMLButtonElement,
+      document.getElementById('sunAstro') as HTMLButtonElement,
+    ],
     qualityButtons: [
       document.getElementById('qauto') as HTMLButtonElement,
       document.getElementById('qlow') as HTMLButtonElement,
@@ -117,6 +127,11 @@ export function getElements(): UIElements {
     ],
     audioToggleButton:
       (document.getElementById('audioToggle') as HTMLButtonElement | null) ?? undefined,
+    islToggleButton:
+      (document.getElementById('islToggle') as HTMLButtonElement | null) ?? undefined,
+    islDensitySlider:
+      (document.getElementById('islDensity') as HTMLInputElement | null) ?? undefined,
+    islDensityValue: document.getElementById('islDensityValue') ?? undefined,
     trailsToggleButton:
       (document.getElementById('trailsToggle') as HTMLButtonElement | null) ?? undefined,
     trailsLengthSelect:
@@ -279,6 +294,15 @@ export function setupEventListeners(ctx: UIManagerSetupContext): void {
     });
   });
 
+  elements.sunButtons.forEach((btn) => {
+    btn?.addEventListener('click', (e) => {
+      const target = e.target as HTMLButtonElement;
+      const mode = target.dataset.sun === 'astro' ? 'astro' : 'art';
+      actions.setActiveSunButton(mode);
+      callbacks.onSunModeChange?.(mode);
+    });
+  });
+
   elements.realismButtons.forEach((btn) => {
     btn?.addEventListener('click', (e) => {
       const target = e.target as HTMLButtonElement;
@@ -317,6 +341,18 @@ export function setupEventListeners(ctx: UIManagerSetupContext): void {
     if (callbacks.onAudioToggle) {
       callbacks.onAudioToggle(nextMuted);
     }
+  });
+
+  elements.islToggleButton?.addEventListener('click', () => {
+    const nextEnabled = !(elements.islToggleButton?.classList.contains('active') ?? true);
+    actions.setIslEnabled(nextEnabled);
+    callbacks.onIslToggle?.(nextEnabled);
+  });
+
+  elements.islDensitySlider?.addEventListener('input', () => {
+    const density = parseFloat(elements.islDensitySlider?.value ?? '0.35');
+    actions.setIslDensity(density);
+    callbacks.onIslDensityChange?.(density);
   });
 
   elements.trailsToggleButton?.addEventListener('click', () => {

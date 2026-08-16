@@ -36,6 +36,17 @@ describe('Sgp4WasmEngine', () => {
     expect(engine).not.toBeNull();
   });
 
+  it('returns epoch JD and zero error codes for a healthy TLE', () => {
+    if (!engine) return;
+    const tles = TLELoader.parse(SAMPLE_TLE);
+    engine.loadCatalog(tles);
+    expect(engine.catalogEpochJd(0)).toBeGreaterThan(2_460_000);
+    const { eci, errors } = engine.propagateBatchEx(Date.UTC(2024, 11, 22, 12, 0, 0), 0, 1);
+    expect(eci.length).toBe(6);
+    expect(errors[0]).toBe(0);
+    expect(Math.hypot(eci[0], eci[1], eci[2])).toBeGreaterThan(6400);
+  });
+
   it('agrees with satellite.js within 1e-3 km over a 24h window', () => {
     if (!engine) return;
 

@@ -48,6 +48,7 @@ import {
   setGroundViewEnabled as setGroundViewEnabledImpl,
 } from '@/app/PatternController.js';
 import { setRealismMode as setRealismModeImpl } from '@/app/RealismController.js';
+import { setSunLightingMode as setSunLightingModeImpl } from '@/app/SunLightingController.js';
 import {
   detectMobileDevice,
   detectMobileDefaultQuality,
@@ -188,6 +189,10 @@ export class App implements AppRuntime {
 
   setRealismMode(enabled: boolean): void {
     setRealismModeImpl(this, enabled);
+  }
+
+  setSunLightingMode(mode: import('@/physics/sun.js').SunLightingMode): void {
+    setSunLightingModeImpl(this, mode);
   }
 
   applyQualityPreset(level: QualityLevel): void {

@@ -411,6 +411,18 @@ fn satellite_vs(
 ) -> VOut {
   let pd = sat_pos[satIdx];
   let wp = pd.xyz;
+  if (dot(wp, wp) < 1.0) {
+    var hidden: VOut;
+    hidden.cp = vec4f(2.0, 2.0, 2.0, 1.0);
+    hidden.uv = vec2f(0.0);
+    hidden.color = vec3f(0.0);
+    hidden.bright = 0.0;
+    hidden.shell = 0.0;
+    hidden.highlight = 0.0;
+    hidden.world_dist = 0.0;
+    hidden.pattern_feature = 0.0;
+    return hidden;
+  }
   let packedData = u32(pd.w);
   let stationVisible = (packedData & 256u) != 0u;
   let cdat = f32(packedData & 255u);

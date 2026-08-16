@@ -2,6 +2,7 @@ import { getBeamPatternTitle } from '@/patterns/index.js';
 import type { FocusSelection } from '@/camera/FocusManager.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 import { syncVolumetricBeamConfig } from '@/app/QualityController.js';
+import { PHYSICS_MODE_NAMES } from '@/physics/physicsMode.js';
 
 export function setupPatternButtons(rt: AppRuntime): void {
   const patternButtons = document.querySelectorAll('.pbtn');
@@ -94,13 +95,9 @@ export function setPhysicsMode(rt: AppRuntime, mode: number): void {
   }
 
   rt.simulation.currentPhysicsMode = mode;
+  rt.buffers?.setPhysicsMode(mode);
 
-  const modeNames = ['Simple (Circular)', 'Keplerian', 'J2 Perturbed'];
-  const implemented = [true, true, false];
-
-  console.log(
-    `⚛️ Physics mode switched to: ${modeNames[mode]} ${implemented[mode] ? '' : '(placeholder)'}`,
-  );
+  console.log(`⚛️ Physics mode switched to: ${PHYSICS_MODE_NAMES[mode] ?? mode}`);
 }
 
 export function writePatternParamsBuffer(rt: AppRuntime): void {

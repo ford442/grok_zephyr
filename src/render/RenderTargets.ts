@@ -62,7 +62,7 @@ export function createRenderTargets(
   const hdr = mkTex(width, height, RENDER.HDR_FORMAT);
   const depth = device.createTexture({
     size: [width, height],
-    format: RENDER.DEPTH_FORMAT,
+    format: context.getDepthFormat(),
     usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
   });
   const bloomA = mkTex(width, height, RENDER.HDR_FORMAT);

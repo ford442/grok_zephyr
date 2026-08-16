@@ -61,6 +61,7 @@ export class UIManager {
     onAnimationChange: null,
     onPhysicsChange: null,
     onRealismChange: null,
+    onSunModeChange: null,
     onConstellationChipClick: null,
     onQualityChange: null,
     onAutoQualityChange: null,
@@ -71,6 +72,8 @@ export class UIManager {
     onEnterVrToggle: null,
     onAudioToggle: null,
     onTrailsToggle: null,
+    onIslToggle: null,
+    onIslDensityChange: null,
     onTrailLengthChange: null,
     onExposureModeChange: null,
     onManualExposureChange: null,
@@ -149,6 +152,13 @@ export class UIManager {
   setActivePhysicsButton(mode: number): void {
     this.elements.physicsButtons.forEach((btn) => {
       const btnMode = parseInt(btn?.dataset.physics || '-1');
+      btn?.classList.toggle('active', btnMode === mode);
+    });
+  }
+
+  setActiveSunButton(mode: import('@/physics/sun.js').SunLightingMode): void {
+    this.elements.sunButtons.forEach((btn) => {
+      const btnMode = btn?.dataset.sun === 'astro' ? 'astro' : 'art';
       btn?.classList.toggle('active', btnMode === mode);
     });
   }
@@ -292,8 +302,33 @@ export class UIManager {
     this.elements.fps.textContent = `FPS      : ${fps}`;
   }
 
-  setFleetCount(count: number): void {
-    this.elements.fleet.textContent = `Fleet    : ${count.toLocaleString()}`;
+  setGrowthHud(text: string | null): void {
+    let el = document.getElementById('s-era');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 's-era';
+      el.className = 'stat';
+      this.elements.fleet.parentElement?.insertBefore(el, this.elements.fleet.nextSibling);
+    }
+    el.textContent = text ?? '';
+    el.hidden = !text;
+  }
+
+  setGrowthTransport(progress: number, playing: boolean): void {
+    const scrub = document.getElementById('growthScrub') as HTMLInputElement | null;
+    const play = document.getElementById('growthPlay');
+    const label = document.getElementById('growthEraLabel');
+    if (scrub && document.activeElement !== scrub) scrub.value = String(progress);
+    if (play) {
+      play.textContent = playing ? 'PAUSE' : 'GROW';
+      play.classList.toggle('active', playing);
+    }
+    if (label && !playing && progress >= 1) label.textContent = 'Full constellation';
+  }
+
+  setFleetCount(count: number, reductionNote?: string): void {
+    const suffix = reductionNote ? `  (${reductionNote})` : '';
+    this.elements.fleet.textContent = `Fleet    : ${count.toLocaleString()}${suffix}`;
   }
 
   setVisibleCount(count: number): void {
@@ -374,9 +409,21 @@ export class UIManager {
     }
   }
 
+  setGpuCapabilities(line: string): void {
+    if (this.dashboard) {
+      this.dashboard.updateGpuCapabilities(line);
+    }
+  }
+
   updateSgp4Benchmark(result: Sgp4BenchmarkResult | null, backend: 'wasm' | 'js'): void {
     if (this.dashboard) {
       this.dashboard.updateSgp4Benchmark(result, backend);
+    }
+  }
+
+  updateSgp4Reanchor(mainThreadMs: number): void {
+    if (this.dashboard) {
+      this.dashboard.updateSgp4Reanchor(mainThreadMs);
     }
   }
 
@@ -414,6 +461,10 @@ export class UIManager {
 
   onRealismChange(callback: (enabled: boolean) => void): void {
     this.callbacks.onRealismChange = callback;
+  }
+
+  onSunModeChange(callback: (mode: import('@/physics/sun.js').SunLightingMode) => void): void {
+    this.callbacks.onSunModeChange = callback;
   }
 
   onConstellationChipClick(
@@ -497,6 +548,14 @@ export class UIManager {
 
   onTrailsToggle(callback: (enabled: boolean) => void): void {
     this.callbacks.onTrailsToggle = callback;
+  }
+
+  onIslToggle(callback: (enabled: boolean) => void): void {
+    this.callbacks.onIslToggle = callback;
+  }
+
+  onIslDensityChange(callback: (density: number) => void): void {
+    this.callbacks.onIslDensityChange = callback;
   }
 
   onTrailLengthChange(callback: (mode: 'short' | 'medium' | 'long') => void): void {
@@ -608,6 +667,21 @@ export class UIManager {
     btn.classList.toggle('active', !muted);
     btn.setAttribute('aria-pressed', muted ? 'false' : 'true');
     btn.setAttribute('title', muted ? 'Enable audio' : 'Mute audio');
+  }
+
+  setIslEnabled(enabled: boolean): void {
+    const btn = this.elements.islToggleButton;
+    if (!btn) return;
+    btn.textContent = enabled ? 'ISL ON' : 'ISL OFF';
+    btn.classList.toggle('active', enabled);
+    btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  }
+
+  setIslDensity(density: number): void {
+    const slider = this.elements.islDensitySlider;
+    const label = this.elements.islDensityValue;
+    if (slider) slider.value = String(density);
+    if (label) label.textContent = `${Math.round(density * 100)}%`;
   }
 
   setTrailsEnabled(enabled: boolean): void {

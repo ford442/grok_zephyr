@@ -1,4 +1,5 @@
 import { getBeamPatternTitle } from '@/patterns/index.js';
+import { growthCaptureLabel } from '@/growth/GrowthController.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 
 const CAPTURE_UI_HIDE_IDS = [
@@ -123,7 +124,8 @@ export class CaptureManager {
     const { modeName, patternName, timestamp } = this.getCaptureMeta();
     const pad = Math.max(12, Math.round(width * 0.012));
     const cardWidth = Math.min(width * 0.62, 480);
-    const cardHeight = Math.max(78, Math.round(height * 0.16));
+    const era = growthCaptureLabel();
+    const cardHeight = Math.max(era ? 94 : 78, Math.round(height * 0.16));
 
     ctx.fillStyle = 'rgba(0, 8, 20, 0.65)';
     ctx.strokeStyle = 'rgba(102, 204, 255, 0.75)';
@@ -140,6 +142,10 @@ export class CaptureManager {
     ctx.fillText(`View: ${modeName}`, pad + 10, height - cardHeight + 38 - pad);
     ctx.fillText(`Pattern: ${patternName}`, pad + 10, height - cardHeight + 56 - pad);
     ctx.fillText(timestamp, pad + 10, height - cardHeight + 72 - pad);
+    if (era) {
+      ctx.fillStyle = '#ffe08a';
+      ctx.fillText(`Era: ${era}`, pad + 10, height - cardHeight + 88 - pad);
+    }
   }
 
   private drawGroundCaptureFrame(

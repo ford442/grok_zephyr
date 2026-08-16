@@ -14,7 +14,8 @@ import {
 } from '@/data/ConstellationGroups.js';
 import { syncSimClockFromTleEpoch } from '@/app/SimClockController.js';
 import { rebuildSatelliteCatalog } from '@/app/SatelliteSelection.js';
-import { CONSTANTS } from '@/types/constants.js';
+import { getActiveFleetSize, getFleetScale } from '@/core/FleetScale.js';
+import { rebuildGrowthSchedule } from '@/growth/GrowthController.js';
 import { runSgp4Benchmark } from '@/physics/Sgp4Benchmark.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 
@@ -58,13 +59,13 @@ async function applyMergedCatalog(
       ? await rt.buffers.loadFromMergedCatalog(
           merged.tles,
           merged.segments,
-          new ArrayBuffer(CONSTANTS.NUM_SATELLITES * 4),
+          new ArrayBuffer(getActiveFleetSize() * 4),
           rt.simulation.simTime,
         )
       : await rt.buffers.loadFromMergedCatalog(
           merged.tles,
           merged.segments,
-          new ArrayBuffer(CONSTANTS.NUM_SATELLITES * 4),
+          new ArrayBuffer(getActiveFleetSize() * 4),
         );
     hasTleCatalog = true;
     dataSourceLabel = buildDataSourceLabel(merged, rt.simulation.realismMode, realTLECount);
@@ -92,7 +93,12 @@ async function applyMergedCatalog(
 
   rt.simulation.hasTleCatalog = hasTleCatalog;
   rt.buffers.uploadOrbitalElements();
-  rt.ui.setDataSource(dataSourceLabel);
+  rebuildGrowthSchedule(rt, merged.tles);
+  const fleet = getFleetScale();
+  const sourceLabel = fleet.autoReduced
+    ? `${dataSourceLabel} · ${fleet.count.toLocaleString()} sats (adapter limit)`
+    : dataSourceLabel;
+  rt.ui.setDataSource(sourceLabel);
   rt.ui.setConstellationLegend(formatGroupCountLegend(merged.groupCounts));
   rt.ui.setConstellationChips(
     enabledIds,
@@ -100,7 +106,7 @@ async function applyMergedCatalog(
     rt.buffers?.getGroupVisibilityState().visible ?? rt.webglGroupVisibility,
   );
   rt.ui.setRealismControls(rt.simulation.realismMode, hasTleCatalog);
-  rt.dataSourceLabel = dataSourceLabel;
+  rt.dataSourceLabel = sourceLabel;
   rt.tleCatalogMeta = merged.meta.catalogs[0] ?? null;
   rt.constellationGroupCounts = merged.groupCounts;
 

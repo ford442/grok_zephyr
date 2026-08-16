@@ -8,17 +8,12 @@
  *   2 === ThresholdUni  (threshold + knee)
  */
 
-export const BLOOM_THRESHOLD = /* wgsl */ `
-// ThresholdUni — CPU packer: packThresholdUni() in src/shaders/uniformLayouts.ts
-//   threshold : luminance cutoff (typically 0.65–0.85)
-//   knee      : soft-knee half-width around the threshold
-struct ThresholdUni {
-  threshold      : f32,
-  knee           : f32,
-  enforce_floors : f32, // 1 = shipping floors (max 1.5 / 0.05), 0 = raw slider values
-  pad0           : f32,
-};
+import { emitWgslStruct } from '../../uniformSchema.js';
+import { THRESHOLD_UNI_SCHEMA } from '../../schemas/bloom.js';
 
+export const BLOOM_THRESHOLD =
+  emitWgslStruct(THRESHOLD_UNI_SCHEMA) +
+  /* wgsl */ `
 struct VSOut {
   @builtin(position) pos: vec4f,
   @location(0) uv: vec2f,

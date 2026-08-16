@@ -324,17 +324,33 @@
           KEPLERIAN
         </button>
         <button
-          class="physics-btn disabled"
+          class="physics-btn"
           id="phys2"
           data-physics="2"
-          disabled
-          aria-disabled="true"
-          aria-describedby="j2-note"
-          aria-label="J2 perturbations physics mode"
+          aria-label="J2 secular perturbation physics mode"
         >
           J2
         </button>
-        <span id="j2-note" class="sr-only">Not yet implemented</span>
+      </section>
+
+      <section id="sun-controls" class="control-group" aria-label="Sun Lighting">
+        <div class="physics-label">SUN</div>
+        <button
+          class="physics-btn active"
+          id="sunArt"
+          data-sun="art"
+          aria-label="Art-directed cinematic sun"
+        >
+          ART
+        </button>
+        <button
+          class="physics-btn"
+          id="sunAstro"
+          data-sun="astro"
+          aria-label="Astronomical sun from simulated UTC"
+        >
+          ASTRO
+        </button>
       </section>
 
       <section id="realism-controls" class="control-group" aria-label="Orbit Realism">
@@ -444,6 +460,26 @@
         <button class="capture-btn" id="audioToggle" aria-pressed="false" title="Enable audio">
           AUDIO OFF
         </button>
+      </section>
+
+      <section id="isl-controls" class="control-group" aria-label="Inter-satellite links">
+        <div class="capture-label">ISL MESH</div>
+        <button class="capture-btn" id="islToggle" aria-pressed="true" title="Toggle optical ISL mesh">
+          ISL ON
+        </button>
+        <label class="tuning-row" for="islDensity">
+          <span>Density</span>
+          <span id="islDensityValue">35%</span>
+        </label>
+        <input
+          id="islDensity"
+          type="range"
+          min="0.05"
+          max="1"
+          step="0.05"
+          value="0.35"
+          aria-label="ISL mesh density"
+        />
       </section>
 
       <section id="trail-controls" class="control-group" aria-label="Orbital Trails">

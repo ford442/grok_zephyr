@@ -9,10 +9,24 @@ export interface Sgp4WasmModule {
   _free(ptr: number): void;
   _sgp4_load_catalog(data: number, byteLength: number): number;
   _sgp4_propagate_batch(unixMs: number, out: number, startIndex: number, count: number): number;
+  _sgp4_propagate_batch_ex?(
+    unixMs: number,
+    out: number,
+    errors: number,
+    startIndex: number,
+    count: number,
+  ): number;
+  _sgp4_catalog_epoch_jd?(index: number): number;
   _sgp4_catalog_count(): number;
   _sgp4_clear_catalog(): void;
   HEAPU8: Uint8Array;
   HEAPF32: Float32Array;
+  HEAP32: Int32Array;
+}
+
+export interface Sgp4BatchResult {
+  eci: Float32Array;
+  errors: Int32Array;
 }
 
 export type Sgp4WasmLoadOptions = {
@@ -25,12 +39,18 @@ function defaultModuleUrl(): string {
   if (typeof window !== 'undefined') {
     return new URL('sgp4.js', window.location.href).href;
   }
+  if (typeof self !== 'undefined' && 'location' in self && self.location?.origin) {
+    return new URL('/sgp4.js', self.location.origin).href;
+  }
   return new URL('../../public/sgp4.js', import.meta.url).href;
 }
 
 function defaultWasmUrl(path: string): string {
   if (typeof window !== 'undefined') {
     return new URL(path, window.location.href).href;
+  }
+  if (typeof self !== 'undefined' && 'location' in self && self.location?.origin) {
+    return new URL(`/${path}`, self.location.origin).href;
   }
   return new URL(`../../public/${path}`, import.meta.url).href;
 }
@@ -104,7 +124,10 @@ export class Sgp4WasmEngine {
   }
 
   loadCatalog(tles: readonly TleLinePair[]): number {
-    const packed = packTleCatalog(tles);
+    return this.loadPacked(packTleCatalog(tles));
+  }
+
+  loadPacked(packed: Uint8Array): number {
     const ptr = this.mod._malloc(packed.byteLength);
     try {
       this.mod.HEAPU8.set(packed, ptr);
@@ -125,22 +148,45 @@ export class Sgp4WasmEngine {
     count: number,
     out?: Float32Array,
   ): Float32Array {
+    return this.propagateBatchEx(unixMs, startIndex, count, out).eci;
+  }
+
+  /** Same as propagateBatch plus per-satellite Vallado error codes (0 = ok). */
+  propagateBatchEx(
+    unixMs: number,
+    startIndex: number,
+    count: number,
+    out?: Float32Array,
+  ): Sgp4BatchResult {
     const limit = Math.min(count, Math.max(0, this.catalogCount - startIndex));
     const floats = limit * 6;
     const buffer = out && out.length >= floats ? out : new Float32Array(floats);
+    const errors = new Int32Array(limit);
     if (limit === 0) {
-      return buffer.subarray(0, 0);
+      return { eci: buffer.subarray(0, 0), errors };
     }
 
     const ptr = this.mod._malloc(floats * 4);
+    const errPtr = this.mod._sgp4_propagate_batch_ex ? this.mod._malloc(limit * 4) : 0;
     try {
-      const written = this.mod._sgp4_propagate_batch(unixMs, ptr, startIndex, limit);
+      const written = this.mod._sgp4_propagate_batch_ex
+        ? this.mod._sgp4_propagate_batch_ex(unixMs, ptr, errPtr, startIndex, limit)
+        : this.mod._sgp4_propagate_batch(unixMs, ptr, startIndex, limit);
       const copyFloats = written > 0 ? written * 6 : floats;
       buffer.set(this.mod.HEAPF32.subarray(ptr >> 2, (ptr >> 2) + copyFloats));
-      return buffer.subarray(0, copyFloats);
+      if (errPtr && written > 0) {
+        errors.set(this.mod.HEAP32.subarray(errPtr >> 2, (errPtr >> 2) + written));
+      }
+      return { eci: buffer.subarray(0, copyFloats), errors: errors.subarray(0, Math.max(0, written)) };
     } finally {
       this.mod._free(ptr);
+      if (errPtr) this.mod._free(errPtr);
     }
+  }
+
+  catalogEpochJd(index: number): number {
+    if (!this.mod._sgp4_catalog_epoch_jd) return 0;
+    return this.mod._sgp4_catalog_epoch_jd(index);
   }
 
   clear(): void {

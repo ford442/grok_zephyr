@@ -4,7 +4,7 @@
 
 import { TLELoader } from '@/data/TLELoader.js';
 import { getGroupDef } from '@/data/ConstellationGroups.js';
-import { CONSTANTS } from '@/types/constants.js';
+import { getActiveFleetSize } from '@/core/FleetScale.js';
 import { SHELL_MEAN_MOTIONS } from '@/core/OrbitalElements.js';
 import type { TLEData } from '@/types/index.js';
 import type { Vec3 } from '@/types/index.js';
@@ -47,10 +47,12 @@ export class SatelliteCatalog {
     orbitalData: Float32Array,
     groupIdData?: Uint32Array,
   ): void {
-    this.tleRealCount = Math.min(tleRealCount, CONSTANTS.NUM_SATELLITES);
-    this.identities = new Array<SatelliteIdentity>(CONSTANTS.NUM_SATELLITES);
+    const fromOrbit = Math.floor(orbitalData.length / 4);
+    const fleet = Math.min(getActiveFleetSize(), fromOrbit > 0 ? fromOrbit : getActiveFleetSize());
+    this.tleRealCount = Math.min(tleRealCount, fleet);
+    this.identities = new Array<SatelliteIdentity>(fleet);
 
-    for (let i = 0; i < CONSTANTS.NUM_SATELLITES; i++) {
+    for (let i = 0; i < fleet; i++) {
       const shellIndex = (orbitalData[i * 4 + 3] >> 8) & 0xff;
       const groupId = groupIdData?.[i] ?? 0;
       const groupLabel = getGroupDef(groupId)?.label ?? 'Walker';

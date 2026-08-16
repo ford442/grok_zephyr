@@ -26,6 +26,8 @@ import type {
 import {
   encodeAutoExposurePasses,
   encodeBeamComputePass,
+  encodeIslComputePass,
+  encodeIslPass,
   encodeBloomPasses,
   encodeCompositePass,
   encodeComputePass,
@@ -261,6 +263,14 @@ export class RenderPipeline {
 
   encodeBeamComputePass(encoder: GPUCommandEncoder): void {
     this.withFrameContext((ctx) => encodeBeamComputePass(encoder, ctx));
+  }
+
+  encodeIslComputePass(encoder: GPUCommandEncoder): void {
+    this.withFrameContext((ctx) => encodeIslComputePass(encoder, ctx));
+  }
+
+  encodeIslPass(encoder: GPUCommandEncoder): void {
+    this.withFrameContext((ctx) => encodeIslPass(encoder, ctx));
   }
 
   encodeSmileV2Pass(encoder: GPUCommandEncoder): void {

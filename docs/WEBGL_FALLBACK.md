@@ -152,7 +152,7 @@ Visual diff artifacts upload on CI failure.
 - Distance-based satellite LOD kernels (near / mid / far) match `src/shaders/render/satellites.ts`.
 
 **Not (yet) ported to WebGL:** volumetric god-ray beams, ribbon trails, TAA,
-motion blur, depth-of-field, and the J2 / RK4 physics modes. The WebGL path uses
+motion blur, depth-of-field, and Keplerian / J2 physics modes (WebGL stays on simple circular shells). The WebGL path uses
 the _simple-mode_ circular propagation only. These are intentionally WebGPU-only;
 the WebGL renderer is a reference/inspection tool, not a feature-parity clone.
 

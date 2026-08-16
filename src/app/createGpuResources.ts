@@ -7,13 +7,17 @@ import { MoonRingGuide } from '@/render/MoonRingGuide.js';
 import { EarthAtmosphereRenderer } from '@/render/EarthAtmosphereRenderer.js';
 import { FocusManager } from '@/camera/FocusManager.js';
 import { createEarthGeometry } from '@/core/EarthGeometry.js';
-import { CONSTANTS } from '@/types/constants.js';
+import { getFleetScale } from '@/core/FleetScale.js';
+import { formatGpuCapabilityLine } from '@/core/GpuCapabilities.js';
 import { loadSavedQualityLevel, type QualityLevel } from '@/core/QualityPresets.js';
 import { parseInitialStateFromURL } from '@/app/UrlState.js';
 import { applyQualityPreset } from '@/app/QualityController.js';
 import { applyExposureSettings } from '@/app/AppCallbackBinder.js';
 import { setupImageTuning } from '@/app/ViewModeCoordinator.js';
 import { setPatternMode, setAnimationPattern, setPhysicsMode } from '@/app/PatternController.js';
+import { setSunLightingMode } from '@/app/SunLightingController.js';
+import { applyGrowthFromUrl } from '@/growth/GrowthController.js';
+import { readStoredSunMode } from '@/physics/sun.js';
 import { loadSatelliteOrbitalData } from '@/app/loadSatelliteOrbitalData.js';
 import { applyVisualHarnessParams } from '@/app/UrlState.js';
 import { resolveGpuCullingEnabled } from '@/core/CullingOptions.js';
@@ -55,6 +59,7 @@ export async function createGpuResources(
   });
 
   rt.buffers = new SatelliteGPUBuffer(rt.context);
+  rt.buffers.setPhysicsMode(rt.simulation.currentPhysicsMode);
   const bufferSet = await reporter.withScope(device, 'satellite-buffers', () =>
     rt.buffers!.initialize(),
   );
@@ -142,7 +147,8 @@ export async function createGpuResources(
     rt.earthAtmosphereRenderer!.initialize(rt.buffers!.getBuffers().uniforms);
   });
 
-  rt.ui.setFleetCount(CONSTANTS.NUM_SATELLITES);
+  const fleet = rt.context?.getFleetScale() ?? getFleetScale();
+  rt.ui.setFleetCount(fleet.count, fleet.autoReduced ? 'adapter limit' : undefined);
   rt.ui.hideError();
 
   if (options.mode === 'boot') {
@@ -166,6 +172,9 @@ export async function createGpuResources(
       rt.ui.setActivePhysicsButton(urlParams.physicsMode);
     }
 
+    setSunLightingMode(rt, urlParams.sunMode ?? readStoredSunMode() ?? 'art');
+    applyGrowthFromUrl();
+
     if (urlParams.patternMode !== null) {
       setPatternMode(rt, urlParams.patternMode);
     }
@@ -177,6 +186,8 @@ export async function createGpuResources(
     await rt.ui.initializeDashboard(rt.profiler);
     if (rt.context) {
       rt.ui.setPresentationMode(rt.context.getPresentationMode());
+      const caps = rt.context.getCapabilities();
+      if (caps) rt.ui.setGpuCapabilities(formatGpuCapabilityLine(caps));
     }
     return;
   }

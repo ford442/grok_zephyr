@@ -10,6 +10,8 @@ import type { TLEData } from '@/types/index.js';
 import { eciStateToKeplerian, type KeplerianState } from './keplerianFromState.js';
 import { packTleCatalog } from './packTleCatalog.js';
 import { Sgp4WasmEngine } from './Sgp4WasmEngine.js';
+import { Sgp4WorkerClient, type Sgp4PropagatePacked } from './Sgp4Worker.js';
+import { packExtendedFromEciBatch } from './sgp4PackExtended.js';
 
 export interface TleRecord {
   name: string;
@@ -23,6 +25,7 @@ export type Sgp4Backend = 'wasm' | 'js';
 export class TlePropagator {
   private records: TleRecord[] = [];
   private wasmEngine: Sgp4WasmEngine | null = null;
+  private worker: Sgp4WorkerClient | null = null;
   private wasmInitPromise: Promise<boolean> | null = null;
   private wasmInitAttempted = false;
   private batchScratch: Float32Array | null = null;
@@ -48,6 +51,9 @@ export class TlePropagator {
 
     if (this.wasmEngine) {
       this.wasmEngine.loadCatalog(this.records);
+    }
+    if (this.worker) {
+      void this.worker.load(this.records);
     }
 
     return this.records.length;
@@ -80,15 +86,23 @@ export class TlePropagator {
 
     this.wasmInitAttempted = true;
     this.wasmInitPromise = (async () => {
+      const worker = new Sgp4WorkerClient();
+      if (await worker.init()) {
+        this.worker = worker;
+        if (this.records.length > 0) {
+          await worker.load(this.records);
+        }
+      }
+
       const engine = await Sgp4WasmEngine.tryLoad();
-      if (!engine) {
-        return false;
+      if (engine) {
+        this.wasmEngine = engine;
+        if (this.records.length > 0) {
+          engine.loadCatalog(this.records);
+        }
       }
-      this.wasmEngine = engine;
-      if (this.records.length > 0) {
-        engine.loadCatalog(this.records);
-      }
-      return true;
+
+      return this.wasmEngine !== null || this.worker !== null;
     })();
 
     return this.wasmInitPromise;
@@ -157,17 +171,75 @@ export class TlePropagator {
     startIndex: number,
     count: number,
     write: (index: number, state: KeplerianState) => void,
+    dest?: Float32Array,
   ): void {
-    const batch = this.propagateBatchEci(dateMs, startIndex, count);
-    const limit = Math.floor(batch.length / 6);
-    for (let i = 0; i < limit; i++) {
-      const base = i * 6;
-      const state = eciStateToKeplerian(
-        { x: batch[base], y: batch[base + 1], z: batch[base + 2] },
-        { x: batch[base + 3], y: batch[base + 4], z: batch[base + 5] },
-      );
-      write(startIndex + i, state);
+    if (this.wasmEngine) {
+      const { eci, errors } = this.wasmEngine.propagateBatchEx(dateMs, startIndex, count);
+      if (dest) {
+        packExtendedFromEciBatch(eci, errors, dest, startIndex);
+        return;
+      }
+      const packed = new Float32Array(errors.length * 8);
+      packExtendedFromEciBatch(eci, errors, packed, 0);
+      for (let i = 0; i < errors.length; i++) {
+        if (errors[i] !== 0) continue;
+        const base = i * 8;
+        write(startIndex + i, {
+          a: packed[base],
+          e: packed[base + 1],
+          inc: packed[base + 2],
+          raan: packed[base + 3],
+          argp: packed[base + 4],
+          M0: packed[base + 5],
+          n: packed[base + 6],
+        });
+      }
+      return;
     }
+
+    const limit = Math.min(count, Math.max(0, this.records.length - startIndex));
+    for (let i = 0; i < limit; i++) {
+      const rec = this.records[startIndex + i];
+      const state = this.propagateStateJs(startIndex + i, dateMs);
+      if (!state || rec.satrec.error) {
+        continue;
+      }
+      write(startIndex + i, eciStateToKeplerian(state.position, state.velocity));
+    }
+  }
+
+  /** Off-main-thread pack when the SGP4 worker is available. */
+  async applyPackedBatch(dateMs: number, startIndex: number, count: number): Promise<Sgp4PropagatePacked> {
+    if (this.worker?.isActive()) {
+      return this.worker.propagatePacked(dateMs, startIndex, count);
+    }
+    if (this.wasmEngine) {
+      const { eci, errors } = this.wasmEngine.propagateBatchEx(dateMs, startIndex, count);
+      const dest = new Float32Array(errors.length * 8);
+      packExtendedFromEciBatch(eci, errors, dest, 0);
+      return { start: startIndex, count: errors.length, extended: dest };
+    }
+    const dest = new Float32Array(count * 8);
+    this.applyKeplerianBatch(dateMs, startIndex, count, (index, state) => {
+      dest.set(
+        [state.a, state.e, state.inc, state.raan, state.argp, state.M0, state.n, 1],
+        (index - startIndex) * 8,
+      );
+    });
+    return { start: startIndex, count, extended: dest };
+  }
+
+  catalogEpochJd(index: number): number {
+    if (this.wasmEngine) {
+      return this.wasmEngine.catalogEpochJd(index);
+    }
+    const rec = this.records[index];
+    const sat = rec?.satrec as { jdsatepoch?: number } | undefined;
+    return sat?.jdsatepoch ?? 0;
+  }
+
+  usesSgp4Worker(): boolean {
+    return this.worker?.usesWorker() ?? false;
   }
 
   /** Expose packed catalog bytes (tests / diagnostics). */

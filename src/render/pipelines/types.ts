@@ -38,6 +38,8 @@ export interface RenderTargets {
 export interface PipelineBindGroups {
   compute: GPUBindGroup;
   beamCompute: GPUBindGroup;
+  islCompute: GPUBindGroup;
+  islFiber: GPUBindGroup;
   satelliteCull: GPUBindGroup;
   stars: GPUBindGroup;
   earth: GPUBindGroup;
@@ -60,6 +62,8 @@ export const MAX_BEAMS = 65536;
 export interface Pipelines {
   compute: GPUComputePipeline;
   beamCompute: GPUComputePipeline;
+  islCompute: GPUComputePipeline;
+  islFiber: GPURenderPipeline;
   satelliteCullSats: GPUComputePipeline;
   satelliteCullBeams: GPUComputePipeline;
   satelliteCullFinalize: GPUComputePipeline;

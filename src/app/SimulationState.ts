@@ -1,6 +1,7 @@
 import type { QualityLevel } from '@/core/QualityPresets.js';
 import { SimClock } from '@/app/SimClock.js';
 import { GroundStationController } from '@/ground/GroundStationController.js';
+import type { SunLightingMode } from '@/physics/sun.js';
 
 /** Simulation timing, quality, and pattern mode — single source of truth. */
 export class SimulationState {
@@ -19,6 +20,12 @@ export class SimulationState {
   currentAnimationPattern = 0;
   currentPhysicsMode = 0;
   realismMode = false;
+  /** Art = cinematic XY sun (default / visual baselines). Astro = UTC geometric sun. */
+  sunMode: SunLightingMode = 'art';
+  islEnabled = true;
+  islDensity = 0.35;
+  /** null = follow quality preset; otherwise last user toggle. */
+  islUserOverride: boolean | null = null;
   /** Skyline view: 0=auto mix, 1=LED, 2=laser, 3=spots, 4=neon, 5=all */
   skylineDisplayMode: 0 | 1 | 2 | 3 | 4 | 5 = 0;
   hasTleCatalog = false;

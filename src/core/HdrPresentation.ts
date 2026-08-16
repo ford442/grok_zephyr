@@ -98,21 +98,31 @@ function preferredSdrFormat(): GPUTextureFormat {
 }
 
 /** Build canvas presentation options passed into {@link WebGPUContext}. */
+/** `?alpha=opaque|premultiplied` — default opaque. */
+export function resolveCanvasAlphaMode(
+  search: string = typeof window !== 'undefined' ? window.location.search : '',
+): GPUCanvasAlphaMode {
+  const raw = new URLSearchParams(search).get('alpha')?.toLowerCase();
+  if (raw === 'premultiplied' || raw === 'premul') return 'premultiplied';
+  return 'opaque';
+}
+
 export function resolveCanvasPresentationOptions(
   qualityLevel: QualityLevel,
   search: string = typeof window !== 'undefined' ? window.location.search : '',
 ): CanvasPresentationOptions {
+  const alphaMode = resolveCanvasAlphaMode(search);
   if (!shouldRequestHdrPresentation(qualityLevel, search)) {
     return {
       format: preferredSdrFormat(),
-      alphaMode: 'opaque',
+      alphaMode,
       toneMapping: { mode: 'standard' },
     };
   }
 
   return {
     format: 'rgba16float',
-    alphaMode: 'opaque',
+    alphaMode,
     colorSpace: 'display-p3',
     toneMapping: { mode: 'extended' },
   };

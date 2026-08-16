@@ -12,12 +12,20 @@
  *   2 === srcSamp   (linear clamp sampler)
  */
 
-export const BLOOM_DOWNSAMPLE = /* wgsl */ `
-struct KawaseUni {
-  srcTexelSize : vec2f,
-  pad          : vec2f,
-};
+import { emitWgslStruct } from '../../uniformSchema.js';
+import { KAWASE_UNI_SCHEMA } from '../../schemas/bloom.js';
 
+/** Kawase downsample. `useF16` requires the `shader-f16` device feature. */
+export function buildBloomDownsample(useF16 = false): string {
+  const enable = useF16 ? 'enable f16;\n' : '';
+  const acc = useF16 ? 'vec3<f16>' : 'vec3f';
+  const k4 = useF16 ? '4.0h' : '4.0';
+  const k8 = useF16 ? '8.0h' : '8.0';
+  const toAcc = useF16 ? (expr: string) => `vec3<f16>(${expr})` : (expr: string) => expr;
+  return (
+    enable +
+    emitWgslStruct(KAWASE_UNI_SCHEMA) +
+    /* wgsl */ `
 struct VSOut {
   @builtin(position) pos : vec4f,
   @location(0)       uv  : vec2f,
@@ -42,20 +50,19 @@ fn vs(@builtin(vertex_index) vid: u32) -> VSOut {
 
 @fragment
 fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
-  // HALF_TEXEL_OFFSET: positions the four bilinear taps at the half-texel
-  // corners of the destination pixel, which is the defining feature of the
-  // Kawase dual-filter downsample algorithm.
   const HALF_TEXEL_OFFSET : f32 = 0.5;
   let d = uni.srcTexelSize * HALF_TEXEL_OFFSET;
 
-  // 5-tap Kawase dual-filter downsample:
-  // 1 centre tap + 4 bilinear taps at ±0.5 texel corners.
-  var c  = textureSample(srcTex, srcSamp, uv                         ).rgb * 4.0;
-  c += textureSample(srcTex, srcSamp, uv + vec2f( d.x,  d.y)).rgb;
-  c += textureSample(srcTex, srcSamp, uv + vec2f(-d.x,  d.y)).rgb;
-  c += textureSample(srcTex, srcSamp, uv + vec2f( d.x, -d.y)).rgb;
-  c += textureSample(srcTex, srcSamp, uv + vec2f(-d.x, -d.y)).rgb;
+  var c : ${acc} = ${toAcc('textureSample(srcTex, srcSamp, uv).rgb')} * ${k4};
+  c += ${toAcc('textureSample(srcTex, srcSamp, uv + vec2f( d.x,  d.y)).rgb')};
+  c += ${toAcc('textureSample(srcTex, srcSamp, uv + vec2f(-d.x,  d.y)).rgb')};
+  c += ${toAcc('textureSample(srcTex, srcSamp, uv + vec2f( d.x, -d.y)).rgb')};
+  c += ${toAcc('textureSample(srcTex, srcSamp, uv + vec2f(-d.x, -d.y)).rgb')};
 
-  return vec4f(c / 8.0, 1.0);
+  return vec4f(vec3f(c / ${k8}), 1.0);
 }
-`;
+`
+  );
+}
+
+export const BLOOM_DOWNSAMPLE = buildBloomDownsample(false);

@@ -77,8 +77,9 @@ int sgp4_load_catalog(const char* data, int byte_length) {
 /**
  * Propagate `count` satellites starting at `start_index` to unix_ms.
  * Writes count * 6 floats into out: x,y,z (km), vx,vy,vz (km/s) in TEME/ECI.
+ * When `errors` is non-null, writes Vallado satrec.error per satellite (0 = ok).
  */
-int sgp4_propagate_batch(double unix_ms, float* out, int start_index, int count) {
+int sgp4_propagate_batch_ex(double unix_ms, float* out, int* errors, int start_index, int count) {
   if (!out || count <= 0 || start_index < 0) {
     return -1;
   }
@@ -106,13 +107,31 @@ int sgp4_propagate_batch(double unix_ms, float* out, int start_index, int count)
       out[base + 3] = static_cast<float>(v[0]);
       out[base + 4] = static_cast<float>(v[1]);
       out[base + 5] = static_cast<float>(v[2]);
+      if (errors) {
+        errors[i] = 0;
+      }
     } else {
       out[base + 0] = out[base + 1] = out[base + 2] = 0.0f;
       out[base + 3] = out[base + 4] = out[base + 5] = 0.0f;
+      if (errors) {
+        errors[i] = satrec.error != 0 ? satrec.error : -1;
+      }
     }
   }
 
   return limit;
+}
+
+int sgp4_propagate_batch(double unix_ms, float* out, int start_index, int count) {
+  return sgp4_propagate_batch_ex(unix_ms, out, nullptr, start_index, count);
+}
+
+/** Julian date of the TLE epoch for catalog index, or 0 if out of range. */
+double sgp4_catalog_epoch_jd(int index) {
+  if (index < 0 || index >= static_cast<int>(g_catalog.size())) {
+    return 0.0;
+  }
+  return g_catalog[static_cast<size_t>(index)].jdsatepoch;
 }
 
 }  // extern "C"

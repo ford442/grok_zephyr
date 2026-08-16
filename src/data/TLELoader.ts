@@ -109,6 +109,20 @@ export class TLELoader {
     return semiMajorKm - 6371.0;
   }
 
+  /**
+   * TLE epoch from line 1 (columns 19–32): two-digit year + day-of-year.
+   * Years 57–99 → 1957–1999; 00–56 → 2000–2056.
+   */
+  static parseEpochMs(line1: string): number | null {
+    if (!line1.startsWith('1 ') || line1.length < 32) return null;
+    const yy = Number.parseInt(line1.substring(18, 20), 10);
+    const doy = Number.parseFloat(line1.substring(20, 32));
+    if (!Number.isFinite(yy) || !Number.isFinite(doy) || doy < 1) return null;
+    const year = yy >= 57 ? 1900 + yy : 2000 + yy;
+    const jan1 = Date.UTC(year, 0, 1);
+    return jan1 + (doy - 1) * 86400000;
+  }
+
   /** NORAD catalog number from TLE line 1 (columns 3–7). */
   static parseNoradId(line1: string): number | null {
     if (!line1.startsWith('1 ')) return null;

@@ -223,7 +223,7 @@ The frame is rendered through the following passes:
 ### Simulation Constants
 
 ```typescript
-const NUM_SATELLITES = 1048576; // 2^20 satellites
+const NUM_SATELLITES = 1048576; // 2^20 maximum; runtime count from FleetScale (?sats / quality / adapter)
 const EARTH_RADIUS_KM = 6371.0; // km - Earth radius
 const ORBIT_RADIUS_KM = 6921.0; // km - 550km altitude orbit
 const CAMERA_RADIUS_KM = 7091.0; // km - 720km altitude camera
@@ -289,13 +289,25 @@ Controlled by the "CONSTELLATION PATTERNS" UI buttons:
 - **DIGITAL RAIN** (`4`) — Matrix-style digital rain effect
 - **HEARTBEAT** (`5`) — Pulsing heartbeat pattern
 
-### Physics Modes
+### Constellation growth
+
+Launch-era scrubber (`docs/GROWTH.md`, `?era=2022-06`): independent of SimClock. GPU discards sats with `activeFrom > era_day` (no buffer realloc).
+
+## Inter-satellite links
+
+Optical ISL mesh (`docs/ISL.md`): ≤128k fibers, plane-neighbor Walker topology, independent of CHAOS/GROK/X beams.
+
+## Reference frames
+
+See **`docs/FRAMES.md`**. SGP4 TEME is used as the render ECI (no GCRF conversion). Sun lighting: **ART** (default XY-plane cinematic sun) vs **ASTRO** (`?sun=astro`, UTC geometric sun).
+
+## Physics Modes
 
 Controlled by the "PHYSICS MODE" UI buttons:
 
-- **Simple** (`0`) — Basic circular orbits (implemented)
-- **Keplerian** (`1`) — Elliptical orbits with mean anomaly (implemented)
-- **J2 Perturbed** (`2`) — Oblateness corrections (UI placeholder; not fully implemented in compute shader)
+- **Simple** (`0`) — Multi-shell circular orbits (RAAN / inclination / mean anomaly)
+- **Keplerian** (`1`) — Extended elements (`a`, `e`, `inc`, `Ω`, `ω`, `M0`, `n`) for every satellite
+- **J2 Perturbed** (`2`) — Keplerian plus first-order secular J2 rates on `Ω̇`, `ω̇`, `Ṁ` (WGS-84 `J2` / `Re`)
 
 ### Constellation Configuration
 
@@ -330,6 +342,8 @@ lives in `src/app/App.ts`.
 - Time scale and quality preset control
 - Device loss recovery and error handling
 
+**src/core/GpuCapabilities.ts**: Adapter probe / optional-feature catalog / depth + bloom format / fleet ranking. Matrix: `docs/GPU_CAPABILITIES.md`.
+
 **src/core/WebGPUContext.ts**: WebGPU abstraction layer handling:
 
 - Adapter and device creation
@@ -337,10 +351,19 @@ lives in `src/app/App.ts`.
 - Buffer creation helpers
 - Error handling with `WebGPUError` class
 
-**src/core/SatelliteGPUBuffer.ts**: GPU memory manager for:
+**src/core/SatelliteGPUBuffer.ts**: Public façade (`initialize` / `destroy` / getters). Implementation lives in:
+
+- `src/core/buffer/BufferAllocator.ts` — GPU buffer creation, Pascal 128 MB budget (~118 MB accounted)
+- `src/core/buffer/BufferUpload.ts` — staging + bloom / extended-range writes
+- `src/core/orbital/OrbitalDataStore.ts` — CPU orbital / extended / group arrays + worker generate/load
+- `src/core/orbital/Sgp4ReanchorService.ts` — `TlePropagator` ownership, chunked `tick` / `force` re-anchor
+
+FrameLoop talks to `SatelliteFrameBuffers` (`tickSgp4Reanchor`, `getBuffers`, position helpers).
+
+GPU memory manager for:
 
 - 16MB orbital elements buffer (read-only)
-- 32MB extended elements buffer (for J2 propagation)
+- 32MB extended Keplerian elements buffer (SGP4-anchored or shell fallback; used by Keplerian / J2 modes)
 - 16MB position buffer (read-write storage)
 - 256-byte uniform buffer
 - 4MB per-satellite color buffer (rgba8unorm packed)
@@ -463,7 +486,7 @@ math live in `src/core/OrbitalElements.ts` (used by both `SatelliteGPUBuffer` an
 the WebGL renderer), and the `CameraController` drives both. Satellite propagation
 runs in the GLSL vertex shader (the "simplified compute fallback" for
 `orbital_compute.wgsl`). Not ported to WebGL: volumetric beams, trails, TAA,
-motion blur, DoF, and J2/RK4 physics. Full details, the WGSL→GLSL uniform mapping,
+motion blur, DoF, and Keplerian/J2 physics (WebGL stays on circular shells). Full details, the WGSL→GLSL uniform mapping,
 and WebGL→WebGPU porting notes are in **`docs/WEBGL_FALLBACK.md`**.
 
 WebGL module layout: `src/webgl/{rendererSelection,glUtils,shaders,WebGLRenderer,WebGLDebug,SatellitePickerGL}.ts`.
@@ -474,7 +497,7 @@ Integration points in `src/app/App.ts` and `src/app/bootWebGL.ts`.
 Vallado reference SGP4 is compiled to `public/sgp4.wasm` via Emscripten (`npm run build:wasm`).
 Prebuilt artifacts are committed; CI rebuilds on `native/**` changes (`.github/workflows/build-wasm.yml`).
 
-- **Runtime**: `TlePropagator` loads WASM when available; falls back to `satellite.js` on failure.
+- **Runtime**: `TlePropagator` loads WASM when available; falls back to `satellite.js` on failure. Re-anchor prefers `Sgp4Worker` (off-main-thread); decayed sats are flagged (`extended.flag = −satrec.error`). See `native/README.md`.
 - **Batch API**: `propagateBatchEci()` / `applyKeplerianBatch()` feed GPU extended-element re-anchoring.
 - **Benchmark**: Performance dashboard shows WASM vs JS speedup after TLE catalog load.
 - **Tests**: `Sgp4WasmEngine.test.ts` checks 1e-3 km agreement over 24h; `Sgp4Benchmark.test.ts` checks speedup.
@@ -615,7 +638,7 @@ If TLE fetch/parse fails (network error, CORS, invalid format), the app logs a w
 ## Known Limitations and TODOs
 
 1. **SGP4 Propagation**: Currently using simplified Keplerian mechanics in the compute shader; full GPU SGP4 implementation is stubbed
-2. **J2 Perturbations**: UI exists but compute shader implementation is incomplete
+2. **J2 Perturbations**: First-order secular rates are implemented on GPU + CPU; higher-order / tesseral terms are not.
 3. **GPU Timing**: Only works if the browser supports `timestamp-query` feature
 4. **Standalone Build**: Creates a single HTML file but requires manual deployment
 5. ~~**No Automated Tests**~~: The project now has **139 Vitest unit tests** (`npm run test`) covering math utilities, TLE parsing, orbital elements, WebGL renderer selection, and the visual harness, plus Playwright visual regression tests (`npm run test:visual`).

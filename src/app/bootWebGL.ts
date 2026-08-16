@@ -11,11 +11,11 @@ import {
   shouldUseMultiGroupColors,
 } from '@/data/ConstellationGroups.js';
 import { getSimWorkerClient } from '@/workers/SimWorkerClient.js';
-import { CONSTANTS } from '@/types/constants.js';
 import { buildEarthMesh } from '@/core/EarthGeometry.js';
+import { installActiveFleetScale, resolveFleetScale } from '@/core/FleetScale.js';
+import { loadSavedQualityLevel } from '@/core/QualityPresets.js';
 import { WebGLRenderer } from '@/webgl/WebGLRenderer.js';
 import { WebGLDebugOverlay, parseDebugFlags } from '@/webgl/WebGLDebug.js';
-import { resolveSatelliteCount } from '@/webgl/rendererSelection.js';
 import { parseVisualHarnessParams } from '@/testing/visualHarness.js';
 import { applyVisualHarnessParams, parseInitialStateFromURL } from '@/app/UrlState.js';
 import { syncSimClockFromTleEpoch } from '@/app/SimClockController.js';
@@ -35,7 +35,17 @@ export async function bootWebGL(
 ): Promise<void> {
   console.log('[GrokZephyr] Booting WebGL2 fallback renderer...');
 
-  const orbital = new OrbitalElements();
+  const urlParams = parseInitialStateFromURL();
+  const quality =
+    urlParams.qualityLevel ??
+    loadSavedQualityLevel() ??
+    (rt.isMobileDevice ? rt.mobileDefaultQuality : 'high');
+  const fleet = installActiveFleetScale(
+    resolveFleetScale({ quality, search: window.location.search }),
+  );
+  const satCount = fleet.count;
+
+  const orbital = new OrbitalElements(satCount);
   rt.webglOrbital = orbital;
 
   const harness = parseVisualHarnessParams();
@@ -70,7 +80,7 @@ export async function bootWebGL(
   rt.webglMultiGroupColorMode = multiGroupColorMode;
 
   if (merged.segments.length > 0 && merged.tles.length > 0) {
-    const result = await simWorker.mergeCatalogElements(merged.segments, CONSTANTS.NUM_SATELLITES);
+    const result = await simWorker.mergeCatalogElements(merged.segments, satCount);
     orbital.adoptBuffer(result.orbitalBuffer);
     if (result.groupIdsBuffer) {
       rt.webglGroupIds = new Uint32Array(result.groupIdsBuffer);
@@ -79,10 +89,7 @@ export async function bootWebGL(
     dataSourceLabel = formatGroupCountLegend(merged.groupCounts) || 'TLE';
     rt.simulation.hasTleCatalog = true;
   } else {
-    const result = await simWorker.generateOrbitalElements(
-      CONSTANTS.NUM_SATELLITES,
-      harness.seed ?? undefined,
-    );
+    const result = await simWorker.generateOrbitalElements(satCount, harness.seed ?? undefined);
     orbital.adoptBuffer(result.orbitalBuffer);
     if (result.groupIdsBuffer) {
       rt.webglGroupIds = new Uint32Array(result.groupIdsBuffer);
@@ -108,7 +115,6 @@ export async function bootWebGL(
   rt.camera.attachToCanvas(rt.canvas);
   setupMobileOrientationSupport(rt, orientationChangeListener, orientationLockGestureListener);
 
-  const satCount = resolveSatelliteCount();
   const renderer = new WebGLRenderer(rt.canvas, orbital, satCount, rt.webglGroupIds);
   renderer.setGroupVisibilityState(visibility);
   const size = getDrawableSize(rt) ?? {
@@ -122,7 +128,7 @@ export async function bootWebGL(
   rt.webglDebugOverlay = new WebGLDebugOverlay(renderer, rt.canvas);
   rt.webglDebugOverlay.install();
 
-  rt.ui.setFleetCount(satCount);
+  rt.ui.setFleetCount(satCount, fleet.autoReduced ? 'adapter limit' : undefined);
   rt.ui.setDataSource(`${dataSourceLabel} · WebGL2`);
   rt.ui.setTleCatalogMeta(rt.tleCatalogMeta);
   rt.ui.setConstellationLegend(formatGroupCountLegend(merged.groupCounts));
@@ -131,7 +137,6 @@ export async function bootWebGL(
   rt.dataSourceLabel = dataSourceLabel;
   rt.ui.hideError();
 
-  const urlParams = parseInitialStateFromURL();
   rt.camera.setViewMode(urlParams.viewMode ?? 0);
   if (urlParams.patternMode !== null) {
     setPatternMode(rt, urlParams.patternMode);

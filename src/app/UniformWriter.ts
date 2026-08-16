@@ -1,4 +1,5 @@
 import { getBackgroundModeIndex } from '@/core/background.js';
+import { PHYSICS_MODE_NAMES } from '@/physics/physicsMode.js';
 import { groundPresetMotionBlurWeight } from '@/camera/groundPresetEffects.js';
 import type { CameraState } from '@/camera/CameraController.js';
 import {
@@ -6,25 +7,31 @@ import {
   type ViewDescriptor,
 } from '@/camera/ViewDescriptor.js';
 import type { ConstellationStats } from '@/camera/FocusManager.js';
-import { BUFFER_SIZES } from '@/types/constants.js';
 import { mat4inv } from '@/utils/math.js';
+import { SCENE_UNI_SCHEMA } from '@/shaders/schemas/sceneUni.js';
+import { UniformBufferWriter } from '@/shaders/uniformSchema.js';
 import { CONSTANTS } from '@/types/constants.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 import { stationGpuState } from '@/ground/GroundStation.js';
+import { artSunPositionEci, resolveSunPosition } from '@/physics/sun.js';
 
 /**
- * Calculate sun position in ECI frame for eclipse shadow calculation.
- * Sun orbits at 1 AU in the XY plane.
+ * Art-mode sun (XY-plane circle). Kept for visual-baseline compatibility.
+ * Prefer `sunPositionForRuntime` when the ART/ASTRO toggle matters.
  */
 export function calculateSunPosition(simTime: number): [number, number, number] {
-  const SUN_DISTANCE_KM = 149597870.0;
-  const ORBITAL_PERIOD_SEC = 31557600.0;
-  const angle = (simTime / ORBITAL_PERIOD_SEC) * Math.PI * 2;
-  return [Math.cos(angle) * SUN_DISTANCE_KM, Math.sin(angle) * SUN_DISTANCE_KM, 0.0];
+  return artSunPositionEci(simTime);
+}
+
+export function sunPositionForRuntime(rt: AppRuntime): [number, number, number] {
+  return resolveSunPosition({
+    mode: rt.simulation.sunMode,
+    simTimeSec: rt.simulation.clock.simTime,
+    utcMs: rt.simulation.clock.simUtcMs,
+  });
 }
 
 export function buildConstellationStats(rt: AppRuntime): ConstellationStats {
-  const physicsNames = ['Simple', 'Keplerian', 'J2 Perturbed'];
   const animNames: Record<number, string> = {
     0: 'None',
     3: 'Smile',
@@ -33,7 +40,7 @@ export function buildConstellationStats(rt: AppRuntime): ConstellationStats {
   };
   return {
     viewModeName: rt.camera.getViewMode(),
-    physicsModeName: physicsNames[rt.simulation.currentPhysicsMode] ?? 'Simple',
+    physicsModeName: PHYSICS_MODE_NAMES[rt.simulation.currentPhysicsMode] ?? 'Simple',
     timeScale: rt.simulation.clock.rate,
     dataSource: rt.dataSourceLabel,
     visibleCount: rt.lastVisibleCount,
@@ -126,47 +133,29 @@ export function writeUniforms(
     ((physicsMode & 0x7) << 17) |
     ((realismMode & 0x1) << 20);
   const simTime = rt.simulation.clock.simTime;
-  const sunPos = calculateSunPosition(simTime);
+  const sunPos = sunPositionForRuntime(rt);
 
-  const uniformData = new ArrayBuffer(BUFFER_SIZES.UNIFORM);
-  const f32 = new Float32Array(uniformData);
-  const u32 = new Uint32Array(uniformData);
-
-  f32.set(viewProjection, 0);
-  f32[16] = cameraPos[0];
-  f32[17] = cameraPos[1];
-  f32[18] = cameraPos[2];
-  f32[19] = 1.0;
-  f32[20] = right[0];
-  f32[21] = right[1];
-  f32[22] = right[2];
-  f32[23] = 0.0;
-  f32[24] = up[0];
-  f32[25] = up[1];
-  f32[26] = up[2];
-  f32[27] = 0.0;
-  f32[28] = time;
-  f32[29] = deltaTime;
-  u32[30] = viewFlags;
-  f32[31] = simTime;
-
+  const frustumPacked = new Float32Array(24);
   for (let p = 0; p < 6; p++) {
-    f32[32 + p * 4 + 0] = frustum[p][0];
-    f32[32 + p * 4 + 1] = frustum[p][1];
-    f32[32 + p * 4 + 2] = frustum[p][2];
-    f32[32 + p * 4 + 3] = frustum[p][3];
+    frustumPacked.set(frustum[p], p * 4);
   }
 
-  f32[56] = width;
-  f32[57] = height;
-  f32[58] = rt.simulation.clock.rate;
-  u32[59] = getBackgroundModeIndex();
-  f32[60] = sunPos[0];
-  f32[61] = sunPos[1];
-  f32[62] = sunPos[2];
-  f32[63] = 1.0;
+  const uni = new UniformBufferWriter(SCENE_UNI_SCHEMA)
+    .set('view_proj', viewProjection)
+    .set('camera_pos', [cameraPos[0], cameraPos[1], cameraPos[2], 1.0])
+    .set('camera_right', [right[0], right[1], right[2], 0.0])
+    .set('camera_up', [up[0], up[1], up[2], 0.0])
+    .set('time', time)
+    .set('delta_time', deltaTime)
+    .setU32('view_mode', viewFlags)
+    .set('sim_time', simTime)
+    .set('frustum', frustumPacked)
+    .set('screen_size', [width, height])
+    .set('time_scale', rt.simulation.clock.rate)
+    .setU32('background_mode', getBackgroundModeIndex())
+    .set('sun_position', [sunPos[0], sunPos[1], sunPos[2], 1.0]);
 
-  rt.context.writeBuffer(rt.buffers.getBuffers().uniforms, uniformData);
+  rt.context.writeBuffer(rt.buffers.getBuffers().uniforms, uni.bytes());
   const motionBlurWeight =
     rt.camera.getViewMode() === 'ground'
       ? groundPresetMotionBlurWeight(rt.groundObserver.getBlendedEffects())

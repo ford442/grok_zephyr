@@ -5,8 +5,7 @@
 import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
 import { SHADERS } from '@/shaders/index.js';
-import { CONSTANTS } from '@/types/constants.js';
-import { RENDER } from '@/types/constants.js';
+import { getActiveFleetSize } from '@/core/FleetScale.js';
 
 const PICK_SIZE = 16;
 const NO_HIT = 0xffffffff;
@@ -41,7 +40,7 @@ export class SatellitePicker {
 
     this.pickDepth = device.createTexture({
       size: [PICK_SIZE, PICK_SIZE, 1],
-      format: RENDER.DEPTH_FORMAT,
+      format: this.context.getDepthFormat(),
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
 
@@ -70,7 +69,7 @@ export class SatellitePicker {
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {
-        format: RENDER.DEPTH_FORMAT,
+        format: this.context.getDepthFormat(),
         depthWriteEnabled: true,
         depthCompare: 'less',
       },
@@ -145,7 +144,7 @@ export class SatellitePicker {
     pass.setPipeline(this.pickPipeline);
     pass.setBindGroup(0, bindGroup);
     pass.setViewport(0, 0, PICK_SIZE, PICK_SIZE, 0, 1);
-    pass.draw(6, CONSTANTS.NUM_SATELLITES);
+    pass.draw(6, getActiveFleetSize());
     pass.end();
 
     encoder.copyTextureToBuffer(
@@ -187,7 +186,7 @@ function pickClosestId(pixels: Uint32Array, width: number, height: number): numb
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const id = pixels[y * width + x];
-      if (id === NO_HIT || id >= CONSTANTS.NUM_SATELLITES) continue;
+      if (id === NO_HIT || id >= getActiveFleetSize()) continue;
       const dx = x - cx;
       const dy = y - cy;
       const dist = dx * dx + dy * dy;

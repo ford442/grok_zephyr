@@ -18,6 +18,32 @@ import { meanMotionFromSemiMajorAxis } from './keplerianPropagation.js';
 export const EXTENDED_FLOATS_PER_SATELLITE = 8;
 export const REALISM_FLAG_SGP4 = 1.0;
 export const REALISM_FLAG_SHELL = 0.0;
+/** Negative flag: −Vallado error code (1–6). Decayed sats use −6. */
+export const REALISM_FLAG_SGP4_ERROR = -1.0;
+
+export function sgp4ErrorFromFlag(flag: number): number | null {
+  if (!(flag < 0)) return null;
+  return Math.round(-flag);
+}
+
+export function sgp4ErrorLabel(code: number): string {
+  switch (code) {
+    case 1:
+      return 'mean elements (ecc/a)';
+    case 2:
+      return 'mean motion';
+    case 3:
+      return 'perturbed ecc';
+    case 4:
+      return 'semi-latus rectum';
+    case 5:
+      return 'sub-orbital epoch';
+    case 6:
+      return 'decayed';
+    default:
+      return `error ${code}`;
+  }
+}
 
 export function writeKeplerianExtended(
   data: Float32Array,
@@ -34,6 +60,12 @@ export function writeKeplerianExtended(
   data[base + 5] = state.M0;
   data[base + 6] = state.n;
   data[base + 7] = realismFlag;
+}
+
+export function writeSgp4ErrorExtended(data: Float32Array, index: number, errorCode: number): void {
+  const base = index * EXTENDED_FLOATS_PER_SATELLITE;
+  data.fill(0, base, base + 7);
+  data[base + 7] = -Math.abs(errorCode || 1);
 }
 
 export function writeShellExtended(

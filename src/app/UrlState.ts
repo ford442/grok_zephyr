@@ -1,4 +1,5 @@
 import { parseQualityParam, type QualityLevel } from '@/core/QualityPresets.js';
+import { parseSunLightingMode, type SunLightingMode } from '@/physics/sun.js';
 import { parseVisualHarnessParams, type VisualHarnessParams } from '@/testing/visualHarness.js';
 import { applySimClockFromUrl } from '@/app/SimClockController.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
@@ -10,6 +11,7 @@ export interface InitialUrlState {
   patternMode: number | null;
   animationMode: number | null;
   realismMode: boolean | null;
+  sunMode: SunLightingMode | null;
 }
 
 /**
@@ -22,6 +24,8 @@ export interface InitialUrlState {
  *   ?pattern=0-2         beam pattern mode
  *   ?animation=3-5       constellation animation pattern (smile/rain/heartbeat)
  *   ?realism=0|1         SGP4 catalog vs art-directed shells (requires ?tle=)
+ *   ?sun=art|astro       cinematic XY sun vs UTC geometric sun
+ *   ?era=YYYY-MM         constellation growth deep link (launch-era scrub)
  *   ?t=ISO8601           initial simulated UTC (shareable moment)
  *   ?rate=<n>            sim rate multiplier (0 = paused, up to 10000)
  */
@@ -51,6 +55,7 @@ export function parseInitialStateFromURL(search: string = window.location.search
     patternMode: parseIntParam('pattern', 0, 2),
     animationMode: parseIntParam('animation', 3, 5),
     realismMode: parseBoolParam('realism'),
+    sunMode: parseSunLightingMode(params.get('sun')),
   };
 }
 

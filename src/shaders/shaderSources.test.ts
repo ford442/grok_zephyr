@@ -3,6 +3,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { SHADERS } from './index.js';
+import { buildBloomDownsample } from './render/postProcess/bloomDownsample.js';
 
 describe('shader source of truth', () => {
   it('canonical satellite shader uses distance LOD kernel tiers', () => {
@@ -26,6 +27,44 @@ describe('shader source of truth', () => {
     expect(sat).toContain('isFleetView');
     expect(sat).toContain('host_velocity');
     expect(sat).toContain('uni.time_scale');
+  });
+
+  it('orbital compute discards sats not yet active in the growth era', () => {
+    expect(SHADERS.compute.orbital).toContain('active_from');
+    expect(SHADERS.compute.orbital).toContain('growth.enabled');
+    expect(SHADERS.compute.orbital).toContain('era_day');
+  });
+
+  it('ISL compute uses plane-neighbor topology independent of beam patterns', () => {
+    const isl = SHADERS.compute.isl;
+    expect(isl).toContain('walkerNeighbor');
+    expect(isl).toContain('MAX_ISL_LINKS');
+    expect(isl).toContain('131072u');
+    expect(SHADERS.render.isl).toContain('focused');
+    expect(SHADERS.render.isl).not.toContain('beamPalette');
+  });
+
+  it('orbital compute branches on packed physics mode bits', () => {
+    const orbital = SHADERS.compute.orbital;
+    expect(orbital).toContain('PHYSICS_MODE_SHIFT');
+    expect(orbital).toContain('keplerianJ2Position');
+    expect(orbital).toContain('physicsMode >= 1u');
+  });
+
+  it('generated Uni and bloom structs are present in shader sources', () => {
+    expect(SHADERS.uniformStruct).toContain('struct Uni');
+    expect(SHADERS.uniformStruct).toContain('sun_position');
+    expect(SHADERS.render.postProcess.bloomThreshold).toContain('struct ThresholdUni');
+    expect(SHADERS.render.postProcess.bloomDownsample).toContain('struct KawaseUni');
+    expect(SHADERS.render.postProcess.composite).toContain('struct BloomCompositeUni');
+    expect(SHADERS.render.postProcess.composite).toContain('struct Uni');
+  });
+
+  it('bloom downsample f16 path enables shader-f16 and keeps the f32 fallback', () => {
+    expect(SHADERS.render.postProcess.bloomDownsample).not.toContain('enable f16');
+    const f16 = buildBloomDownsample(true);
+    expect(f16.startsWith('enable f16;')).toBe(true);
+    expect(f16).toContain('vec3<f16>');
   });
 
   it('canonical bloom threshold supports optional shipping floors', () => {

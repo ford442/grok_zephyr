@@ -8,6 +8,8 @@ import type { CameraController } from '@/camera/CameraController.js';
 import type { SatelliteCatalog } from '@/data/SatelliteCatalog.js';
 import { mat4inv, v3dot, v3len, v3norm, v3scale, v3sub } from '@/utils/math.js';
 import { CONSTANTS } from '@/types/constants.js';
+import { sgp4ErrorLabel } from '@/physics/extendedElements.js';
+import { getActiveFleetSize } from '@/core/FleetScale.js';
 
 export type FocusSelection = {
   index: number;
@@ -39,6 +41,7 @@ export interface FocusBufferSource {
   getOrbitalElementData(): Float32Array;
   calculateSatellitePosition(index: number, time: number): Vec3;
   calculateSatelliteVelocity(index: number, time: number): Vec3;
+  getSgp4Status?(index: number): { error: number | null; epochJd: number };
 }
 
 export class FocusManager {
@@ -170,7 +173,7 @@ export class FocusManager {
     let bestIndex = -1;
     let bestDist2 = Number.POSITIVE_INFINITY;
 
-    for (let idx = 0; idx < CONSTANTS.NUM_SATELLITES; idx += coarseStep) {
+    for (let idx = 0; idx < getActiveFleetSize(); idx += coarseStep) {
       const pos = this.buffers.calculateSatellitePosition(idx, time);
       const dist2 = this.pointToRayDist2(pos, rayOrigin, rayDir);
       if (dist2 < bestDist2 && this.isPointInFront(pos, rayOrigin, rayDir)) {
@@ -185,7 +188,7 @@ export class FocusManager {
 
     const windowRadius = 8192;
     const start = Math.max(0, bestIndex - windowRadius);
-    const end = Math.min(CONSTANTS.NUM_SATELLITES - 1, bestIndex + windowRadius);
+    const end = Math.min(getActiveFleetSize() - 1, bestIndex + windowRadius);
     let closestIndex = -1;
     let closestDist2 = Number.POSITIVE_INFINITY;
 
@@ -355,6 +358,25 @@ export class FocusManager {
           <span class="inspector-label">Shell</span>
           <span class="inspector-value inspector-accent">${shellName} orbit</span>
         </div>
+        ${
+          this.buffers.getSgp4Status
+            ? (() => {
+                const status = this.buffers.getSgp4Status!(index);
+                const sgp4Text =
+                  status.error !== null
+                    ? `SGP4 ${sgp4ErrorLabel(status.error)}`
+                    : status.epochJd > 0
+                      ? `SGP4 ok · epoch ${status.epochJd.toFixed(5)} JD`
+                      : '';
+                return sgp4Text
+                  ? `<div class="inspector-row">
+          <span class="inspector-label">SGP4</span>
+          <span class="inspector-value">${status.error !== null ? '⚠ ' : ''}${sgp4Text}</span>
+        </div>`
+                  : '';
+              })()
+            : ''
+        }
         <div class="inspector-row">
           <span class="inspector-label">Altitude</span>
           <span class="inspector-value">${altitude.toFixed(1)} km</span>

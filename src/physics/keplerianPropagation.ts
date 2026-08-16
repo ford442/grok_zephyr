@@ -58,3 +58,50 @@ export function propagateKeplerian(elements: KeplerianElements, t: number): [num
 export function meanMotionFromSemiMajorAxis(aKm: number, mu = EARTH_MU_KM3_S2): number {
   return Math.sqrt(mu / (aKm * aKm * aKm));
 }
+
+/** WGS-84 J2 and equatorial radius (rates only; positions still use project μ). */
+export const EARTH_J2 = 1.08262668e-3;
+export const EARTH_RADIUS_J2_KM = 6378.137;
+
+export interface J2SecularRates {
+  raanDot: number;
+  argpDot: number;
+  meanAnomalyDot: number;
+}
+
+/** First-order secular J2 rates (Vallado): Ω̇, ω̇, Ṁ. */
+export function j2SecularRates(elements: KeplerianElements): J2SecularRates {
+  const { a, e, inc, n } = elements;
+  const p = a * (1 - e * e);
+  if (!(p > 1)) {
+    return { raanDot: 0, argpDot: 0, meanAnomalyDot: n };
+  }
+  const reOverP = EARTH_RADIUS_J2_KM / p;
+  const reOverP2 = reOverP * reOverP;
+  const ci = Math.cos(inc);
+  const ci2 = ci * ci;
+  const factor = 1.5 * n * EARTH_J2 * reOverP2;
+  return {
+    raanDot: -factor * ci,
+    argpDot: 0.5 * factor * (5 * ci2 - 1),
+    meanAnomalyDot: n + 0.5 * factor * Math.sqrt(Math.max(0, 1 - e * e)) * (3 * ci2 - 1),
+  };
+}
+
+/** Keplerian position with first-order J2 secular Ω/ω/M. */
+export function propagateKeplerianJ2(
+  elements: KeplerianElements,
+  t: number,
+): [number, number, number] {
+  const rates = j2SecularRates(elements);
+  return propagateKeplerian(
+    {
+      ...elements,
+      raan: elements.raan + rates.raanDot * t,
+      argp: elements.argp + rates.argpDot * t,
+      M0: elements.M0 + rates.meanAnomalyDot * t,
+      n: 0,
+    },
+    0,
+  );
+}

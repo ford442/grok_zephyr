@@ -15,32 +15,19 @@
  * If fields are added to the shared struct, update this copy to keep the byte offsets aligned.
  */
 
-export const COMPOSITE = /* wgsl */ `
-// Minimal mirror of the shared Uni struct (must match GPU buffer layout exactly)
-struct Uni {
-  view_proj      : mat4x4f,
-  camera_pos     : vec4f,
-  camera_right   : vec4f,
-  camera_up      : vec4f,
-  time           : f32,
-  delta_time     : f32,
-  view_mode      : u32,
-  sim_time       : f32,
-  frustum        : array<vec4f, 6>,
-  screen_size    : vec2f,
-  time_scale     : f32,
-  background_mode: u32,
-  sun_position   : vec4f,
+import { emitWgslStruct } from '../../uniformSchema.js';
+import { BLOOM_COMPOSITE_UNI_SCHEMA } from '../../schemas/bloom.js';
+import { SCENE_UNI_SCHEMA } from '../../schemas/sceneUni.js';
+
+const COMPOSITE_UNI_SCHEMA = {
+  ...SCENE_UNI_SCHEMA,
+  binding: undefined,
 };
 
-// Bloom composite parameters — CPU packer: packBloomCompositeUni() in uniformLayouts.ts
-struct BloomCompositeUni {
-  bloomIntensity    : f32,
-  anamorphicEnabled : u32,   // 1 = enabled, 0 = disabled
-  anamorphicRatio   : f32,
-  pad               : f32,
-};
-
+export const COMPOSITE =
+  emitWgslStruct(COMPOSITE_UNI_SCHEMA) +
+  emitWgslStruct(BLOOM_COMPOSITE_UNI_SCHEMA) +
+  /* wgsl */ `
 struct TonemapUni {
   autoExposure   : u32, // 1 = auto, 0 = manual
   tonemapMode    : u32, // 0=ACES, 1=AgX, 2=Reinhard, 3=Uncharted2

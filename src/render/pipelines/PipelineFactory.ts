@@ -4,6 +4,8 @@
 
 import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import { SHADERS } from '@/shaders/index.js';
+import { buildBloomDownsample } from '@/shaders/render/postProcess/bloomDownsample.js';
+import { injectFleetCount } from '@/core/FleetScale.js';
 import { RENDER } from '@/types/constants.js';
 import type { Pipelines } from './types.js';
 
@@ -20,6 +22,8 @@ export function createPipelines(context: WebGPUContext): Pipelines {
           { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
           { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
           { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+          { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+          { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
         ],
       }),
     ],
@@ -293,7 +297,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
   });
 
   const satelliteCullModule = context.createShaderModule(
-    SHADERS.compute.satelliteCull,
+    injectFleetCount(SHADERS.compute.satelliteCull),
     'satellite-cull',
   );
 
@@ -302,7 +306,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
     compute: device.createComputePipeline({
       layout: computeLayout,
       compute: {
-        module: context.createShaderModule(SHADERS.compute.orbital, 'orbital'),
+        module: context.createShaderModule(injectFleetCount(SHADERS.compute.orbital), 'orbital'),
         entryPoint: 'main',
       },
     }),
@@ -310,8 +314,65 @@ export function createPipelines(context: WebGPUContext): Pipelines {
     beamCompute: device.createComputePipeline({
       layout: beamComputeLayout,
       compute: {
-        module: context.createShaderModule(SHADERS.compute.beam, 'beam-compute'),
+        module: context.createShaderModule(injectFleetCount(SHADERS.compute.beam), 'beam-compute'),
         entryPoint: 'main',
+      },
+    }),
+
+    islCompute: device.createComputePipeline({
+      layout: device.createPipelineLayout({
+        bindGroupLayouts: [
+          device.createBindGroupLayout({
+            entries: [
+              { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+              { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+              { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+              { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+              { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+            ],
+          }),
+        ],
+      }),
+      compute: {
+        module: context.createShaderModule(injectFleetCount(SHADERS.compute.isl), 'isl-compute'),
+        entryPoint: 'main',
+      },
+    }),
+
+    islFiber: device.createRenderPipeline({
+      layout: device.createPipelineLayout({
+        bindGroupLayouts: [
+          device.createBindGroupLayout({
+            entries: [
+              {
+                binding: 0,
+                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                buffer: { type: 'uniform' },
+              },
+              { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+              {
+                binding: 2,
+                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                buffer: { type: 'uniform' },
+              },
+            ],
+          }),
+        ],
+      }),
+      vertex: {
+        module: context.createShaderModule(SHADERS.render.isl, 'isl-fiber'),
+        entryPoint: 'vs',
+      },
+      fragment: {
+        module: context.createShaderModule(SHADERS.render.isl, 'isl-fiber'),
+        entryPoint: 'fs',
+        targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
+      },
+      primitive: { topology: 'triangle-strip' },
+      depthStencil: {
+        format: context.getDepthFormat(),
+        depthWriteEnabled: false,
+        depthCompare: 'less',
       },
     }),
 
@@ -363,7 +424,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {
-        format: RENDER.DEPTH_FORMAT,
+        format: context.getDepthFormat(),
         depthWriteEnabled: false,
         depthCompare: 'always',
       },
@@ -383,7 +444,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       primitive: { topology: 'triangle-list', cullMode: 'back' },
       depthStencil: {
-        format: RENDER.DEPTH_FORMAT,
+        format: context.getDepthFormat(),
         depthWriteEnabled: true,
         depthCompare: 'less',
       },
@@ -403,7 +464,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       primitive: { topology: 'triangle-list', cullMode: 'front' },
       depthStencil: {
-        format: RENDER.DEPTH_FORMAT,
+        format: context.getDepthFormat(),
         depthWriteEnabled: false,
         depthCompare: 'less',
       },
@@ -422,7 +483,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {
-        format: RENDER.DEPTH_FORMAT,
+        format: context.getDepthFormat(),
         depthWriteEnabled: false,
         depthCompare: 'less',
       },
@@ -441,7 +502,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {
-        format: RENDER.DEPTH_FORMAT,
+        format: context.getDepthFormat(),
         depthWriteEnabled: false,
         depthCompare: 'less',
       },
@@ -462,7 +523,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
         topology: 'triangle-strip',
       },
       depthStencil: {
-        format: RENDER.DEPTH_FORMAT,
+        format: context.getDepthFormat(),
         depthWriteEnabled: false,
         depthCompare: 'less',
       },
@@ -483,7 +544,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
         topology: 'triangle-strip',
       },
       depthStencil: {
-        format: RENDER.DEPTH_FORMAT,
+        format: context.getDepthFormat(),
         depthWriteEnabled: false,
         depthCompare: 'less',
       },
@@ -510,7 +571,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {
-        format: RENDER.DEPTH_FORMAT,
+        format: context.getDepthFormat(),
         depthWriteEnabled: false,
         depthCompare: 'always',
       },
@@ -537,7 +598,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {
-        format: RENDER.DEPTH_FORMAT,
+        format: context.getDepthFormat(),
         depthWriteEnabled: false,
         depthCompare: 'always',
       },
@@ -564,7 +625,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {
-        format: RENDER.DEPTH_FORMAT,
+        format: context.getDepthFormat(),
         depthWriteEnabled: false,
         depthCompare: 'always',
       },
@@ -583,7 +644,7 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       primitive: { topology: 'triangle-list', cullMode: 'none' },
       depthStencil: {
-        format: RENDER.DEPTH_FORMAT,
+        format: context.getDepthFormat(),
         depthWriteEnabled: true,
         depthCompare: 'less',
       },
@@ -627,14 +688,14 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       layout: device.createPipelineLayout({ bindGroupLayouts: [bloomLayout] }),
       vertex: {
         module: context.createShaderModule(
-          SHADERS.render.postProcess.bloomDownsample,
+          buildBloomDownsample(context.getCapabilities()?.shaderF16Bloom ?? false),
           'bloom-downsample',
         ),
         entryPoint: 'vs',
       },
       fragment: {
         module: context.createShaderModule(
-          SHADERS.render.postProcess.bloomDownsample,
+          buildBloomDownsample(context.getCapabilities()?.shaderF16Bloom ?? false),
           'bloom-downsample',
         ),
         entryPoint: 'fs',

@@ -108,6 +108,7 @@ export interface AppRuntime {
   setAnimationPattern(mode: number): void;
   setPhysicsMode(mode: number): void;
   setRealismMode(enabled: boolean): void;
+  setSunLightingMode(mode: import('@/physics/sun.js').SunLightingMode): void;
   applyQualityPreset(level: QualityLevel): void;
   applyExposureSettings(): void;
   applyViewTuning(time: number): void;

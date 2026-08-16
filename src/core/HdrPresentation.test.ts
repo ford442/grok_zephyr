@@ -78,6 +78,11 @@ describe('HdrPresentation', () => {
     expect(opts.colorSpace).toBe('display-p3');
   });
 
+  it('honours ?alpha=premultiplied on the canvas config', () => {
+    const opts = resolveCanvasPresentationOptions('low', '?alpha=premultiplied');
+    expect(opts.alphaMode).toBe('premultiplied');
+  });
+
   it('formats presentation labels', () => {
     expect(formatPresentationModeLabel('sdr')).toBe('SDR (standard)');
     expect(formatPresentationModeLabel('hdr')).toBe('HDR (extended)');

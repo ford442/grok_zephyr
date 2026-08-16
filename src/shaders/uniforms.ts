@@ -1,25 +1,11 @@
 /**
  * Shared Uniform Struct for all shaders.
- * CPU packers for render-side uniform buffers live in uniformLayouts.ts.
+ * Generated from SCENE_UNI_SCHEMA. CPU packers live in uniformLayouts.ts.
  */
 
-export const UNIFORM_STRUCT = /* wgsl */ `
-struct Uni {
-  view_proj      : mat4x4f,
-  camera_pos     : vec4f,
-  camera_right   : vec4f,
-  camera_up      : vec4f,
-  time           : f32,
-  delta_time     : f32,
-  view_mode      : u32,
-  sim_time       : f32,
-  frustum        : array<vec4f,6>,
-  screen_size    : vec2f,
-  time_scale     : f32,
-  background_mode: u32,
-  sun_position   : vec4f,
-};
-@group(0) @binding(0) var<uniform> uni : Uni;
-`;
+import { emitWgslStruct } from './uniformSchema.js';
+import { SCENE_UNI_SCHEMA } from './schemas/sceneUni.js';
+
+export const UNIFORM_STRUCT = emitWgslStruct(SCENE_UNI_SCHEMA);
 
 export * from './uniformLayouts.js';

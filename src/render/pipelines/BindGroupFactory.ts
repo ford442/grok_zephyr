@@ -62,6 +62,8 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
         { binding: 2, resource: { buffer: buffers.extendedElements } },
         { binding: 3, resource: { buffer: posBuffer } },
         { binding: 4, resource: { buffer: buffers.stationUniform } },
+        { binding: 5, resource: { buffer: buffers.activeFrom } },
+        { binding: 6, resource: { buffer: buffers.growthParams } },
       ],
     }),
 
@@ -72,6 +74,26 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
         { binding: 1, resource: { buffer: posBuffer } },
         { binding: 2, resource: { buffer: buffers.beams } },
         { binding: 3, resource: { buffer: buffers.beamParams } },
+      ],
+    }),
+
+    islCompute: device.createBindGroup({
+      layout: pipelines.islCompute.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: buffers.uniforms } },
+        { binding: 1, resource: { buffer: posBuffer } },
+        { binding: 2, resource: { buffer: buffers.orbitalElements } },
+        { binding: 3, resource: { buffer: buffers.islLinks } },
+        { binding: 4, resource: { buffer: buffers.islParams } },
+      ],
+    }),
+
+    islFiber: device.createBindGroup({
+      layout: pipelines.islFiber.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: buffers.uniforms } },
+        { binding: 1, resource: { buffer: buffers.islLinks } },
+        { binding: 2, resource: { buffer: buffers.islParams } },
       ],
     }),
 

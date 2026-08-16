@@ -10,7 +10,7 @@
  * HDR canvas overrides live in `@/core/HdrPresentation.js` (`?hdr=0|1`).
  */
 
-import { CONSTANTS } from '@/types/constants.js';
+import { parseSatsParam, FLEET_SIZE_MAX } from '@/core/FleetScale.js';
 
 export { resolveHdrOverride } from '@/core/HdrPresentation.js';
 
@@ -52,14 +52,9 @@ export function setRendererBackend(backend: RendererBackend): void {
 }
 
 /**
- * Optional `?sats=<n>` override for the WebGL path, clamped to [1, NUM_SATELLITES].
- * Lets weak GPUs / CI run a reduced set; defaults to the full constellation.
+ * Optional `?sats=<n>` override, clamped to [1, NUM_SATELLITES].
+ * Used by WebGL and as the URL half of WebGPU fleet resolution.
  */
 export function resolveSatelliteCount(search: string = window.location.search): number {
-  const params = new URLSearchParams(search);
-  const raw = params.get('sats');
-  if (!raw) return CONSTANTS.NUM_SATELLITES;
-  const n = parseInt(raw, 10);
-  if (isNaN(n) || n < 1) return CONSTANTS.NUM_SATELLITES;
-  return Math.min(n, CONSTANTS.NUM_SATELLITES);
+  return parseSatsParam(search) ?? FLEET_SIZE_MAX;
 }

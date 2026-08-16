@@ -16,12 +16,15 @@ import {
 } from '@/app/PatternController.js';
 import { setupSkylineDisplayButtons } from '@/app/SkylineDisplayController.js';
 import { setRealismMode } from '@/app/RealismController.js';
+import { setSunLightingMode } from '@/app/SunLightingController.js';
+import { setIslDensity, setIslEnabled } from '@/app/IslController.js';
 import {
   applyConstellationSelection,
   toggleConstellationGroup,
 } from '@/app/loadSatelliteOrbitalData.js';
 import { getGroupIdForCatalog } from '@/data/ConstellationGroups.js';
 import { bindSimClock } from '@/app/SimClockController.js';
+import { bindGrowthTransport } from '@/growth/GrowthController.js';
 import { applyViewTuning } from '@/app/ViewModeCoordinator.js';
 import {
   followSelectedSatellite,
@@ -153,6 +156,16 @@ export function setupCallbacks(rt: AppRuntime): void {
   rt.ui.onRealismChange((enabled) => {
     setRealismMode(rt, enabled);
   });
+  rt.ui.onSunModeChange((mode) => {
+    setSunLightingMode(rt, mode);
+  });
+  rt.ui.onIslToggle((enabled) => {
+    setIslEnabled(rt, enabled);
+  });
+  rt.ui.onIslDensityChange((density) => {
+    setIslDensity(rt, density);
+  });
+  bindGrowthTransport(rt);
 
   rt.ui.onConstellationChipClick((catalogId, shiftKey) => {
     const enabled = [...rt.enabledConstellations];

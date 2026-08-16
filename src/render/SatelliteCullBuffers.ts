@@ -3,7 +3,7 @@
  */
 
 import type { WebGPUContext } from '@/core/WebGPUContext.js';
-import { CONSTANTS } from '@/types/constants.js';
+import { getActiveFleetSize } from '@/core/FleetScale.js';
 import { MAX_BEAMS } from './pipelines/types.js';
 
 const INDIRECT_STRIDE = 16;
@@ -23,7 +23,7 @@ export class SatelliteCullBuffers {
 
     this.visibleSatIndices = device.createBuffer({
       label: 'visible-sat-indices',
-      size: CONSTANTS.NUM_SATELLITES * 4,
+      size: getActiveFleetSize() * 4,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
