@@ -1,8 +1,14 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/main.ts!", "scripts/build-standalone.ts"],
+  "entry": [
+    "src/main.ts!",
+    "scripts/build-standalone.ts",
+    "vite.config.ts",
+    "vitest.config.ts",
+    "playwright.config.ts"
+  ],
   "project": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"],
-  "ignore": ["src/shaders/**/*.ts"],
+  "ignore": [],
   "ignoreDependencies": ["@webgpu/types", "@types/pixelmatch", "satellite.js"],
   "ignoreExportsUsedInFile": true,
   "exclude": ["types", "duplicates", "dependencies", "enumMembers"]

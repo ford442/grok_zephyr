@@ -11,6 +11,12 @@ readback-friendly WebGL2 path so the scene can be screenshotted and inspected by
 CI and agents, and so the project can serve as a working reference when porting
 large-scale GPU compute + rendering features.
 
+**Policy:** WebGL is inspection, Playwright coverage, and XR Stage 2 — not feature
+parity with WebGPU. Do not hand-port ISL, J2, volumetric beams, trails, TAA, or
+constellation animations to GLSL unless a specific test needs them. Keep
+`preserveDrawingBuffer` and `window.zephyrGL.capture()`. WebGPU pixels in CI use
+`?capture=offscreen` (`window.zephyrGPU.capture()`).
+
 ## Usage
 
 | Action                  | How                                                                                  |

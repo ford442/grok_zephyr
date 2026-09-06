@@ -3,7 +3,7 @@ export const SMILE_V2_COMMON = /* wgsl */ `// ==================================
 // =================================================================================
 
 // Total satellite count (2^20 = 1,048,576)
-const NUM_SATELLITES: u32 = 1048576u;
+override num_satellites: u32 = 1048576u;
 
 // Earth radius in km (for gnomonic projection calculations)
 const EARTH_RADIUS_KM: f32 = 6371.0;

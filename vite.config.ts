@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite';
 import { resolve } from 'path';
+import { wgslPlugin } from './src/shaders/wgslPlugin';
 
 /**
  * Plugin to generate standalone HTML build
@@ -126,6 +127,11 @@ export default defineConfig(({ mode }) => {
       },
     },
 
-    plugins: [standalonePlugin()],
+    plugins: [wgslPlugin(), standalonePlugin()],
+
+    worker: {
+      format: 'es',
+      plugins: () => [wgslPlugin()],
+    },
   };
 });

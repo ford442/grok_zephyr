@@ -159,7 +159,7 @@ fn smile_v2_compute(@builtin(global_invocation_id) gid: vec3u) {
   let sat_idx = gid.x;
   
   // Bounds check
-  if (sat_idx >= NUM_SATELLITES) {
+  if (sat_idx >= num_satellites) {
     return;
   }
   
@@ -237,7 +237,7 @@ fn smile_v2_compute(@builtin(global_invocation_id) gid: vec3u) {
 fn precompute_features(@builtin(global_invocation_id) gid: vec3u) {
   let sat_idx = gid.x;
   
-  if (sat_idx >= NUM_SATELLITES) {
+  if (sat_idx >= num_satellites) {
     return;
   }
   
@@ -268,7 +268,7 @@ fn precompute_features(@builtin(global_invocation_id) gid: vec3u) {
 fn check_facing(@builtin(global_invocation_id) gid: vec3u) {
   let sat_idx = gid.x;
   
-  if (sat_idx >= NUM_SATELLITES) {
+  if (sat_idx >= num_satellites) {
     return;
   }
   

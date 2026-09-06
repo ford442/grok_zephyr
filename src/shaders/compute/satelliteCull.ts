@@ -50,7 +50,7 @@ struct DrawIndirect {
 @group(0) @binding(8) var<storage, read_write> sat_draw_indirect  : DrawIndirect;
 @group(0) @binding(9) var<storage, read_write> beam_draw_indirect : DrawIndirect;
 
-const NUM_SATELLITES : u32 = 1048576u;
+override num_satellites: u32 = 1048576u;
 const MAX_BEAMS : u32 = 65536u;
 const EARTH_RADIUS_KM : f32 = 6371.0;
 const FRUSTUM_MARGIN_KM : f32 = 200.0;
@@ -147,7 +147,7 @@ fn isBeamActive(beamIdx: u32) -> bool {
 @compute @workgroup_size(64, 1, 1)
 fn cull_satellites(@builtin(global_invocation_id) gid: vec3u) {
   let satIdx = gid.x;
-  if (satIdx >= NUM_SATELLITES) {
+  if (satIdx >= num_satellites) {
     return;
   }
   if (!isSatelliteVisible(satIdx)) {

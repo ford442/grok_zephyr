@@ -6,19 +6,20 @@
  *   [130..259] line 2 (NUL-padded)
  *
  * Vallado sgp4unit.cpp is not modified. One catalog per module instance.
+ * Near-earth fields are copied into SoA after twoline2rv; sgp4() still runs
+ * scalar on elsetrec. WASM SIMD is used for tsince, AoS pack, TEME, and
+ * Keplerian hypot lanes.
  */
 
 #include <cmath>
 #include <cstring>
 #include <vector>
 
-#ifdef __wasm_simd128__
-#include <wasm_simd128.h>
-#endif
-
 #include "../vallado/sgp4io.h"
 #include "../vallado/sgp4unit.h"
 #include "keplerian.hpp"
+#include "near_earth_soa.hpp"
+#include "simd_pack.hpp"
 #include "teme_gcrf.hpp"
 
 #ifndef SGP4_ENABLE_TEME_GCRF
@@ -33,21 +34,20 @@ constexpr double kUnixEpochJd = 2440587.5;
 constexpr int kStateFloats = 6;
 
 std::vector<elsetrec> g_catalog;
-/** SoA of TLE epochs (JD) packed after twoline2rv — used for tsince, not elsetrec. */
-std::vector<double> g_epoch_jd;
+sgp4wasm::NearEarthSoa g_near;
 gravconsttype g_grav = wgs72;
 
-/** Scratch SoA for one batch of r,v (keeps Vallado sgp4 scalar on elsetrec). */
 std::vector<float> g_rx, g_ry, g_rz, g_vx, g_vy, g_vz;
 std::vector<int> g_err_scratch;
+std::vector<double> g_tsince;
 
 double unixMsToJd(double unix_ms) { return unix_ms / 86400000.0 + kUnixEpochJd; }
 
 void syncCatalogSoa() {
   const size_t n = g_catalog.size();
-  g_epoch_jd.resize(n);
+  g_near.resize(n);
   for (size_t i = 0; i < n; i++) {
-    g_epoch_jd[i] = g_catalog[i].jdsatepoch;
+    g_near.copyFrom(i, g_catalog[i]);
   }
 }
 
@@ -60,6 +60,7 @@ void ensureStateSoa(int count) {
   g_vy.resize(n);
   g_vz.resize(n);
   g_err_scratch.resize(n);
+  g_tsince.resize(n);
 }
 
 bool loadSatrecFromLines(const char* line1, const char* line2, elsetrec& satrec) {
@@ -86,17 +87,29 @@ int clampBatch(int start_index, int count) {
   return count < remaining ? count : remaining;
 }
 
-void propagateOne(int catalog_index, double jd, double r[3], double v[3], int* error_out) {
-  elsetrec& satrec = g_catalog[static_cast<size_t>(catalog_index)];
-  const double tsince = (jd - g_epoch_jd[static_cast<size_t>(catalog_index)]) * 1440.0;
-  r[0] = r[1] = r[2] = 0.0;
-  v[0] = v[1] = v[2] = 0.0;
-  if (sgp4(g_grav, satrec, tsince, r, v)) {
-    if (error_out) *error_out = 0;
-  } else {
-    r[0] = r[1] = r[2] = 0.0;
-    v[0] = v[1] = v[2] = 0.0;
-    if (error_out) *error_out = satrec.error != 0 ? satrec.error : -1;
+void propagateSlice(int start_index, int limit, double jd) {
+  ensureStateSoa(limit);
+  sgp4wasm::fillTsinceMinutes(jd, g_near.epoch_jd.data() + start_index, g_tsince.data(), limit);
+
+  for (int i = 0; i < limit; i++) {
+    elsetrec& satrec = g_catalog[static_cast<size_t>(start_index + i)];
+    double r[3] = {0.0, 0.0, 0.0};
+    double v[3] = {0.0, 0.0, 0.0};
+    int err = 0;
+    if (sgp4(g_grav, satrec, g_tsince[static_cast<size_t>(i)], r, v)) {
+      err = 0;
+    } else {
+      r[0] = r[1] = r[2] = 0.0;
+      v[0] = v[1] = v[2] = 0.0;
+      err = satrec.error != 0 ? satrec.error : -1;
+    }
+    g_rx[static_cast<size_t>(i)] = static_cast<float>(r[0]);
+    g_ry[static_cast<size_t>(i)] = static_cast<float>(r[1]);
+    g_rz[static_cast<size_t>(i)] = static_cast<float>(r[2]);
+    g_vx[static_cast<size_t>(i)] = static_cast<float>(v[0]);
+    g_vy[static_cast<size_t>(i)] = static_cast<float>(v[1]);
+    g_vz[static_cast<size_t>(i)] = static_cast<float>(v[2]);
+    g_err_scratch[static_cast<size_t>(i)] = err;
   }
 }
 
@@ -108,7 +121,7 @@ int sgp4_catalog_count() { return static_cast<int>(g_catalog.size()); }
 
 void sgp4_clear_catalog() {
   g_catalog.clear();
-  g_epoch_jd.clear();
+  g_near.clear();
   g_rx.clear();
   g_ry.clear();
   g_rz.clear();
@@ -116,12 +129,13 @@ void sgp4_clear_catalog() {
   g_vy.clear();
   g_vz.clear();
   g_err_scratch.clear();
+  g_tsince.clear();
 }
 
 /** Load TLE catalog from packed bytes (see header). Returns satellites loaded. */
 int sgp4_load_catalog(const char* data, int byte_length) {
   g_catalog.clear();
-  g_epoch_jd.clear();
+  g_near.clear();
   if (!data || byte_length < kTleRecordBytes) {
     return 0;
   }
@@ -155,41 +169,14 @@ int sgp4_propagate_batch_ex(double unix_ms, float* out, int* errors, int start_i
     return -1;
   }
 
-  const double jd = unixMsToJd(unix_ms);
-  ensureStateSoa(limit);
-
-#ifdef __wasm_simd128__
-  // Touch SIMD so -msimd128 is not a no-op on this translation unit (zero 4-wide).
-  (void)wasm_f32x4_splat(0.0f);
-#endif
-
-  for (int i = 0; i < limit; i++) {
-    double r[3];
-    double v[3];
-    int err = 0;
-    propagateOne(start_index + i, jd, r, v, &err);
-    g_rx[static_cast<size_t>(i)] = static_cast<float>(r[0]);
-    g_ry[static_cast<size_t>(i)] = static_cast<float>(r[1]);
-    g_rz[static_cast<size_t>(i)] = static_cast<float>(r[2]);
-    g_vx[static_cast<size_t>(i)] = static_cast<float>(v[0]);
-    g_vy[static_cast<size_t>(i)] = static_cast<float>(v[1]);
-    g_vz[static_cast<size_t>(i)] = static_cast<float>(v[2]);
-    g_err_scratch[static_cast<size_t>(i)] = err;
-  }
-
-  for (int i = 0; i < limit; i++) {
-    const int base = i * kStateFloats;
-    out[base + 0] = g_rx[static_cast<size_t>(i)];
-    out[base + 1] = g_ry[static_cast<size_t>(i)];
-    out[base + 2] = g_rz[static_cast<size_t>(i)];
-    out[base + 3] = g_vx[static_cast<size_t>(i)];
-    out[base + 4] = g_vy[static_cast<size_t>(i)];
-    out[base + 5] = g_vz[static_cast<size_t>(i)];
-    if (errors) {
+  propagateSlice(start_index, limit, unixMsToJd(unix_ms));
+  sgp4wasm::packStateAos(
+      g_rx.data(), g_ry.data(), g_rz.data(), g_vx.data(), g_vy.data(), g_vz.data(), out, limit);
+  if (errors) {
+    for (int i = 0; i < limit; i++) {
       errors[i] = g_err_scratch[static_cast<size_t>(i)];
     }
   }
-
   return limit;
 }
 
@@ -210,22 +197,7 @@ int sgp4_propagate_batch_keplerian(double unix_ms, float* out, int start_index, 
     return -1;
   }
 
-  const double jd = unixMsToJd(unix_ms);
-  ensureStateSoa(limit);
-
-  for (int i = 0; i < limit; i++) {
-    double r[3];
-    double v[3];
-    int err = 0;
-    propagateOne(start_index + i, jd, r, v, &err);
-    g_rx[static_cast<size_t>(i)] = static_cast<float>(r[0]);
-    g_ry[static_cast<size_t>(i)] = static_cast<float>(r[1]);
-    g_rz[static_cast<size_t>(i)] = static_cast<float>(r[2]);
-    g_vx[static_cast<size_t>(i)] = static_cast<float>(v[0]);
-    g_vy[static_cast<size_t>(i)] = static_cast<float>(v[1]);
-    g_vz[static_cast<size_t>(i)] = static_cast<float>(v[2]);
-    g_err_scratch[static_cast<size_t>(i)] = err;
-  }
+  propagateSlice(start_index, limit, unixMsToJd(unix_ms));
 
   for (int i = 0; i < limit; i++) {
     float* dst = out + i * sgp4wasm::kKepFloats;
@@ -271,10 +243,17 @@ int sgp4_propagate_epochs(
   for (int s = 0; s < limit; s++) {
     for (int e = 0; e < epoch_count; e++) {
       const double jd = unixMsToJd(unix_ms[e]);
-      double r[3];
-      double v[3];
+      double tsince = 0.0;
+      sgp4wasm::fillTsinceMinutes(jd, g_near.epoch_jd.data() + start_index + s, &tsince, 1);
+      elsetrec& satrec = g_catalog[static_cast<size_t>(start_index + s)];
+      double r[3] = {0.0, 0.0, 0.0};
+      double v[3] = {0.0, 0.0, 0.0};
       int err = 0;
-      propagateOne(start_index + s, jd, r, v, &err);
+      if (!sgp4(g_grav, satrec, tsince, r, v)) {
+        r[0] = r[1] = r[2] = 0.0;
+        v[0] = v[1] = v[2] = 0.0;
+        err = satrec.error != 0 ? satrec.error : -1;
+      }
       const int base = (s * epoch_count + e) * kStateFloats;
       if (err != 0) {
         out[base + 0] = out[base + 1] = out[base + 2] = 0.0f;
@@ -305,31 +284,17 @@ int sgp4_teme_to_gcrf(const float* in, float* out, double unix_ms, int count) {
   const double jd = unixMsToJd(unix_ms);
   double m[9];
   sgp4wasm::temeToGcrfMatrix(jd, m);
-  for (int i = 0; i < count; i++) {
-    const int base = i * kStateFloats;
-    double r[3] = {in[base + 0], in[base + 1], in[base + 2]};
-    double v[3] = {in[base + 3], in[base + 4], in[base + 5]};
-    double rg[3];
-    double vg[3];
-    sgp4wasm::mulMat3Vec(m, r, rg);
-    sgp4wasm::mulMat3Vec(m, v, vg);
-    out[base + 0] = static_cast<float>(rg[0]);
-    out[base + 1] = static_cast<float>(rg[1]);
-    out[base + 2] = static_cast<float>(rg[2]);
-    out[base + 3] = static_cast<float>(vg[0]);
-    out[base + 4] = static_cast<float>(vg[1]);
-    out[base + 5] = static_cast<float>(vg[2]);
-  }
+  sgp4wasm::applyTemeToGcrfAos(m, in, out, count);
   return count;
 }
 #endif
 
 /** Julian date of the TLE epoch for catalog index, or 0 if out of range. */
 double sgp4_catalog_epoch_jd(int index) {
-  if (index < 0 || index >= static_cast<int>(g_epoch_jd.size())) {
+  if (index < 0 || index >= static_cast<int>(g_near.epoch_jd.size())) {
     return 0.0;
   }
-  return g_epoch_jd[static_cast<size_t>(index)];
+  return g_near.epoch_jd[static_cast<size_t>(index)];
 }
 
 }  // extern "C"

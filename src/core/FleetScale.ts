@@ -168,8 +168,11 @@ export function readPersistedFleetSize(): number | null {
   }
 }
 
-export function injectFleetCount(wgsl: string, count: number = getActiveFleetSize()): string {
-  return wgsl.replaceAll('1048576u', `${count}u`);
+/** Pipeline override constants matching WGSL `override num_satellites`. */
+export function fleetPipelineConstants(
+  count: number = getActiveFleetSize(),
+): Record<string, GPUPipelineConstantValue> {
+  return { num_satellites: count };
 }
 
 export function adapterLimitsFromGpuAdapter(adapter: GPUAdapter): AdapterLimitSnapshot {

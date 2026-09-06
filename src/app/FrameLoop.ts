@@ -24,6 +24,7 @@ import type { AppRuntime } from '@/app/AppRuntime.js';
 import { writeIslParams } from '@/app/IslController.js';
 import { tickGrowth } from '@/growth/GrowthController.js';
 import type { SatelliteFrameBuffers } from '@/core/buffer/bufferTypes.js';
+import { OffscreenCapture, isOffscreenCaptureEnabled } from '@/capture/OffscreenCapture.js';
 import { stationGpuState } from '@/ground/GroundStation.js';
 
 function frameBuffers(rt: AppRuntime): SatelliteFrameBuffers | null {
@@ -37,6 +38,7 @@ export class FrameLoopState {
   benchCullMode = resolveCullBenchmarkMode();
   benchCullLastSwitch = 0;
   benchCullViewIndex = 0;
+  offscreenCapture: OffscreenCapture | null = null;
 }
 
 export function recordTrailSamplesForCamera(
@@ -112,6 +114,13 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
     const { width, height } = size;
     if (width !== rt.canvas.width || height !== rt.canvas.height) {
       rt.handleResize();
+    }
+
+    if (isOffscreenCaptureEnabled() && rt.context && !rt.loop.offscreenCapture) {
+      rt.loop.offscreenCapture = new OffscreenCapture(
+        rt.context.getDevice(),
+        rt.context.getFormat(),
+      );
     }
 
     const time = timestamp * 0.001;
@@ -299,7 +308,10 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
     rt.pipeline.encodeBloomPasses(encoder, motionBlurSourceView);
 
     const { width: canvasWidth, height: canvasHeight } = rt.context.getCanvasSize();
-    const screenView = rt.context.getContext().getCurrentTexture().createView();
+    const offscreen = rt.loop.offscreenCapture;
+    const screenView = offscreen
+      ? offscreen.getColorView(canvasWidth, canvasHeight)
+      : rt.context.getContext().getCurrentTexture().createView();
 
     if (rt.postProcessStack) {
       rt.pipeline.encodeCompositePass(
@@ -330,7 +342,10 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
     rt.profiler.endGPUTimestamp(encoder, 'post');
     rt.profiler.resolveTimestamps(encoder);
 
+    offscreen?.encodeReadback(encoder);
+
     rt.context.submit([encoder.finish()]);
+    void offscreen?.finishReadback();
 
     if (!rt.profiler.hasGpuTimings()) {
       recordPassTimings(rt);
@@ -478,4 +493,6 @@ export function startWebGLLoop(rt: AppRuntime): void {
 export function stopLoop(rt: AppRuntime): void {
   rt.loop.isRunning = false;
   cancelAnimationFrame(rt.loop.animationId);
+  rt.loop.offscreenCapture?.destroy();
+  rt.loop.offscreenCapture = null;
 }

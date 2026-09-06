@@ -5,7 +5,7 @@
 export { STARS_SHADER as stars } from './stars.js';
 export { EARTH_SHADER as earth } from './earth.js';
 export { ATM_SHADER as atmosphere } from './atmosphere.js';
-export { SATELLITE_SHADER as satellites, SATELLITE_CULLED_SHADER as satellitesCulled } from './satellites.js';
+export { satellites, satellitesCulled } from './satellites.js';
 export { SATELLITE_PICK_SHADER as satellitesPick } from './satellitesPick.js';
 export { BEAM_SHADER as beam, BEAM_CULLED_SHADER as beamCulled } from './beam.js';
 export { ISL_SHADER as isl } from './isl.js';

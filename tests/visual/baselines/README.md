@@ -47,8 +47,15 @@ Open these URLs in Cinematic quality for a 3-second A/B comparison:
 Ground projection tint: `?preset=cinematic&mode=3&ground=houseWindow&pattern=1`
 
 WebGL2 does not yet render beam volumes or constellation animations; pattern
-baselines guard harness stability and luminance structure. Rebaseline when WebGL
-pattern parity lands or WebGPU readback tests are added.
+baselines guard harness stability and luminance structure. Do not add GLSL ports
+for ISL / J2 / volumetrics for visual tests.
+
+## WebGPU offscreen (`webgpu-offscreen.spec.ts`)
+
+Requires `?capture=offscreen` (composite to a mapped texture; skips
+`getCurrentTexture()`). SwiftShader WebGPU in this VM cannot present a swapchain;
+that device-loss is environmental. Cases: `webgpu-horizon-720km`, `webgpu-god-view`
+at `sats=16384`.
 
 ## Metric sidecars (`*.json`)
 

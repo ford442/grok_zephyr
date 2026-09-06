@@ -1,18 +1,9 @@
 /**
  * Grok Zephyr - Shader Collection
  *
- * Single source of truth for runtime WGSL. Shader code is authored as template
- * strings in TypeScript modules under compute/, render/, and animations/.
- *
- * STRUCTURE:
- * - uniforms.ts: Shared uniform struct across all shaders
- * - compute/: Compute shaders (orbital mechanics, beams)
- * - render/: Render shaders (stars, earth, atmosphere, satellites, etc.)
- * - animations/: Animation shaders (smile, sky strips)
- *
- * USAGE:
- *   import { SHADERS } from '@/shaders/index.js';
- *   const orbitalShader = SHADERS.compute.orbital;
+ * Runtime WGSL is authored under compute/, render/, and animations/.
+ * Orbital, satellite, and composite shaders load from `.wgsl` files via the
+ * Vite wgslPlugin (`#import` + generated uniform structs from SCENE_UNI_SCHEMA).
  */
 
 import { UNIFORM_STRUCT } from './uniforms.js';
@@ -28,44 +19,4 @@ export const SHADERS = {
   animations: Animations,
 };
 
-/** @deprecated Use SHADERS.compute.orbital instead */
-export const ORBITAL_CS = Compute.orbital;
-
-/** @deprecated Use SHADERS.render.stars instead */
-export const STARS_SHADER = Render.stars;
-
-/** @deprecated Use SHADERS.render.earth instead */
-export const EARTH_SHADER = Render.earth;
-
-/** @deprecated Use SHADERS.render.atmosphere instead */
-export const ATM_SHADER = Render.atmosphere;
-
-/** @deprecated Use SHADERS.render.satellites instead */
-export const SATELLITE_SHADER = Render.satellites;
-
-/** @deprecated Use SHADERS.render.beam instead */
-export const BEAM_SHADER = Render.beam;
-
-/** @deprecated Use SHADERS.render.ground instead */
-export const GROUND_TERRAIN = Render.ground;
-
-/** @deprecated Use SHADERS.compute.beam instead */
-export const BEAM_COMPUTE = Compute.beam;
-
-/** @deprecated Use SHADERS.render.postProcess.bloomThreshold instead */
-export const BLOOM_THRESHOLD = Render.postProcess.bloomThreshold;
-
-/** @deprecated Use SHADERS.render.postProcess.bloomBlur instead */
-export const BLOOM_BLUR = Render.postProcess.bloomBlur;
-
-/** @deprecated Use SHADERS.render.postProcess.composite instead */
-export const COMPOSITE = Render.postProcess.composite;
-
-/** @deprecated Use SHADERS.animations.smileV2 instead */
-export const SMILE_V2_SHADER = Animations.smileV2;
-
-/** @deprecated Use SHADERS.animations.skyStrips instead */
-export const SKY_STRIPS_SHADER = Animations.skyStrips;
-
-// Re-export uniform struct for direct access
 export { UNIFORM_STRUCT } from './uniforms.js';

@@ -28,6 +28,7 @@ const MAX_ISL_LINKS: u32 = 131072u;
 const LINKS_PER_SAT: u32 = 2u;
 const NUM_PLANES: u32 = 1024u;
 const SATS_PER_PLANE: u32 = 1024u;
+override num_satellites: u32 = 1048576u;
 const MAX_RANGE_KM: f32 = 5500.0;
 const TWO_PI: f32 = 6.28318530718;
 
@@ -96,7 +97,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     return;
   }
 
-  let satLimit = min(params.sat_limit, 1048576u);
+  let satLimit = min(params.sat_limit, num_satellites);
   let emitters = min(satLimit, maxEmitters);
   if (emitter >= emitters) {
     writeDegenerate(baseLink);

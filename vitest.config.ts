@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
+import { wgslPlugin } from './src/shaders/wgslPlugin';
 
 export default defineConfig({
   resolve: {
@@ -15,6 +16,7 @@ export default defineConfig({
       '@/types': resolve(__dirname, 'src/types'),
     },
   },
+  plugins: [wgslPlugin()],
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],

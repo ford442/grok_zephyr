@@ -2,10 +2,24 @@
  * Guards against drift in canonical TypeScript shader exports (see #74).
  */
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { SHADERS } from './index.js';
 import { buildBloomDownsample } from './render/postProcess/bloomDownsample.js';
 
 describe('shader source of truth', () => {
+  it('authors orbital, satellites, and composite as WGSL files', () => {
+    const orbital = readFileSync(new URL('./compute/orbital.wgsl', import.meta.url), 'utf8');
+    const satellites = readFileSync(new URL('./render/satellites.wgsl', import.meta.url), 'utf8');
+    const composite = readFileSync(
+      new URL('./render/postProcess/composite.wgsl', import.meta.url),
+      'utf8',
+    );
+    expect(orbital).toContain('#import "uniforms.wgsl"');
+    expect(satellites).toContain('#import "uniforms.wgsl"');
+    expect(composite).toContain('#import "uni_struct.wgsl"');
+    expect(composite).toContain('#import "bloom_composite.wgsl"');
+  });
+
   it('canonical satellite shader uses distance LOD kernel tiers', () => {
     expect(SHADERS.render.satellites).toContain('fn resolveLodKernel');
     expect(SHADERS.render.satellites).toContain('LOD_NEAR_KM');
@@ -27,6 +41,11 @@ describe('shader source of truth', () => {
     expect(sat).toContain('isFleetView');
     expect(sat).toContain('host_velocity');
     expect(sat).toContain('uni.time_scale');
+  });
+
+  it('orbital compute uses a pipeline-constant fleet guard', () => {
+    expect(SHADERS.compute.orbital).toContain('override num_satellites');
+    expect(SHADERS.compute.orbital).toContain('if (i >= num_satellites)');
   });
 
   it('orbital compute discards sats not yet active in the growth era', () => {

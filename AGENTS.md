@@ -407,7 +407,7 @@ Shaders are organized into three domains under `src/shaders/`:
 - **render/** — Render shaders (stars, Earth, atmosphere, satellites, ground, post-process)
 - **animations/** — Animation shaders (Smile V2, Sky Strips, digital rain, heartbeat, etc.)
 
-The central export is `src/shaders/index.ts` which exposes `SHADERS.compute`, `SHADERS.render`, and `SHADERS.animations`. Legacy flat exports are deprecated but remain for backward compatibility.
+The central export is `src/shaders/index.ts` which exposes `SHADERS.compute`, `SHADERS.render`, and `SHADERS.animations`. Orbital, satellite, and composite shaders are authored as `.wgsl` with `#import` (generated `uniforms.wgsl` from `SCENE_UNI_SCHEMA`). Fleet size is a WGSL `override num_satellites` set via `fleetPipelineConstants()` at pipeline create. WebGL GLSL in `src/webgl/shaders.ts` is inspection/a11y only — do not hand-port new WebGPU passes (ISL, J2, volumetrics) to GLSL.
 
 ## Vite Configuration Features
 
@@ -495,7 +495,7 @@ Integration points in `src/app/App.ts` and `src/app/bootWebGL.ts`.
 ## WASM SGP4 Engine
 
 Vallado reference SGP4 is compiled to `public/sgp4.wasm` via Emscripten (`npm run build:wasm`).
-Release uses `-std=c++17 -O3 -flto -msimd128 -fno-exceptions -DNDEBUG`, `STRICT=1`, `emmalloc`, 16 MiB initial memory, and `--closure 1`. Extra exports: `sgp4_propagate_batch_keplerian` (GPU extended elements), `sgp4_propagate_epochs` (pass prediction), `sgp4_teme_to_gcrf` (opt-in). Debug (`npm run build:wasm:debug`) writes `native/out/debug/` only.
+Release uses `-std=c++17 -O3 -flto -msimd128 -fno-exceptions -DNDEBUG`, `STRICT=1`, `emmalloc`, 16 MiB initial memory, and `--closure 1`. Extra exports: `sgp4_propagate_batch_keplerian` (GPU extended elements), `sgp4_propagate_epochs` (pass prediction), `sgp4_teme_to_gcrf` (opt-in). Wrapper SIMD packs `tsince` / AoS / TEME; Vallado `sgp4()` stays scalar on `elsetrec` (near-earth SoA is a copy after `twoline2rv`). Debug (`npm run build:wasm:debug`) writes `native/out/debug/` only.
 Prebuilt artifacts are committed; CI rebuilds on `native/**` changes (`.github/workflows/build-wasm.yml`).
 
 - **Runtime**: `TlePropagator` loads WASM when available; falls back to `satellite.js` on failure. Re-anchor prefers `Sgp4Worker` (off-main-thread); decayed sats are flagged (`extended.flag = −satrec.error`). See `native/README.md`.
@@ -505,7 +505,9 @@ Prebuilt artifacts are committed; CI rebuilds on `native/**` changes (`.github/w
 
 ## Testing
 
-The project uses **Vitest** (Node environment) with colocated `*.test.ts` files. There are currently **26 unit test files** (plus visual regression tests) covering modules across the codebase:
+The project uses **Vitest** (Node environment) with colocated `*.test.ts` files. There are **56+ unit test files** plus Playwright visual regression (`tests/visual/`). `npm run type-check` covers application `src/` (not colocated `*.test.ts` or Playwright `tests/` — those use ESLint's `tsconfig.eslint.json` because several tests use partial DOM mocks).
+
+WebGL2 (`?renderer=webgl`) remains the high-coverage visual suite. WebGPU offscreen goldens (`?capture=offscreen`, `webgpu-offscreen.spec.ts`) cover a horizon + god-view frame at `sats=16384`. Presentation/`getCurrentTexture` device-loss in the cloud VM is environmental — see the Cursor Cloud notes below.
 
 **Math & Utilities:**
 - `src/utils/math.test.ts` — matrix/vector operations, frustum extraction
@@ -632,17 +634,17 @@ If TLE fetch/parse fails (network error, CORS, invalid format), the app logs a w
 ### Caveats
 
 - **Scale**: Real constellations have ~6K sats vs 1M procedural. Padded sats use the standard Walker pattern.
-- **Accuracy**: TLEs are propagated with the same simplified circular Keplerian model. Full SGP4 in compute shader is not yet implemented.
+- **Accuracy**: TLE slots are re-anchored with WASM Vallado SGP4 (or `satellite.js` fallback). The GPU interpolates Keplerian/J2 between anchors; full GPU SGP4 is not implemented.
 - **Epoch**: Simulation uses wall-clock elapsed time, not UTC. Positions drift from reality over time.
 - **CORS**: CelesTrak allows cross-origin. Custom URLs need CORS headers.
 
 ## Known Limitations and TODOs
 
-1. **SGP4 Propagation**: Currently using simplified Keplerian mechanics in the compute shader; full GPU SGP4 implementation is stubbed
+1. **GPU SGP4**: WASM Vallado is the catalog accuracy path; a simplified deep-space-free WGSL SGP4 is a later issue.
 2. **J2 Perturbations**: First-order secular rates are implemented on GPU + CPU; higher-order / tesseral terms are not.
 3. **GPU Timing**: Only works if the browser supports `timestamp-query` feature
-4. **Standalone Build**: Creates a single HTML file but requires manual deployment
-5. ~~**No Automated Tests**~~: The project now has **139 Vitest unit tests** (`npm run test`) covering math utilities, TLE parsing, orbital elements, WebGL renderer selection, and the visual harness, plus Playwright visual regression tests (`npm run test:visual`).
+4. **Standalone Build**: `npm run build:standalone` is experimental (3-button HUD, not generated from `index.html`)
+5. **Tests**: Colocated Vitest files plus Playwright WebGL goldens and WebGPU offscreen captures (`npm run test` / `npm run test:visual`).
 
 ## Security Considerations
 
@@ -743,6 +745,6 @@ Standard commands live in `package.json` (`dev`, `build`, `test`, `type-check`, 
 
 - `npm run lint` (`eslint . && knip`) currently reports pre-existing errors in a few source files and exits non-zero. This is a known code-quality state, not an environment problem — don't treat it as a broken setup.
 - `npm run dev` serves on port 5173; `npm run test:visual` (Playwright) builds and previews on port 4173 with SwiftShader flags baked into `playwright.config.ts`.
-- Rendering the app in a real browser: WebGPU output is NOT readable in the headless/software-GPU browser here. Use the WebGL2 fallback via `?renderer=webgl` (optionally `&sats=200000` to reduce load). See `docs/WEBGL_FALLBACK.md`.
+- Rendering: WebGPU on-screen present can lose the device in this VM (`SharedImageStub`). Use `?capture=offscreen` + `window.zephyrGPU.capture()` for Playwright goldens, or `?renderer=webgl` + `window.zephyrGL.capture()` for the high-coverage suite. See `docs/WEBGL_FALLBACK.md`.
 - Interactive Chrome (computer-use) may report "WebGL2 is not supported". Fix by enabling `chrome://flags` → "Override software rendering list" and relaunching Chrome. Playwright visual tests don't need this (they already pass `--use-gl=angle --use-angle=swiftshader`).
 - Dismiss the first-run onboarding overlay ("START EXPLORING") before the simulation canvas is interactable.

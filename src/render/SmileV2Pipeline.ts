@@ -7,7 +7,7 @@
 
 import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
-import { getActiveFleetSize, injectFleetCount } from '@/core/FleetScale.js';
+import { getActiveFleetSize, fleetPipelineConstants } from '@/core/FleetScale.js';
 import { SHADERS } from '@/shaders/index.js';
 
 /** Smile V2 animation phases */
@@ -153,10 +153,7 @@ export class SmileV2Pipeline {
       bindGroupLayouts: [bindGroupLayout],
     });
 
-    const module = this.context.createShaderModule(
-      injectFleetCount(SHADERS.animations.smileV2),
-      'smile-v2',
-    );
+    const module = this.context.createShaderModule(SHADERS.animations.smileV2, 'smile-v2');
     await this.context.awaitShaderCompilation();
     this.pipeline = await this.context.createComputePipelineAsync({
       label: 'SmileV2ComputePipeline',
@@ -164,6 +161,7 @@ export class SmileV2Pipeline {
       compute: {
         module,
         entryPoint: 'smile_v2_compute',
+        constants: fleetPipelineConstants(),
       },
     });
 

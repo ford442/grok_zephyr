@@ -33,7 +33,7 @@ em++ -std=c++17 -O3 -flto -msimd128 -fno-exceptions -fno-rtti -DNDEBUG
   --closure 1
 ```
 
-`vallado/sgp4unit.cpp` is not rewritten (AFSPC reference). The wrapper is C++17. WASM SIMD (`-msimd128`) is enabled for the wrapper TU; Vallado `sgp4()` stays scalar on `elsetrec` so 1e-3 km vs `satellite.js` does not drift. After `twoline2rv`, epochs are packed into a JD SoA (`g_epoch_jd`) and each batch fills r/v SoA scratch for Keplerian packing.
+`vallado/sgp4unit.cpp` is not rewritten (AFSPC reference). The wrapper is C++17. After `twoline2rv`, near-earth fields used by `sgp4()` are **copied** into aligned SoA (`native/wasm/near_earth_soa.hpp`) plus epoch JD; `elsetrec` is not mutated in-place for packing. Propagation still calls scalar Vallado `sgp4()` on `elsetrec` so 1e-3 km vs `satellite.js` does not drift. WASM SIMD (`-msimd128`, `native/wasm/simd_pack.hpp`) is used for batch `tsince`, r/v AoS interleave, TEME→GCRF 3×3 on 4-wide lanes, and Keplerian `hypot3` pairs (`f64x2`). `atan2` / `acos` stay scalar. There is no splat stub.
 
 Debug flags: `-O0 -g`, `ASSERTIONS=1`, `SAFE_HEAP=1` → `native/out/debug/` only (does not overwrite `public/`).
 
@@ -43,7 +43,7 @@ Build fails if `public/sgp4.wasm` exceeds **80 KiB**.
 
 | Artifact | Prior LTO-only | Production kernel (`-std=c++17` + emmalloc + Closure + 16 MiB) |
 | --- | ---: | ---: |
-| `public/sgp4.wasm` | 63,374 B | **~63.5 KiB** (new Keplerian / epochs / TEME→GCRF exports) |
+| `public/sgp4.wasm` | 63,374 B | **~66.6 KiB** (SoA + SIMD pack; Keplerian / epochs / TEME→GCRF) |
 | `public/sgp4.js` | 12,471 B | **~4.3 KiB** (`--closure 1`) |
 
 Speed: batch prop of ~6k TLEs stays in the dashboard WASM-vs-JS benchmark (target ≥5× vs `satellite.js`). Re-anchor of 512 sats stays **off the main thread** when the SGP4 worker is active: worker calls `sgp4_propagate_batch_keplerian`, main thread copies `HEAPF32` / `queue.writeBuffer` only.

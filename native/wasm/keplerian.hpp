@@ -6,6 +6,8 @@
 
 #include <cmath>
 
+#include "simd_pack.hpp"
+
 namespace sgp4wasm {
 
 constexpr double kEarthMuKm3S2 = 398600.4418;
@@ -41,14 +43,33 @@ inline void eciStateToKeplerian(
     float* out8,
     double mu = kEarthMuKm3S2) {
   constexpr double kPi2 = 6.28318530717958647692;
-  const double rMag = hypot3(rx, ry, rz);
-  const double vMag = hypot3(vx, vy, vz);
+  double rMag = 0.0;
+  double vMag = 0.0;
+#ifdef __wasm_simd128__
+  hypot3_f64x2(rx, ry, rz, vx, vy, vz, &rMag, &vMag);
+#else
+  rMag = hypot3(rx, ry, rz);
+  vMag = hypot3(vx, vy, vz);
+#endif
   const double rDotV = rx * vx + ry * vy + rz * vz;
 
   const double hx = ry * vz - rz * vy;
   const double hy = rz * vx - rx * vz;
   const double hz = rx * vy - ry * vx;
-  const double hMag = hypot3(hx, hy, hz);
+
+  const double eCoeff = (vMag * vMag - mu / rMag) / mu;
+  const double eVecX = eCoeff * rx - (rDotV / mu) * vx;
+  const double eVecY = eCoeff * ry - (rDotV / mu) * vy;
+  const double eVecZ = eCoeff * rz - (rDotV / mu) * vz;
+
+  double hMag = 0.0;
+  double e = 0.0;
+#ifdef __wasm_simd128__
+  hypot3_f64x2(hx, hy, hz, eVecX, eVecY, eVecZ, &hMag, &e);
+#else
+  hMag = hypot3(hx, hy, hz);
+  e = hypot3(eVecX, eVecY, eVecZ);
+#endif
 
   const double inc = hMag > 1e-9 ? std::acos(clampd(hz / hMag, -1.0, 1.0)) : 0.0;
 
@@ -64,12 +85,6 @@ inline void eciStateToKeplerian(
 
   const double a = 1.0 / (2.0 / rMag - (vMag * vMag) / mu);
   const double n = std::sqrt(mu / (a * a * a));
-
-  const double eCoeff = (vMag * vMag - mu / rMag) / mu;
-  const double eVecX = eCoeff * rx - (rDotV / mu) * vx;
-  const double eVecY = eCoeff * ry - (rDotV / mu) * vy;
-  const double eVecZ = eCoeff * rz - (rDotV / mu) * vz;
-  const double e = hypot3(eVecX, eVecY, eVecZ);
 
   double argp = 0.0;
   double nu = 0.0;

@@ -20,7 +20,7 @@ struct BeamParams {
 @group(0) @binding(3) var<uniform> params : BeamParams;
 
 const MAX_BEAMS = 65536u;
-const NUM_SATS = 1048576u;
+override num_satellites: u32 = 1048576u;
 const ORBIT_RADIUS_KM: f32 = 6921.0;
 const INV_SQRT2: f32 = 0.70710678;
 
@@ -169,7 +169,7 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     found = true;
   } else {
     for (var j = 1u; j <= 40u; j++) {
-      let candidate_idx = (sat_a_idx + j * 17u) % NUM_SATS;
+      let candidate_idx = (sat_a_idx + j * 17u) % num_satellites;
       let c_pos = sat_pos[candidate_idx].xyz;
       if (is_active_node(c_pos, params.mode)) {
         let dist = length(c_pos - pos_a);

@@ -18,6 +18,7 @@ export function installZephyrDebugHooks(rt: AppRuntime): void {
 
   const win = window as unknown as {
     zephyrDebug?: { loseDevice: () => void };
+    zephyrGPU?: { capture: () => Promise<string> };
   };
 
   win.zephyrDebug = {
@@ -26,6 +27,18 @@ export function installZephyrDebugHooks(rt: AppRuntime): void {
         throw new Error('WebGPU context is not initialized');
       }
       rt.context.loseDeviceForTesting();
+    },
+  };
+
+  win.zephyrGPU = {
+    capture: () => {
+      const cap = rt.loop.offscreenCapture;
+      if (!cap) {
+        return Promise.reject(
+          new Error('Offscreen capture requires ?capture=offscreen (skips swapchain present)'),
+        );
+      }
+      return cap.capture();
     },
   };
 }

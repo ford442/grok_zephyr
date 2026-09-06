@@ -7,6 +7,7 @@
  *   ?ground=<preset>   ground observer preset id (e.g. houseWindow)
  *   ?seed=<n>          seeded procedural orbital layout
  *   ?hdr=0|1           force HDR canvas off/on (WebGPU only)
+ *   ?capture=offscreen WebGPU: composite to a mapped texture (skip swapchain)
  */
 
 import { GroundObserverPreset } from '@/camera/GroundObserverCamera.js';

@@ -3,7 +3,7 @@ import {
   adapterFitsFleet,
   FLEET_SIZE_MAX,
   fleetLimitsForCount,
-  injectFleetCount,
+  fleetPipelineConstants,
   maxFleetForAdapter,
   parseSatsParam,
   resetFleetScaleForTests,
@@ -66,7 +66,7 @@ describe('resolveFleetScale', () => {
   });
 });
 
-describe('parseSatsParam / injectFleetCount', () => {
+describe('parseSatsParam / fleetPipelineConstants', () => {
   it('parses and rejects invalid sats', () => {
     expect(parseSatsParam('?sats=65536')).toBe(65_536);
     expect(parseSatsParam('?sats=0')).toBeNull();
@@ -75,9 +75,8 @@ describe('parseSatsParam / injectFleetCount', () => {
     expect(parseSatsParam('?sats=99999999')).toBe(FLEET_SIZE_MAX);
   });
 
-  it('rewrites the 1M WGSL guard to the active count', () => {
-    const src = 'if (i >= 1048576u) { return; }';
-    expect(injectFleetCount(src, 65536)).toBe('if (i >= 65536u) { return; }');
+  it('exposes fleet size as a pipeline override constant', () => {
+    expect(fleetPipelineConstants(65536)).toEqual({ num_satellites: 65536 });
   });
 
   it('1M fleet limits stay under a 128 MB storage binding', () => {
