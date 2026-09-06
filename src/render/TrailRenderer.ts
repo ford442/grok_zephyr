@@ -53,6 +53,7 @@ export class TrailRenderer {
   private vertexCapacity = 0;
   private indexCapacity = 0;
   private pipeline: GPURenderPipeline | null = null;
+  private pipelineReady: Promise<void> | null = null;
 
   // CPU staging
   private vertexStaging: Float32Array = new Float32Array(0);
@@ -69,11 +70,16 @@ export class TrailRenderer {
     this.applyCapacityFromConfig();
   }
 
-  initialize(): void {
+  async initialize(): Promise<void> {
     this.initialized = true;
     if (this.config.enabled) {
       this.ensureEnabledResources();
+      await this.whenReady();
     }
+  }
+
+  async whenReady(): Promise<void> {
+    if (this.pipelineReady) await this.pipelineReady;
   }
 
   setConfig(config: TrailConfig): void {
@@ -418,8 +424,10 @@ export class TrailRenderer {
 
   private ensureEnabledResources(): void {
     if (!this.initialized) return;
-    if (!this.pipeline) {
-      this.pipeline = this.createPipeline();
+    if (!this.pipeline && !this.pipelineReady) {
+      this.pipelineReady = this.createPipeline().then((pipeline) => {
+        this.pipeline = pipeline;
+      });
     }
     if (
       !this.ringPositions ||
@@ -478,7 +486,7 @@ export class TrailRenderer {
     this.indexCapacity = 0;
   }
 
-  private createPipeline(): GPURenderPipeline {
+  private async createPipeline(): Promise<GPURenderPipeline> {
     const device = this.context.getDevice();
     const shaderCode = /* wgsl */ `
       struct Uni {
@@ -536,7 +544,8 @@ export class TrailRenderer {
         return vec4f(in.color, in.alpha);
       }
     `;
-    const module = device.createShaderModule({ code: shaderCode });
+    const module = this.context.createShaderModule(shaderCode, 'trails');
+    await this.context.awaitShaderCompilation();
     const layout = device.createPipelineLayout({
       bindGroupLayouts: [
         device.createBindGroupLayout({
@@ -550,7 +559,8 @@ export class TrailRenderer {
         }),
       ],
     });
-    return device.createRenderPipeline({
+    return this.context.createRenderPipelineAsync({
+      label: 'trails',
       layout,
       vertex: {
         module,

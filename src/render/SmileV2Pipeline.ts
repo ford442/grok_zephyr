@@ -93,10 +93,10 @@ export class SmileV2Pipeline {
   /**
    * Initialize the Smile V2 pipeline
    */
-  initialize(): void {
+  async initialize(): Promise<void> {
     console.log('[SmileV2Pipeline] Initializing pipeline...');
 
-    this.createPipeline();
+    await this.createPipeline();
     this.createBindGroup();
 
     if (this.config.indirectDispatch) {
@@ -113,7 +113,7 @@ export class SmileV2Pipeline {
   /**
    * Create the compute pipeline
    */
-  private createPipeline(): void {
+  private async createPipeline(): Promise<void> {
     const device = this.context.getDevice();
 
     // Bind group layout must match the smile_v2 compute shader bindings
@@ -153,15 +153,16 @@ export class SmileV2Pipeline {
       bindGroupLayouts: [bindGroupLayout],
     });
 
-    // Use the smile_v2 shader from SHADERS
-    this.pipeline = device.createComputePipeline({
+    const module = this.context.createShaderModule(
+      injectFleetCount(SHADERS.animations.smileV2),
+      'smile-v2',
+    );
+    await this.context.awaitShaderCompilation();
+    this.pipeline = await this.context.createComputePipelineAsync({
       label: 'SmileV2ComputePipeline',
       layout: pipelineLayout,
       compute: {
-        module: this.context.createShaderModule(
-          injectFleetCount(SHADERS.animations.smileV2),
-          'smile-v2',
-        ),
+        module,
         entryPoint: 'smile_v2_compute',
       },
     });

@@ -9,7 +9,7 @@ import { injectFleetCount } from '@/core/FleetScale.js';
 import { RENDER } from '@/types/constants.js';
 import type { Pipelines } from './types.js';
 
-export function createPipelines(context: WebGPUContext): Pipelines {
+export async function createPipelines(context: WebGPUContext): Promise<Pipelines> {
   const device = context.getDevice();
 
   // Compute pipeline layout
@@ -296,268 +296,294 @@ export function createPipelines(context: WebGPUContext): Pipelines {
     ],
   });
 
-  const satelliteCullModule = context.createShaderModule(
+  const shader = (code: string, label: string): GPUShaderModule =>
+    context.createShaderModule(code, label);
+
+  const satelliteCullModule = shader(
     injectFleetCount(SHADERS.compute.satelliteCull),
     'satellite-cull',
   );
+  const orbitalModule = shader(injectFleetCount(SHADERS.compute.orbital), 'orbital');
+  const beamComputeModule = shader(injectFleetCount(SHADERS.compute.beam), 'beam-compute');
+  const islComputeModule = shader(injectFleetCount(SHADERS.compute.isl), 'isl-compute');
+  const islFiberModule = shader(SHADERS.render.isl, 'isl-fiber');
+  const autoExposureHistogramModule = shader(
+    SHADERS.render.postProcess.autoExposureHistogram,
+    'auto-exposure-histogram',
+  );
+  const autoExposureAdaptModule = shader(
+    SHADERS.render.postProcess.autoExposureAdapt,
+    'auto-exposure-adapt',
+  );
+  const starsModule = shader(SHADERS.render.stars, 'stars');
+  const earthModule = shader(SHADERS.render.earth, 'earth');
+  const atmosphereModule = shader(SHADERS.render.atmosphere, 'atmosphere');
+  const satellitesModule = shader(SHADERS.render.satellites, 'satellites');
+  const satellitesCulledModule = shader(SHADERS.render.satellitesCulled, 'satellites-culled');
+  const beamModule = shader(SHADERS.render.beam, 'beam-render');
+  const beamCulledModule = shader(SHADERS.render.beamCulled, 'beam-culled');
+  const groundModule = shader(SHADERS.render.ground, 'ground-terrain');
+  const moonForegroundModule = shader(SHADERS.render.moonForeground, 'moon-foreground');
+  const moonEarthDiskModule = shader(SHADERS.render.moonEarthDisk, 'moon-earth-disk');
+  const skylineModule = shader(SHADERS.render.skyline, 'skyline-city');
+  const bloomThresholdModule = shader(
+    SHADERS.render.postProcess.bloomThreshold,
+    'bloom-threshold',
+  );
+  const bloomBlurModule = shader(SHADERS.render.postProcess.bloomBlur, 'bloom-blur');
+  const bloomDownsampleModule = shader(
+    buildBloomDownsample(context.getCapabilities()?.shaderF16Bloom ?? false),
+    'bloom-downsample',
+  );
+  const bloomUpsampleModule = shader(SHADERS.render.postProcess.bloomUpsample, 'bloom-upsample');
+  const compositeModule = shader(SHADERS.render.postProcess.composite, 'composite');
+  const dofDownsampleModule = shader(SHADERS.render.postProcess.dofDownsample, 'dof-downsample');
+  const dofBlurModule = shader(SHADERS.render.postProcess.dofBlur, 'dof-blur');
+  const dofCompositeModule = shader(SHADERS.render.postProcess.dofComposite, 'dof-composite');
+  const motionBlurModule = shader(SHADERS.render.postProcess.motionBlur, 'motion-blur');
 
-  // Create pipelines
-  return {
-    compute: device.createComputePipeline({
+  await context.awaitShaderCompilation();
+
+  const depthFormat = context.getDepthFormat();
+  const islComputeLayout = device.createPipelineLayout({
+    bindGroupLayouts: [
+      device.createBindGroupLayout({
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+          { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+          { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+          { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+        ],
+      }),
+    ],
+  });
+  const islFiberLayout = device.createPipelineLayout({
+    bindGroupLayouts: [
+      device.createBindGroupLayout({
+        entries: [
+          {
+            binding: 0,
+            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+            buffer: { type: 'uniform' },
+          },
+          { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+          {
+            binding: 2,
+            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+            buffer: { type: 'uniform' },
+          },
+        ],
+      }),
+    ],
+  });
+
+  const [
+    compute,
+    beamCompute,
+    islCompute,
+    islFiber,
+    satelliteCullSats,
+    satelliteCullBeams,
+    satelliteCullFinalize,
+    autoExposureHistogram,
+    autoExposureAdapt,
+    stars,
+    earth,
+    atmosphere,
+    satellites,
+    satellitesCulled,
+    beam,
+    beamCulled,
+    groundTerrain,
+    moonForeground,
+    moonEarthDisk,
+    skyline,
+    bloomThreshold,
+    bloomBlur,
+    bloomDownsample,
+    bloomUpsample,
+    composite,
+    dofDownsample,
+    dofBlurH,
+    dofBlurV,
+    dofComposite,
+    motionBlur,
+  ] = await Promise.all([
+    context.createComputePipelineAsync({
+      label: 'orbital',
       layout: computeLayout,
-      compute: {
-        module: context.createShaderModule(injectFleetCount(SHADERS.compute.orbital), 'orbital'),
-        entryPoint: 'main',
-      },
+      compute: { module: orbitalModule, entryPoint: 'main' },
     }),
-
-    beamCompute: device.createComputePipeline({
+    context.createComputePipelineAsync({
+      label: 'beam-compute',
       layout: beamComputeLayout,
-      compute: {
-        module: context.createShaderModule(injectFleetCount(SHADERS.compute.beam), 'beam-compute'),
-        entryPoint: 'main',
-      },
+      compute: { module: beamComputeModule, entryPoint: 'main' },
     }),
-
-    islCompute: device.createComputePipeline({
-      layout: device.createPipelineLayout({
-        bindGroupLayouts: [
-          device.createBindGroupLayout({
-            entries: [
-              { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-              { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-              { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
-              { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-              { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-            ],
-          }),
-        ],
-      }),
-      compute: {
-        module: context.createShaderModule(injectFleetCount(SHADERS.compute.isl), 'isl-compute'),
-        entryPoint: 'main',
-      },
+    context.createComputePipelineAsync({
+      label: 'isl-compute',
+      layout: islComputeLayout,
+      compute: { module: islComputeModule, entryPoint: 'main' },
     }),
-
-    islFiber: device.createRenderPipeline({
-      layout: device.createPipelineLayout({
-        bindGroupLayouts: [
-          device.createBindGroupLayout({
-            entries: [
-              {
-                binding: 0,
-                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-                buffer: { type: 'uniform' },
-              },
-              { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
-              {
-                binding: 2,
-                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-                buffer: { type: 'uniform' },
-              },
-            ],
-          }),
-        ],
-      }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.isl, 'isl-fiber'),
-        entryPoint: 'vs',
-      },
+    context.createRenderPipelineAsync({
+      label: 'isl-fiber',
+      layout: islFiberLayout,
+      vertex: { module: islFiberModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.isl, 'isl-fiber'),
+        module: islFiberModule,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
       },
       primitive: { topology: 'triangle-strip' },
       depthStencil: {
-        format: context.getDepthFormat(),
+        format: depthFormat,
         depthWriteEnabled: false,
         depthCompare: 'less',
       },
     }),
-
-    satelliteCullSats: device.createComputePipeline({
+    context.createComputePipelineAsync({
+      label: 'satellite-cull-sats',
       layout: device.createPipelineLayout({ bindGroupLayouts: [satelliteCullLayout] }),
       compute: { module: satelliteCullModule, entryPoint: 'cull_satellites' },
     }),
-
-    satelliteCullBeams: device.createComputePipeline({
+    context.createComputePipelineAsync({
+      label: 'satellite-cull-beams',
       layout: device.createPipelineLayout({ bindGroupLayouts: [satelliteCullLayout] }),
       compute: { module: satelliteCullModule, entryPoint: 'cull_beams' },
     }),
-
-    satelliteCullFinalize: device.createComputePipeline({
+    context.createComputePipelineAsync({
+      label: 'satellite-cull-finalize',
       layout: device.createPipelineLayout({ bindGroupLayouts: [satelliteCullLayout] }),
       compute: { module: satelliteCullModule, entryPoint: 'finalize_indirect' },
     }),
-    autoExposureHistogram: device.createComputePipeline({
+    context.createComputePipelineAsync({
+      label: 'auto-exposure-histogram',
       layout: device.createPipelineLayout({ bindGroupLayouts: [autoExposureHistogramLayout] }),
-      compute: {
-        module: context.createShaderModule(
-          SHADERS.render.postProcess.autoExposureHistogram,
-          'auto-exposure-histogram',
-        ),
-        entryPoint: 'main',
-      },
+      compute: { module: autoExposureHistogramModule, entryPoint: 'main' },
     }),
-    autoExposureAdapt: device.createComputePipeline({
+    context.createComputePipelineAsync({
+      label: 'auto-exposure-adapt',
       layout: device.createPipelineLayout({ bindGroupLayouts: [autoExposureAdaptLayout] }),
-      compute: {
-        module: context.createShaderModule(
-          SHADERS.render.postProcess.autoExposureAdapt,
-          'auto-exposure-adapt',
-        ),
-        entryPoint: 'main',
-      },
+      compute: { module: autoExposureAdaptModule, entryPoint: 'main' },
     }),
-
-    stars: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'stars',
       layout: device.createPipelineLayout({ bindGroupLayouts: [sceneAtmosphereLayout] }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.stars, 'stars'),
-        entryPoint: 'vs',
-      },
+      vertex: { module: starsModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.stars, 'stars'),
+        module: starsModule,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT }],
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {
-        format: context.getDepthFormat(),
+        format: depthFormat,
         depthWriteEnabled: false,
         depthCompare: 'always',
       },
     }),
-
-    earth: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'earth',
       layout: device.createPipelineLayout({ bindGroupLayouts: [sceneAtmosphereLayout] }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.earth, 'earth'),
-        entryPoint: 'vs',
-        buffers: [earthVertexLayout],
-      },
+      vertex: { module: earthModule, entryPoint: 'vs', buffers: [earthVertexLayout] },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.earth, 'earth'),
+        module: earthModule,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT }],
       },
       primitive: { topology: 'triangle-list', cullMode: 'back' },
       depthStencil: {
-        format: context.getDepthFormat(),
+        format: depthFormat,
         depthWriteEnabled: true,
         depthCompare: 'less',
       },
     }),
-
-    atmosphere: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'atmosphere',
       layout: device.createPipelineLayout({ bindGroupLayouts: [sceneAtmosphereLayout] }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.atmosphere, 'atmosphere'),
-        entryPoint: 'vs',
-        buffers: [earthVertexLayout],
-      },
+      vertex: { module: atmosphereModule, entryPoint: 'vs', buffers: [earthVertexLayout] },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.atmosphere, 'atmosphere'),
+        module: atmosphereModule,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
       },
       primitive: { topology: 'triangle-list', cullMode: 'front' },
       depthStencil: {
-        format: context.getDepthFormat(),
+        format: depthFormat,
         depthWriteEnabled: false,
         depthCompare: 'less',
       },
     }),
-
-    satellites: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'satellites',
       layout: device.createPipelineLayout({ bindGroupLayouts: [satelliteLayout] }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.satellites, 'satellites'),
-        entryPoint: 'vs',
-      },
+      vertex: { module: satellitesModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.satellites, 'satellites'),
+        module: satellitesModule,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {
-        format: context.getDepthFormat(),
+        format: depthFormat,
         depthWriteEnabled: false,
         depthCompare: 'less',
       },
     }),
-
-    satellitesCulled: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'satellites-culled',
       layout: device.createPipelineLayout({ bindGroupLayouts: [satelliteCulledLayout] }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.satellitesCulled, 'satellites-culled'),
-        entryPoint: 'vs_culled',
-      },
+      vertex: { module: satellitesCulledModule, entryPoint: 'vs_culled' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.satellitesCulled, 'satellites-culled'),
+        module: satellitesCulledModule,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {
-        format: context.getDepthFormat(),
+        format: depthFormat,
         depthWriteEnabled: false,
         depthCompare: 'less',
       },
     }),
-
-    beam: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'beam-render',
       layout: beamRenderLayout,
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.beam, 'beam-render'),
-        entryPoint: 'vs',
-      },
+      vertex: { module: beamModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.beam, 'beam-render'),
+        module: beamModule,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
       },
-      primitive: {
-        topology: 'triangle-strip',
-      },
+      primitive: { topology: 'triangle-strip' },
       depthStencil: {
-        format: context.getDepthFormat(),
+        format: depthFormat,
         depthWriteEnabled: false,
         depthCompare: 'less',
       },
     }),
-
-    beamCulled: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'beam-culled',
       layout: beamCulledRenderLayout,
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.beamCulled, 'beam-culled'),
-        entryPoint: 'vs_culled',
-      },
+      vertex: { module: beamCulledModule, entryPoint: 'vs_culled' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.beamCulled, 'beam-culled'),
+        module: beamCulledModule,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT, blend: additiveBlend }],
       },
-      primitive: {
-        topology: 'triangle-strip',
-      },
+      primitive: { topology: 'triangle-strip' },
       depthStencil: {
-        format: context.getDepthFormat(),
+        format: depthFormat,
         depthWriteEnabled: false,
         depthCompare: 'less',
       },
     }),
-
-    groundTerrain: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'ground-terrain',
       layout: device.createPipelineLayout({ bindGroupLayouts: [groundTerrainLayout] }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.ground, 'ground-terrain'),
-        entryPoint: 'vs',
-      },
+      vertex: { module: groundModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.ground, 'ground-terrain'),
+        module: groundModule,
         entryPoint: 'fs',
         targets: [
           {
@@ -571,20 +597,17 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {
-        format: context.getDepthFormat(),
+        format: depthFormat,
         depthWriteEnabled: false,
         depthCompare: 'always',
       },
     }),
-
-    moonForeground: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'moon-foreground',
       layout: device.createPipelineLayout({ bindGroupLayouts: [sceneAtmosphereLayout] }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.moonForeground, 'moon-foreground'),
-        entryPoint: 'vs',
-      },
+      vertex: { module: moonForegroundModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.moonForeground, 'moon-foreground'),
+        module: moonForegroundModule,
         entryPoint: 'fs',
         targets: [
           {
@@ -598,20 +621,17 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {
-        format: context.getDepthFormat(),
+        format: depthFormat,
         depthWriteEnabled: false,
         depthCompare: 'always',
       },
     }),
-
-    moonEarthDisk: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'moon-earth-disk',
       layout: device.createPipelineLayout({ bindGroupLayouts: [sceneAtmosphereLayout] }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.moonEarthDisk, 'moon-earth-disk'),
-        entryPoint: 'vs',
-      },
+      vertex: { module: moonEarthDiskModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.moonEarthDisk, 'moon-earth-disk'),
+        module: moonEarthDiskModule,
         entryPoint: 'fs',
         targets: [
           {
@@ -625,101 +645,67 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {
-        format: context.getDepthFormat(),
+        format: depthFormat,
         depthWriteEnabled: false,
         depthCompare: 'always',
       },
     }),
-
-    skyline: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'skyline-city',
       layout: device.createPipelineLayout({ bindGroupLayouts: [skylineLayout] }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.skyline, 'skyline-city'),
-        entryPoint: 'vs',
-      },
+      vertex: { module: skylineModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.skyline, 'skyline-city'),
+        module: skylineModule,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT }],
       },
       primitive: { topology: 'triangle-list', cullMode: 'none' },
       depthStencil: {
-        format: context.getDepthFormat(),
+        format: depthFormat,
         depthWriteEnabled: true,
         depthCompare: 'less',
       },
     }),
-
-    bloomThreshold: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'bloom-threshold',
       layout: device.createPipelineLayout({ bindGroupLayouts: [thresholdLayout] }),
-      vertex: {
-        module: context.createShaderModule(
-          SHADERS.render.postProcess.bloomThreshold,
-          'bloom-threshold',
-        ),
-        entryPoint: 'vs',
-      },
+      vertex: { module: bloomThresholdModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(
-          SHADERS.render.postProcess.bloomThreshold,
-          'bloom-threshold',
-        ),
+        module: bloomThresholdModule,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT }],
       },
       primitive: { topology: 'triangle-list' },
     }),
-
-    bloomBlur: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'bloom-blur',
       layout: device.createPipelineLayout({ bindGroupLayouts: [bloomLayout] }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.postProcess.bloomBlur, 'bloom-blur'),
-        entryPoint: 'vs',
-      },
+      vertex: { module: bloomBlurModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.postProcess.bloomBlur, 'bloom-blur'),
+        module: bloomBlurModule,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT }],
       },
       primitive: { topology: 'triangle-list' },
     }),
-
-    bloomDownsample: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'bloom-downsample',
       layout: device.createPipelineLayout({ bindGroupLayouts: [bloomLayout] }),
-      vertex: {
-        module: context.createShaderModule(
-          buildBloomDownsample(context.getCapabilities()?.shaderF16Bloom ?? false),
-          'bloom-downsample',
-        ),
-        entryPoint: 'vs',
-      },
+      vertex: { module: bloomDownsampleModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(
-          buildBloomDownsample(context.getCapabilities()?.shaderF16Bloom ?? false),
-          'bloom-downsample',
-        ),
+        module: bloomDownsampleModule,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT }],
       },
       primitive: { topology: 'triangle-list' },
     }),
-
-    bloomUpsample: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'bloom-upsample',
       layout: device.createPipelineLayout({ bindGroupLayouts: [bloomLayout] }),
-      vertex: {
-        module: context.createShaderModule(
-          SHADERS.render.postProcess.bloomUpsample,
-          'bloom-upsample',
-        ),
-        entryPoint: 'vs',
-      },
+      vertex: { module: bloomUpsampleModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(
-          SHADERS.render.postProcess.bloomUpsample,
-          'bloom-upsample',
-        ),
+        module: bloomUpsampleModule,
         entryPoint: 'fs',
-        // Additive blend: each upsample level accumulates onto the target
         targets: [
           {
             format: RENDER.HDR_FORMAT,
@@ -732,96 +718,104 @@ export function createPipelines(context: WebGPUContext): Pipelines {
       },
       primitive: { topology: 'triangle-list' },
     }),
-
-    composite: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'composite',
       layout: device.createPipelineLayout({ bindGroupLayouts: [compositeLayout] }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.postProcess.composite, 'composite'),
-        entryPoint: 'vs',
-      },
+      vertex: { module: compositeModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.postProcess.composite, 'composite'),
+        module: compositeModule,
         entryPoint: 'fs',
         targets: [{ format: context.getFormat() }],
       },
       primitive: { topology: 'triangle-list' },
     }),
-    dofDownsample: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'dof-downsample',
       layout: device.createPipelineLayout({ bindGroupLayouts: [dofDownsampleLayout] }),
-      vertex: {
-        module: context.createShaderModule(
-          SHADERS.render.postProcess.dofDownsample,
-          'dof-downsample',
-        ),
-        entryPoint: 'vs',
-      },
+      vertex: { module: dofDownsampleModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(
-          SHADERS.render.postProcess.dofDownsample,
-          'dof-downsample',
-        ),
+        module: dofDownsampleModule,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT }],
       },
       primitive: { topology: 'triangle-list' },
     }),
-    dofBlurH: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'dof-blur-h',
       layout: device.createPipelineLayout({ bindGroupLayouts: [dofBlurLayout] }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.postProcess.dofBlur, 'dof-blur'),
-        entryPoint: 'vs',
-      },
+      vertex: { module: dofBlurModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.postProcess.dofBlur, 'dof-blur'),
+        module: dofBlurModule,
         entryPoint: 'fsHorizontal',
         targets: [{ format: RENDER.HDR_FORMAT }],
       },
       primitive: { topology: 'triangle-list' },
     }),
-    dofBlurV: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'dof-blur-v',
       layout: device.createPipelineLayout({ bindGroupLayouts: [dofBlurLayout] }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.postProcess.dofBlur, 'dof-blur'),
-        entryPoint: 'vs',
-      },
+      vertex: { module: dofBlurModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.postProcess.dofBlur, 'dof-blur'),
+        module: dofBlurModule,
         entryPoint: 'fsVertical',
         targets: [{ format: RENDER.HDR_FORMAT }],
       },
       primitive: { topology: 'triangle-list' },
     }),
-    dofComposite: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'dof-composite',
       layout: device.createPipelineLayout({ bindGroupLayouts: [dofCompositeLayout] }),
-      vertex: {
-        module: context.createShaderModule(
-          SHADERS.render.postProcess.dofComposite,
-          'dof-composite',
-        ),
-        entryPoint: 'vs',
-      },
+      vertex: { module: dofCompositeModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(
-          SHADERS.render.postProcess.dofComposite,
-          'dof-composite',
-        ),
+        module: dofCompositeModule,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT }],
       },
       primitive: { topology: 'triangle-list' },
     }),
-    motionBlur: device.createRenderPipeline({
+    context.createRenderPipelineAsync({
+      label: 'motion-blur',
       layout: device.createPipelineLayout({ bindGroupLayouts: [motionBlurLayout] }),
-      vertex: {
-        module: context.createShaderModule(SHADERS.render.postProcess.motionBlur, 'motion-blur'),
-        entryPoint: 'vs',
-      },
+      vertex: { module: motionBlurModule, entryPoint: 'vs' },
       fragment: {
-        module: context.createShaderModule(SHADERS.render.postProcess.motionBlur, 'motion-blur'),
+        module: motionBlurModule,
         entryPoint: 'fs',
         targets: [{ format: 'rgba16float' }],
       },
       primitive: { topology: 'triangle-list' },
     }),
+  ]);
+
+  return {
+    compute,
+    beamCompute,
+    islCompute,
+    islFiber,
+    satelliteCullSats,
+    satelliteCullBeams,
+    satelliteCullFinalize,
+    autoExposureHistogram,
+    autoExposureAdapt,
+    stars,
+    earth,
+    atmosphere,
+    satellites,
+    satellitesCulled,
+    beam,
+    beamCulled,
+    groundTerrain,
+    moonForeground,
+    moonEarthDisk,
+    skyline,
+    bloomThreshold,
+    bloomBlur,
+    bloomDownsample,
+    bloomUpsample,
+    composite,
+    dofDownsample,
+    dofBlurH,
+    dofBlurV,
+    dofComposite,
+    motionBlur,
   };
 }

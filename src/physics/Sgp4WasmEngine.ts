@@ -3,6 +3,7 @@
  */
 
 import { packTleCatalog, type TleLinePair } from './packTleCatalog.js';
+import { packExtendedFromEciBatch } from './sgp4PackExtended.js';
 
 export interface Sgp4WasmModule {
   _malloc(size: number): number;
@@ -16,11 +17,21 @@ export interface Sgp4WasmModule {
     startIndex: number,
     count: number,
   ): number;
+  _sgp4_propagate_batch_keplerian?(unixMs: number, out: number, startIndex: number, count: number): number;
+  _sgp4_propagate_epochs?(
+    unixMsPtr: number,
+    epochCount: number,
+    out: number,
+    startIndex: number,
+    satCount: number,
+  ): number;
+  _sgp4_teme_to_gcrf?(inPtr: number, outPtr: number, unixMs: number, count: number): number;
   _sgp4_catalog_epoch_jd?(index: number): number;
   _sgp4_catalog_count(): number;
   _sgp4_clear_catalog(): void;
   HEAPU8: Uint8Array;
   HEAPF32: Float32Array;
+  HEAPF64?: Float64Array;
   HEAP32: Int32Array;
 }
 
@@ -181,6 +192,115 @@ export class Sgp4WasmEngine {
     } finally {
       this.mod._free(ptr);
       if (errPtr) this.mod._free(errPtr);
+    }
+  }
+
+  /**
+   * Packed GPU extended elements (count × 8): a,e,inc,Ω,ω,M0,n,flag.
+   * C++ owns the Keplerian conversion so JS is a HEAPF32 copy.
+   */
+  propagateBatchKeplerian(
+    unixMs: number,
+    startIndex: number,
+    count: number,
+    out?: Float32Array,
+  ): Float32Array {
+    const limit = Math.min(count, Math.max(0, this.catalogCount - startIndex));
+    const floats = limit * 8;
+    const buffer = out && out.length >= floats ? out : new Float32Array(floats);
+    if (limit === 0) return buffer.subarray(0, 0);
+
+    if (!this.mod._sgp4_propagate_batch_keplerian) {
+      const { eci, errors } = this.propagateBatchEx(unixMs, startIndex, limit);
+      packExtendedFromEciBatch(eci, errors, buffer, 0);
+      return buffer.subarray(0, errors.length * 8);
+    }
+
+    const ptr = this.mod._malloc(floats * 4);
+    try {
+      const written = this.mod._sgp4_propagate_batch_keplerian(unixMs, ptr, startIndex, limit);
+      const copyFloats = written > 0 ? written * 8 : 0;
+      if (copyFloats > 0) {
+        buffer.set(this.mod.HEAPF32.subarray(ptr >> 2, (ptr >> 2) + copyFloats));
+      }
+      return buffer.subarray(0, copyFloats);
+    } finally {
+      this.mod._free(ptr);
+    }
+  }
+
+  /**
+   * Many epochs × a catalog slice. Layout: sat-major, then epoch, then 6 floats.
+   * `out[((sat * epochCount) + epoch) * 6 + k]`
+   */
+  propagateEpochs(
+    unixMs: ArrayLike<number>,
+    startIndex: number,
+    satCount = 1,
+    out?: Float32Array,
+  ): Float32Array {
+    const epochCount = unixMs.length;
+    const limit = Math.min(satCount, Math.max(0, this.catalogCount - startIndex));
+    const floats = limit * epochCount * 6;
+    const buffer = out && out.length >= floats ? out : new Float32Array(Math.max(0, floats));
+    if (limit === 0 || epochCount === 0) return buffer.subarray(0, 0);
+
+    if (!this.mod._sgp4_propagate_epochs || !this.mod.HEAPF64) {
+      for (let s = 0; s < limit; s++) {
+        for (let e = 0; e < epochCount; e++) {
+          const slice = this.propagateBatch(unixMs[e], startIndex + s, 1);
+          buffer.set(slice, (s * epochCount + e) * 6);
+        }
+      }
+      return buffer;
+    }
+
+    const timesPtr = this.mod._malloc(epochCount * 8);
+    const outPtr = this.mod._malloc(floats * 4);
+    try {
+      const times = this.mod.HEAPF64.subarray(timesPtr >> 3, (timesPtr >> 3) + epochCount);
+      for (let i = 0; i < epochCount; i++) times[i] = unixMs[i];
+      const written = this.mod._sgp4_propagate_epochs(
+        timesPtr,
+        epochCount,
+        outPtr,
+        startIndex,
+        limit,
+      );
+      const copyFloats = written > 0 ? written * 6 : 0;
+      if (copyFloats > 0) {
+        buffer.set(this.mod.HEAPF32.subarray(outPtr >> 2, (outPtr >> 2) + copyFloats));
+      }
+      return buffer.subarray(0, copyFloats);
+    } finally {
+      this.mod._free(timesPtr);
+      this.mod._free(outPtr);
+    }
+  }
+
+  /**
+   * Opt-in TEME→GCRF (low-order IAU-76). Default render path stays TEME-as-ECI.
+   * `state` is count × 6 (r km, v km/s). Returns a new buffer unless `out` is passed.
+   */
+  temeToGcrf(state: Float32Array, unixMs: number, out?: Float32Array): Float32Array {
+    const count = Math.floor(state.length / 6);
+    const floats = count * 6;
+    const buffer = out && out.length >= floats ? out : new Float32Array(floats);
+    if (count === 0) return buffer;
+    if (!this.mod._sgp4_teme_to_gcrf) {
+      buffer.set(state.subarray(0, floats));
+      return buffer;
+    }
+    const inPtr = this.mod._malloc(floats * 4);
+    const outPtr = this.mod._malloc(floats * 4);
+    try {
+      this.mod.HEAPF32.set(state.subarray(0, floats), inPtr >> 2);
+      this.mod._sgp4_teme_to_gcrf(inPtr, outPtr, unixMs, count);
+      buffer.set(this.mod.HEAPF32.subarray(outPtr >> 2, (outPtr >> 2) + floats));
+      return buffer;
+    } finally {
+      this.mod._free(inPtr);
+      this.mod._free(outPtr);
     }
   }
 

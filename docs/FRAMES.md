@@ -19,7 +19,7 @@ There is **no** precession, nutation, polar motion, or Earth-orientation paramet
 | Source | True frame | What we do |
 | --- | --- | --- |
 | Procedural Walker / Keplerian / J2 | Circular or osculating Keplerian in the render frame | Exact by construction |
-| Vallado SGP4 WASM / satellite.js | **TEME** (True Equator Mean Equinox of date, Vallado) | Copied into the render buffer as if TEME ≡ ECI. No TEME→GCRF / TOD conversion. |
+| Vallado SGP4 WASM / satellite.js | **TEME** (True Equator Mean Equinox of date, Vallado) | Copied into the render buffer as if TEME ≡ ECI. Optional `sgp4_teme_to_gcrf` (low-order IAU-76) exists in WASM but is **not** applied on the re-anchor path. |
 | Keplerian conversion (`eciStateToKeplerian`) | Same mixed Cartesian | Treats the vector as inertial ECI |
 
 **Error bounds (SGP4 TEME used as GCRF/J2000):** typically **tens of arcseconds** (sub-km at LEO in the cross-track sense for short arcs), occasionally approaching **~1 arcminute** for neglected EOP / older TLEs. That is far smaller than the art-directed shell spacing (hundreds of km) and is **not** a substitute for conjunction-grade screening.

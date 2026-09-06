@@ -4,7 +4,6 @@
  */
 
 import { Sgp4WasmEngine } from './Sgp4WasmEngine.js';
-import { packExtendedFromEciBatch } from './sgp4PackExtended.js';
 import { packTleCatalog, type TleLinePair } from './packTleCatalog.js';
 import { EXTENDED_FLOATS_PER_SATELLITE } from './extendedElements.js';
 import type { Sgp4WorkerRequest, Sgp4WorkerResponse } from './sgp4WorkerProtocol.js';
@@ -73,23 +72,29 @@ export class Sgp4WorkerClient {
 
   async propagatePacked(unixMs: number, start: number, count: number): Promise<Sgp4PropagatePacked> {
     if (this.worker) {
-      const response = await this.request({ type: 'propagate', unixMs, start, count });
+      const response = await this.request({
+        type: 'propagatePackedKeplerian',
+        unixMs,
+        start,
+        count,
+      });
       if (response.type !== 'propagated') {
         throw new Error('SGP4 worker propagate failed');
       }
       return {
         start: response.start,
         count: response.count,
-        extended: new Float32Array(response.extended),
+        extended: new Float32Array(response.extended).slice(
+          0,
+          response.count * EXTENDED_FLOATS_PER_SATELLITE,
+        ),
       };
     }
     if (!this.engine) {
       return { start, count: 0, extended: new Float32Array(0) };
     }
-    const { eci, errors } = this.engine.propagateBatchEx(unixMs, start, count);
-    const dest = new Float32Array(errors.length * EXTENDED_FLOATS_PER_SATELLITE);
-    packExtendedFromEciBatch(eci, errors, dest, 0);
-    return { start, count: errors.length, extended: dest };
+    const dest = this.engine.propagateBatchKeplerian(unixMs, start, count);
+    return { start, count: dest.length / EXTENDED_FLOATS_PER_SATELLITE, extended: dest };
   }
 
   async epochJd(index: number): Promise<number> {
@@ -148,8 +153,6 @@ export function propagatePackedInProcess(
   start: number,
   count: number,
 ): Sgp4PropagatePacked {
-  const { eci, errors } = engine.propagateBatchEx(unixMs, start, count);
-  const dest = new Float32Array(errors.length * EXTENDED_FLOATS_PER_SATELLITE);
-  packExtendedFromEciBatch(eci, errors, dest, 0);
-  return { start, count: errors.length, extended: dest };
+  const dest = engine.propagateBatchKeplerian(unixMs, start, count);
+  return { start, count: dest.length / EXTENDED_FLOATS_PER_SATELLITE, extended: dest };
 }

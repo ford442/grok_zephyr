@@ -2,6 +2,7 @@ export type Sgp4WorkerRequest =
   | { id: number; type: 'init' }
   | { id: number; type: 'load'; packed: ArrayBuffer }
   | { id: number; type: 'propagate'; unixMs: number; start: number; count: number }
+  | { id: number; type: 'propagatePackedKeplerian'; unixMs: number; start: number; count: number }
   | { id: number; type: 'epoch'; index: number };
 
 export type Sgp4WorkerResponse =

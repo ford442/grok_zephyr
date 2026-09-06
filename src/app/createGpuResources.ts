@@ -94,8 +94,8 @@ export async function createGpuResources(
   rt.canvas.width = width;
   rt.canvas.height = height;
 
-  await reporter.withScope(device, 'render-pipeline', () => {
-    rt.pipeline!.initialize(width, height);
+  await reporter.withScope(device, 'render-pipeline', async () => {
+    await rt.pipeline!.initialize(width, height);
     rt.pipeline!.setGpuCullingEnabled(resolveGpuCullingEnabled());
   });
   rt.buffers.updateBloomUniforms(width, height);
@@ -118,9 +118,9 @@ export async function createGpuResources(
     { enabled: rt.simulation.taaEnabled },
     true,
   );
-  await reporter.withScope(device, 'post-process-stack', () => {
-    rt.postProcessStack!.initialize(width, height);
-  });
+  await reporter.withScope(device, 'post-process-stack', () =>
+    rt.postProcessStack!.initialize(width, height),
+  );
 
   rt.trailRenderer = new TrailRenderer(rt.context, {
     enabled: false,
@@ -129,9 +129,7 @@ export async function createGpuResources(
     colorByShell: true,
     ribbonWidth: 8.0,
   });
-  await reporter.withScope(device, 'trail-renderer', () => {
-    rt.trailRenderer!.initialize();
-  });
+  await reporter.withScope(device, 'trail-renderer', () => rt.trailRenderer!.initialize());
 
   rt.constellationGuides = new ConstellationGuides(rt.context);
   rt.moonRingGuide = new MoonRingGuide(rt.context);
@@ -143,9 +141,9 @@ export async function createGpuResources(
     cloudScale: 1.006,
     hazeStrength: 0.28,
   });
-  await reporter.withScope(device, 'earth-atmosphere', () => {
-    rt.earthAtmosphereRenderer!.initialize(rt.buffers!.getBuffers().uniforms);
-  });
+  await reporter.withScope(device, 'earth-atmosphere', () =>
+    rt.earthAtmosphereRenderer!.initialize(rt.buffers!.getBuffers().uniforms),
+  );
 
   const fleet = rt.context?.getFleetScale() ?? getFleetScale();
   rt.ui.setFleetCount(fleet.count, fleet.autoReduced ? 'adapter limit' : undefined);
@@ -189,6 +187,7 @@ export async function createGpuResources(
       const caps = rt.context.getCapabilities();
       if (caps) rt.ui.setGpuCapabilities(formatGpuCapabilityLine(caps));
     }
+    await awaitBootShaderCompilation(rt);
     return;
   }
 
@@ -198,4 +197,11 @@ export async function createGpuResources(
   applyExposureSettings(rt);
   setupImageTuning(rt);
   rt.syncVolumetricBeamConfig();
+  await awaitBootShaderCompilation(rt);
+}
+
+async function awaitBootShaderCompilation(rt: AppRuntime): Promise<void> {
+  await rt.volumetricBeamRenderer?.whenReady();
+  await rt.trailRenderer?.whenReady();
+  await rt.context?.awaitShaderCompilation();
 }

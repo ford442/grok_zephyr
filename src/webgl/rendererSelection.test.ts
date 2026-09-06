@@ -5,6 +5,7 @@ import {
   setRendererBackend,
 } from './rendererSelection.js';
 import { parseDebugFlags } from './WebGLDebug.js';
+import { webglContextAttributes } from './glUtils.js';
 import { CONSTANTS } from '@/types/constants.js';
 
 describe('rendererSelection', () => {
@@ -64,5 +65,24 @@ describe('parseDebugFlags', () => {
 
   it('returns empty object when no debug param', () => {
     expect(parseDebugFlags('')).toEqual({});
+  });
+});
+
+describe('webglContextAttributes', () => {
+  it('keeps failIfMajorPerformanceCaveat off by default (SwiftShader CI)', () => {
+    expect(webglContextAttributes('')).toMatchObject({
+      preserveDrawingBuffer: true,
+      xrCompatible: true,
+      failIfMajorPerformanceCaveat: false,
+    });
+    expect(webglContextAttributes('?renderer=webgl&sats=30000')).toMatchObject({
+      failIfMajorPerformanceCaveat: false,
+    });
+  });
+
+  it('opts into failIfMajorPerformanceCaveat with ?glcaveat=1', () => {
+    expect(webglContextAttributes('?renderer=webgl&glcaveat=1').failIfMajorPerformanceCaveat).toBe(
+      true,
+    );
   });
 });

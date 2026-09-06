@@ -15,20 +15,36 @@ export interface GLContext {
 }
 
 /**
- * Acquire a WebGL2 context from the canvas, enabling float-render extensions
- * when available. Throws if WebGL2 is unsupported.
+ * WebGL2 context attributes. `failIfMajorPerformanceCaveat` is opt-in via
+ * `?glcaveat=1` so Playwright/SwiftShader visual tests keep working.
+ * `desynchronized` stays off so `preserveDrawingBuffer` readback is stable.
  */
-export function acquireGL(canvas: HTMLCanvasElement): GLContext {
-  const gl = canvas.getContext('webgl2', {
+export function webglContextAttributes(
+  search: string = typeof window !== 'undefined' ? window.location.search : '',
+): WebGLContextAttributes {
+  const params = new URLSearchParams(search);
+  return {
     antialias: false,
     alpha: false,
     depth: true,
     premultipliedAlpha: false,
-    preserveDrawingBuffer: true, // allow Playwright / toDataURL readback
+    preserveDrawingBuffer: true,
     powerPreference: 'high-performance',
     // Enable WebXR layer binding when the UA supports it (ignored if unsupported).
     xrCompatible: true,
-  } as WebGLContextAttributes);
+    failIfMajorPerformanceCaveat: params.get('glcaveat') === '1',
+  } as WebGLContextAttributes;
+}
+
+/**
+ * Acquire a WebGL2 context from the canvas, enabling float-render extensions
+ * when available. Throws if WebGL2 is unsupported.
+ */
+export function acquireGL(
+  canvas: HTMLCanvasElement,
+  search: string = typeof window !== 'undefined' ? window.location.search : '',
+): GLContext {
+  const gl = canvas.getContext('webgl2', webglContextAttributes(search));
   if (!gl) {
     throw new Error('WebGL2 is not supported in this browser.');
   }

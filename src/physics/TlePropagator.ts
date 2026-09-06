@@ -11,7 +11,6 @@ import { eciStateToKeplerian, type KeplerianState } from './keplerianFromState.j
 import { packTleCatalog } from './packTleCatalog.js';
 import { Sgp4WasmEngine } from './Sgp4WasmEngine.js';
 import { Sgp4WorkerClient, type Sgp4PropagatePacked } from './Sgp4Worker.js';
-import { packExtendedFromEciBatch } from './sgp4PackExtended.js';
 
 export interface TleRecord {
   name: string;
@@ -174,16 +173,15 @@ export class TlePropagator {
     dest?: Float32Array,
   ): void {
     if (this.wasmEngine) {
-      const { eci, errors } = this.wasmEngine.propagateBatchEx(dateMs, startIndex, count);
+      const packed = this.wasmEngine.propagateBatchKeplerian(dateMs, startIndex, count);
+      const nSats = packed.length / 8;
       if (dest) {
-        packExtendedFromEciBatch(eci, errors, dest, startIndex);
+        dest.set(packed, startIndex * 8);
         return;
       }
-      const packed = new Float32Array(errors.length * 8);
-      packExtendedFromEciBatch(eci, errors, packed, 0);
-      for (let i = 0; i < errors.length; i++) {
-        if (errors[i] !== 0) continue;
+      for (let i = 0; i < nSats; i++) {
         const base = i * 8;
+        if (packed[base + 7] < 0) continue;
         write(startIndex + i, {
           a: packed[base],
           e: packed[base + 1],
@@ -214,10 +212,8 @@ export class TlePropagator {
       return this.worker.propagatePacked(dateMs, startIndex, count);
     }
     if (this.wasmEngine) {
-      const { eci, errors } = this.wasmEngine.propagateBatchEx(dateMs, startIndex, count);
-      const dest = new Float32Array(errors.length * 8);
-      packExtendedFromEciBatch(eci, errors, dest, 0);
-      return { start: startIndex, count: errors.length, extended: dest };
+      const dest = this.wasmEngine.propagateBatchKeplerian(dateMs, startIndex, count);
+      return { start: startIndex, count: dest.length / 8, extended: dest };
     }
     const dest = new Float32Array(count * 8);
     this.applyKeplerianBatch(dateMs, startIndex, count, (index, state) => {
@@ -227,6 +223,33 @@ export class TlePropagator {
       );
     });
     return { start: startIndex, count, extended: dest };
+  }
+
+  /**
+   * Many UTC samples for one catalog index (pass prediction coarse scan).
+   * Returns ECI km or null per sample (null if decayed / missing).
+   */
+  propagatePositionsAtEpochs(
+    index: number,
+    utcMs: readonly number[],
+  ): Array<[number, number, number] | null> {
+    const out: Array<[number, number, number] | null> = new Array(utcMs.length);
+    if (this.wasmEngine && utcMs.length > 0) {
+      const eci = this.wasmEngine.propagateEpochs(utcMs, index, 1);
+      for (let i = 0; i < utcMs.length; i++) {
+        const b = i * 6;
+        if (eci.length < b + 3 || (eci[b] === 0 && eci[b + 1] === 0 && eci[b + 2] === 0)) {
+          out[i] = null;
+        } else {
+          out[i] = [eci[b], eci[b + 1], eci[b + 2]];
+        }
+      }
+      return out;
+    }
+    for (let i = 0; i < utcMs.length; i++) {
+      out[i] = this.propagatePositionEci(index, utcMs[i]);
+    }
+    return out;
   }
 
   catalogEpochJd(index: number): number {

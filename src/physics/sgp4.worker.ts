@@ -1,7 +1,6 @@
 /// <reference lib="webworker" />
 
 import { Sgp4WasmEngine } from './Sgp4WasmEngine.js';
-import { packExtendedFromEciBatch } from './sgp4PackExtended.js';
 import { EXTENDED_FLOATS_PER_SATELLITE } from './extendedElements.js';
 import type { Sgp4WorkerRequest, Sgp4WorkerResponse } from './sgp4WorkerProtocol.js';
 
@@ -34,23 +33,23 @@ self.onmessage = (event: MessageEvent<Sgp4WorkerRequest>) => {
           post({ id: msg.id, type: 'loaded', count });
           break;
         }
-        case 'propagate': {
+        case 'propagate':
+        case 'propagatePackedKeplerian': {
           if (!engine) {
             post({ id: msg.id, type: 'error', message: 'SGP4 worker WASM not ready' });
             break;
           }
-          const { eci, errors } = engine.propagateBatchEx(msg.unixMs, msg.start, msg.count);
-          const dest = new Float32Array(errors.length * EXTENDED_FLOATS_PER_SATELLITE);
-          packExtendedFromEciBatch(eci, errors, dest, 0);
+          const dest = engine.propagateBatchKeplerian(msg.unixMs, msg.start, msg.count);
+          const compact = dest.slice();
           post(
             {
               id: msg.id,
               type: 'propagated',
               start: msg.start,
-              extended: dest.buffer,
-              count: errors.length,
+              extended: compact.buffer,
+              count: compact.length / EXTENDED_FLOATS_PER_SATELLITE,
             },
-            [dest.buffer],
+            [compact.buffer],
           );
           break;
         }

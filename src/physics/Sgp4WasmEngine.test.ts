@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { TLELoader } from '@/data/TLELoader.js';
 import { TlePropagator } from './TlePropagator.js';
 import { Sgp4WasmEngine } from './Sgp4WasmEngine.js';
+import { eciStateToKeplerian } from './keplerianFromState.js';
 
 const SAMPLE_TLE = `STARLINK-1007
 1 44713U 19074A   24356.50000000  .00001256  00000-0  11371-3 0  9991
@@ -32,8 +33,11 @@ describe('Sgp4WasmEngine', () => {
     });
   });
 
-  it('loads WASM module from prebuilt public artifacts', () => {
+  it('loads WASM module from prebuilt public artifacts', async () => {
     expect(engine).not.toBeNull();
+    const { stat } = await import('node:fs/promises');
+    const { size } = await stat(join(publicDir, 'sgp4.wasm'));
+    expect(size).toBeLessThanOrEqual(80 * 1024);
   });
 
   it('returns epoch JD and zero error codes for a healthy TLE', () => {
@@ -45,6 +49,64 @@ describe('Sgp4WasmEngine', () => {
     expect(eci.length).toBe(6);
     expect(errors[0]).toBe(0);
     expect(Math.hypot(eci[0], eci[1], eci[2])).toBeGreaterThan(6400);
+  });
+
+  it('packs Keplerian extended elements in C++ matching the JS converter', () => {
+    if (!engine) return;
+    const tles = TLELoader.parse(SAMPLE_TLE);
+    engine.loadCatalog(tles);
+    const dateMs = Date.UTC(2024, 11, 22, 12, 0, 0);
+    const packed = engine.propagateBatchKeplerian(dateMs, 0, 1);
+    expect(packed.length).toBe(8);
+    expect(packed[7]).toBe(1);
+    expect(packed[0]).toBeGreaterThan(6400);
+
+    const eci = engine.propagateBatch(dateMs, 0, 1);
+    const js = eciStateToKeplerian(
+      { x: eci[0], y: eci[1], z: eci[2] },
+      { x: eci[3], y: eci[4], z: eci[5] },
+    );
+    expect(packed[0]).toBeCloseTo(js.a, 1);
+    expect(packed[1]).toBeCloseTo(js.e, 4);
+    expect(packed[2]).toBeCloseTo(js.inc, 4);
+    expect(packed[6]).toBeCloseTo(js.n, 6);
+  });
+
+  it('propagates many epochs for one sat matching single-time batch', () => {
+    if (!engine) return;
+    const tles = TLELoader.parse(SAMPLE_TLE);
+    engine.loadCatalog(tles);
+    const startMs = Date.UTC(2024, 11, 22, 12, 0, 0);
+    const times = [startMs, startMs + 30_000, startMs + 60_000];
+    const multi = engine.propagateEpochs(times, 0, 1);
+    expect(multi.length).toBe(18);
+    for (let i = 0; i < times.length; i++) {
+      const single = engine.propagateBatch(times[i], 0, 1);
+      const b = i * 6;
+      expect(Math.hypot(multi[b] - single[0], multi[b + 1] - single[1], multi[b + 2] - single[2])).toBeLessThan(
+        1e-3,
+      );
+    }
+  });
+
+  it('rotates TEME states to GCRF without changing vector length', () => {
+    if (!engine) return;
+    const tles = TLELoader.parse(SAMPLE_TLE);
+    engine.loadCatalog(tles);
+    const dateMs = Date.UTC(2024, 11, 22, 12, 0, 0);
+    const teme = engine.propagateBatch(dateMs, 0, 1);
+    const gcrf = engine.temeToGcrf(teme, dateMs);
+    const temeR = Math.hypot(teme[0], teme[1], teme[2]);
+    const gcrfR = Math.hypot(gcrf[0], gcrf[1], gcrf[2]);
+    expect(Math.abs(gcrfR - temeR)).toBeLessThan(1e-3);
+    const angle = Math.acos(
+      Math.min(
+        1,
+        Math.max(-1, (teme[0] * gcrf[0] + teme[1] * gcrf[1] + teme[2] * gcrf[2]) / (temeR * gcrfR)),
+      ),
+    );
+    expect(angle).toBeGreaterThan(0);
+    expect(angle).toBeLessThan(0.01);
   });
 
   it('agrees with satellite.js within 1e-3 km over a 24h window', () => {

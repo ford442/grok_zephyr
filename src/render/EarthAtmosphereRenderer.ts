@@ -107,9 +107,9 @@ export class EarthAtmosphereRenderer {
     };
   }
 
-  initialize(uniformBuffer: GPUBuffer): void {
+  async initialize(uniformBuffer: GPUBuffer): Promise<void> {
     this.uniformBuffer = uniformBuffer;
-    this.createPipeline();
+    await this.createPipeline();
   }
 
   setEnabled(enabled: boolean): void {
@@ -143,7 +143,7 @@ export class EarthAtmosphereRenderer {
     pass.drawIndexed(earthIndexCount);
   }
 
-  private createPipeline(): void {
+  private async createPipeline(): Promise<void> {
     const device = this.context.getDevice();
 
     const layout = device.createPipelineLayout({
@@ -160,7 +160,8 @@ export class EarthAtmosphereRenderer {
       ],
     });
 
-    const shaderModule = device.createShaderModule({ code: CLOUD_SHADER });
+    const shaderModule = this.context.createShaderModule(CLOUD_SHADER, 'earth-atmosphere-clouds');
+    await this.context.awaitShaderCompilation();
 
     const vertexLayout: GPUVertexBufferLayout = {
       arrayStride: 24,
@@ -170,7 +171,8 @@ export class EarthAtmosphereRenderer {
       ],
     };
 
-    this.pipeline = device.createRenderPipeline({
+    this.pipeline = await this.context.createRenderPipelineAsync({
+      label: 'earth-atmosphere-clouds',
       layout,
       vertex: {
         module: shaderModule,

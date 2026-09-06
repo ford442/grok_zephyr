@@ -130,12 +130,20 @@ export class VolumetricBeamRenderer {
     });
   }
 
-  /**
-   * Initialize pipelines and create render targets for the given dimensions.
-   * Must be called once before encoding any passes.
-   */
-  initialize(width: number, height: number): void {
-    this.createPipelines();
+  private initPromise: Promise<void> | null = null;
+
+  /** Initialize pipelines and render targets. Must complete before encoding passes. */
+  initialize(width: number, height: number): Promise<void> {
+    this.initPromise = this.initializeAsync(width, height);
+    return this.initPromise;
+  }
+
+  whenReady(): Promise<void> {
+    return this.initPromise ?? Promise.resolve();
+  }
+
+  private async initializeAsync(width: number, height: number): Promise<void> {
+    await this.createPipelines();
     this.resize(width, height);
   }
 
@@ -242,7 +250,7 @@ export class VolumetricBeamRenderer {
 
   // ── Private helpers ──────────────────────────────────────────────────────────
 
-  private createPipelines(): void {
+  private async createPipelines(): Promise<void> {
     const device = this.context.getDevice();
 
     // ── Ray-march pipeline ───────────────────────────────────────────────────
@@ -272,28 +280,6 @@ export class VolumetricBeamRenderer {
       'volumetric-beam-raymarch',
     );
 
-    this.raymarchPipeline = device.createRenderPipeline({
-      label: 'Volumetric Beam Ray-March',
-      layout: raymarchLayout,
-      vertex: { module: raymarchModule, entryPoint: 'vs_main' },
-      fragment: {
-        module: raymarchModule,
-        entryPoint: 'fs_main',
-        targets: [
-          {
-            format: RENDER.HDR_FORMAT,
-            // Premultiplied-alpha additive blend: src * 1  +  dst * 1
-            blend: {
-              color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
-              alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
-            },
-          },
-        ],
-      },
-      primitive: { topology: 'triangle-list' },
-    });
-
-    // ── Composite (upsample + additive blit) pipeline ───────────────────────
     const compositeLayout = device.createPipelineLayout({
       bindGroupLayouts: [
         device.createBindGroupLayout({
@@ -311,27 +297,48 @@ export class VolumetricBeamRenderer {
       'volumetric-beam-composite',
     );
 
-    this.compositePipeline = device.createRenderPipeline({
-      label: 'Volumetric Beam Composite',
-      layout: compositeLayout,
-      vertex: { module: compositeModule, entryPoint: 'vs_main' },
-      fragment: {
-        module: compositeModule,
-        entryPoint: 'fs_main',
-        targets: [
-          {
-            format: RENDER.HDR_FORMAT,
-            // The half-res texture stores premultiplied RGBA, so use srcFactor:'one'
-            // to avoid double-multiplying the alpha channel on composite.
-            blend: {
-              color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
-              alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+    await this.context.awaitShaderCompilation();
+
+    [this.raymarchPipeline, this.compositePipeline] = await Promise.all([
+      this.context.createRenderPipelineAsync({
+        label: 'Volumetric Beam Ray-March',
+        layout: raymarchLayout,
+        vertex: { module: raymarchModule, entryPoint: 'vs_main' },
+        fragment: {
+          module: raymarchModule,
+          entryPoint: 'fs_main',
+          targets: [
+            {
+              format: RENDER.HDR_FORMAT,
+              blend: {
+                color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+                alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+              },
             },
-          },
-        ],
-      },
-      primitive: { topology: 'triangle-list' },
-    });
+          ],
+        },
+        primitive: { topology: 'triangle-list' },
+      }),
+      this.context.createRenderPipelineAsync({
+        label: 'Volumetric Beam Composite',
+        layout: compositeLayout,
+        vertex: { module: compositeModule, entryPoint: 'vs_main' },
+        fragment: {
+          module: compositeModule,
+          entryPoint: 'fs_main',
+          targets: [
+            {
+              format: RENDER.HDR_FORMAT,
+              blend: {
+                color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+                alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+              },
+            },
+          ],
+        },
+        primitive: { topology: 'triangle-list' },
+      }),
+    ]);
   }
 
   private createBindGroups(): void {

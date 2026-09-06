@@ -24,6 +24,9 @@ export interface AdapterLimitSnapshot {
   maxStorageBufferBindingSize?: number;
   maxBufferSize?: number;
   maxComputeWorkgroupsPerDimension?: number;
+  maxTextureDimension2D?: number;
+  maxComputeInvocationsPerWorkgroup?: number;
+  minStorageBufferOffsetAlignment?: number;
 }
 
 export interface FleetScale {

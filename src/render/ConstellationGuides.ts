@@ -22,7 +22,7 @@ export class ConstellationGuides {
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     if (enabled && !this.pipeline) {
-      this.createResources();
+      void this.createResources();
     }
   }
 
@@ -48,7 +48,7 @@ export class ConstellationGuides {
     this.pipeline = null;
   }
 
-  private createResources(): void {
+  private async createResources(): Promise<void> {
     const device = this.context.getDevice();
     const vertices = this.buildRingVertices();
     this.vertexCount = vertices.length / 3;
@@ -66,9 +66,8 @@ export class ConstellationGuides {
       vertices.byteLength,
     );
 
-    const shader = device.createShaderModule({
-      label: 'ConstellationGuides',
-      code: /* wgsl */ `
+    const shader = this.context.createShaderModule(
+      /* wgsl */ `
         struct Uni {
           view_proj: mat4x4f,
           camera_pos: vec4f,
@@ -116,7 +115,9 @@ export class ConstellationGuides {
           return vec4f(c, 0.22);
         }
       `,
-    });
+      'ConstellationGuides',
+    );
+    await this.context.awaitShaderCompilation();
 
     const layout = device.createPipelineLayout({
       bindGroupLayouts: [
@@ -132,7 +133,7 @@ export class ConstellationGuides {
       ],
     });
 
-    this.pipeline = device.createRenderPipeline({
+    this.pipeline = await this.context.createRenderPipelineAsync({
       label: 'ConstellationGuides',
       layout,
       vertex: {

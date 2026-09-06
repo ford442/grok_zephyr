@@ -495,10 +495,11 @@ Integration points in `src/app/App.ts` and `src/app/bootWebGL.ts`.
 ## WASM SGP4 Engine
 
 Vallado reference SGP4 is compiled to `public/sgp4.wasm` via Emscripten (`npm run build:wasm`).
+Release uses `-std=c++17 -O3 -flto -msimd128 -fno-exceptions -DNDEBUG`, `STRICT=1`, `emmalloc`, 16 MiB initial memory, and `--closure 1`. Extra exports: `sgp4_propagate_batch_keplerian` (GPU extended elements), `sgp4_propagate_epochs` (pass prediction), `sgp4_teme_to_gcrf` (opt-in). Debug (`npm run build:wasm:debug`) writes `native/out/debug/` only.
 Prebuilt artifacts are committed; CI rebuilds on `native/**` changes (`.github/workflows/build-wasm.yml`).
 
 - **Runtime**: `TlePropagator` loads WASM when available; falls back to `satellite.js` on failure. Re-anchor prefers `Sgp4Worker` (off-main-thread); decayed sats are flagged (`extended.flag = −satrec.error`). See `native/README.md`.
-- **Batch API**: `propagateBatchEci()` / `applyKeplerianBatch()` feed GPU extended-element re-anchoring.
+- **Batch API**: `propagateBatchKeplerian()` (C++ packed `a,e,inc,Ω,ω,M0,n,flag`) and `propagateEpochs()` (pass prediction). JS `eciStateToKeplerian` is not on the WASM re-anchor path.
 - **Benchmark**: Performance dashboard shows WASM vs JS speedup after TLE catalog load.
 - **Tests**: `Sgp4WasmEngine.test.ts` checks 1e-3 km agreement over 24h; `Sgp4Benchmark.test.ts` checks speedup.
 

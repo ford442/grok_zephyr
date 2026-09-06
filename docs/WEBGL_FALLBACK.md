@@ -22,6 +22,7 @@ large-scale GPU compute + rendering features.
 | Pick a view mode        | `&mode=0..4` (0 horizon, 1 god, 2 fleet, 3 ground, 4 moon)                           |
 | Load real TLE data      | `&tle=starlink` (shared with the WebGPU path)                                        |
 | Debug flags             | `&debug=wireframe,lod,points,noearth,nostars,nobloom,nosats`                         |
+| Reject software GL      | `&glcaveat=1` — sets `failIfMajorPerformanceCaveat` (off by default so SwiftShader CI still boots) |
 | Image tuning (dev)      | `&bloomThreshold=1.8&bloomKnee=0.05&bloomIntensity=1.6&satCore=0.35&satFalloff=0.08` |
 | Disable shader floors   | `&dev=1` — sliders use the full configured range (no `max(threshold, 1.5)` clamp)    |
 
@@ -39,7 +40,9 @@ window.zephyrGL.renderer.hdrEnabled; // true if RGBA16F targets are available
 ```
 
 `preserveDrawingBuffer` is enabled on the WebGL2 context, so `canvas.toDataURL()`
-and `gl.readPixels()` both return the rendered frame.
+and `gl.readPixels()` both return the rendered frame. `desynchronized` is **not**
+set: it would fight that readback path. Software-GL rejection (`failIfMajorPerformanceCaveat`)
+is opt-in via `?glcaveat=1` because visual tests run SwiftShader.
 
 ### Image tuning panel
 

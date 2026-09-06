@@ -56,7 +56,18 @@ export class GroundStationPanel {
     if (!station || index < 0) { this.status = station ? 'Select a satellite to predict passes' : 'No active station'; this.render(); return; }
     const abort = new AbortController(); this.abort = abort; this.status = 'Predicting passes…'; this.render();
     const method: SatellitePassMethod = index < this.rt.tleRealCount ? (this.tle.isWasmActive() ? 'sgp4-wasm' : 'sgp4-js') : 'keplerian-approximate';
-    void predictPasses({ startUtcMs: this.rt.simulation.clock.simUtcMs, station, positionAtUtc: (utcMs) => this.positionAtUtc(utcMs), method, signal: abort.signal }).then((passes) => {
+    const satIndex = index;
+    void predictPasses({
+      startUtcMs: this.rt.simulation.clock.simUtcMs,
+      station,
+      positionAtUtc: (utcMs) => this.positionAtUtc(utcMs),
+      batchPositionsAtUtc:
+        method === 'sgp4-wasm'
+          ? (utcMs) => this.tle.propagatePositionsAtEpochs(satIndex, utcMs)
+          : undefined,
+      method,
+      signal: abort.signal,
+    }).then((passes) => {
       if (abort.signal.aborted) return; this.passes = passes; this.status = passes.length ? `${passes.length} pass${passes.length === 1 ? '' : 'es'} predicted` : 'No passes in the next seven days'; this.render();
     }).catch((error: unknown) => { if ((error as { name?: string }).name !== 'AbortError') { this.status = 'Prediction unavailable'; this.render(); } });
   }

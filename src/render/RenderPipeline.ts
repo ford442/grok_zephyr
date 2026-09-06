@@ -94,7 +94,7 @@ export class RenderPipeline {
     this.cullBuffers = new SatelliteCullBuffers(context);
   }
 
-  initialize(width: number, height: number): void {
+  async initialize(width: number, height: number): Promise<void> {
     this.width = width;
     this.height = height;
     this.uniforms.motionBlurHistoryReady = false;
@@ -102,14 +102,14 @@ export class RenderPipeline {
     console.log(`[RenderPipeline] Initializing ${width}x${height}`);
 
     this.uniforms.createBuffers(width, height);
-    this.pipelines = createPipelines(this.context);
+    this.pipelines = await createPipelines(this.context);
     this.renderTargets = this.renderTargetManager.initialize(width, height);
     this.atmosphereLUT = createAtmosphereLUT(this.context);
     this.createBindGroups();
 
     this.smileV2Pipeline = new SmileV2Pipeline(this.context, this.buffers);
-    this.smileV2Pipeline.initialize();
-    this.satellitePicker.initialize();
+    await this.smileV2Pipeline.initialize();
+    await this.satellitePicker.initialize();
 
     console.log(`[RenderPipeline] GPU culling: ${this.gpuCullingEnabled ? 'enabled' : 'disabled'}`);
     console.log('[RenderPipeline] Initialization complete');

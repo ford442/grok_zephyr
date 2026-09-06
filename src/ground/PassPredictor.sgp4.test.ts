@@ -124,6 +124,38 @@ describe('predictPasses over a real SGP4 ephemeris', () => {
     }
   });
 
+  it('WASM multi-epoch coarse scan matches the scalar SGP4 predictor', async () => {
+    const wasm = new TlePropagator();
+    wasm.load([ISS_TLE]);
+    const ok = await wasm.initWasm();
+    if (!ok || !wasm.isWasmActive()) return;
+
+    const positionAtUtc = (utcMs: number): [number, number, number] | null =>
+      wasm.propagatePositionEci(0, utcMs);
+    const scalar = await predictPasses({
+      startUtcMs: START,
+      station: BERLIN,
+      positionAtUtc,
+      method: 'sgp4-wasm',
+      maxPasses: 3,
+      horizonMs: WINDOW_MS,
+    });
+    const batched = await predictPasses({
+      startUtcMs: START,
+      station: BERLIN,
+      positionAtUtc,
+      batchPositionsAtUtc: (utcMs) => wasm.propagatePositionsAtEpochs(0, utcMs),
+      method: 'sgp4-wasm',
+      maxPasses: 3,
+      horizonMs: WINDOW_MS,
+    });
+    expect(batched).toHaveLength(scalar.length);
+    for (let i = 0; i < scalar.length; i++) {
+      expect(Math.abs(batched[i].aosUtcMs - scalar[i].aosUtcMs)).toBeLessThanOrEqual(2000);
+      expect(Math.abs(batched[i].losUtcMs - scalar[i].losUtcMs)).toBeLessThanOrEqual(2000);
+    }
+  });
+
   it('keeps satellites below the configured minimum elevation out of the results', async () => {
     const strict: GroundStation = { ...BERLIN, minimumElevationDeg: 60 };
     const passes = await predictPasses({

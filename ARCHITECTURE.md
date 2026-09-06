@@ -8,7 +8,7 @@ Grok Zephyr is a Vite + TypeScript WebGPU application that simulates and renders
 
 1. `src/main.ts` (thin bootstrap) creates an `OnboardingManager` and an `App` instance, then calls `app.initialize()`.
 2. `src/app/App.ts` orchestrates boot: it delegates to `bootWebGPU()` or `bootWebGL()` depending on the resolved backend.
-3. `src/core/WebGPUContext.ts` requests a high-performance adapter, enables supported optional features such as `timestamp-query`, validates required limits, and configures the canvas swapchain.
+3. `src/core/WebGPUContext.ts` requests a core-defaulting high-performance adapter (`featureLevel: 'core'`), enables only used optional features (`timestamp-query`, `shader-f16`), fails boot if a required feature is missing, validates required limits, and configures the canvas swapchain (`RENDER_ATTACHMENT`, SDR `colorSpace: 'srgb'`). Shader modules are cached and compilation is awaited before the first frame.
 4. `src/app/createGpuResources.ts` allocates the large storage buffers (via `SatelliteGPUBuffer`) and builds the render pipeline (via `RenderPipeline`).
 5. `src/render/RenderPipeline.ts` runs compute passes to update positions/beam data, then renders the scene into HDR targets before bloom and final composite.
 6. `src/ui/UIManager.ts` reflects view mode, quality, and performance state back into the HUD.

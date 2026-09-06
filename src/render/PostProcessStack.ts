@@ -142,9 +142,9 @@ export class PostProcessStack {
   /**
    * Initialize post-process stack
    */
-  initialize(width: number, height: number): void {
+  async initialize(width: number, height: number): Promise<void> {
     this.createRenderTargets(width, height);
-    this.createPipelines();
+    await this.createPipelines();
     this.updateUniforms();
   }
 
@@ -376,9 +376,9 @@ export class PostProcessStack {
     this.pingPongBuffers = [];
   }
 
-  private createPipelines(): void {
-    this.passes = createPostProcessPipelines({
-      device: this.context.getDevice(),
+  private async createPipelines(): Promise<void> {
+    this.passes = await createPostProcessPipelines({
+      context: this.context,
       surfaceFormat: this.context.getFormat(),
       skipFinalTonemap: this.skipFinalTonemap,
       taaConfig: this.taaConfig,

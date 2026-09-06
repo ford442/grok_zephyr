@@ -3,7 +3,10 @@ import {
   adapterPowerFallbackOrder,
   buildCapabilityProfile,
   chooseAdapterCandidate,
+  DEFERRED_OPTIONAL_FEATURES,
   formatGpuCapabilityLine,
+  gpuRequestAdapterOptions,
+  missingRequiredFeatures,
   REQUESTED_OPTIONAL_FEATURES,
   selectDepthFormat,
   selectOptionalFeatures,
@@ -19,14 +22,12 @@ function snapshot(partial: {
   vendor?: string;
   isFallbackAdapter?: boolean;
 }): AdapterSnapshot {
-  const limits: AdapterSnapshot['limits'] & { maxTextureDimension2D?: number } = {
+  const limits: AdapterSnapshot['limits'] = {
     maxStorageBufferBindingSize: partial.storage ?? 128 * 1024 * 1024,
     maxBufferSize: partial.buffer ?? 128 * 1024 * 1024,
     maxComputeWorkgroupsPerDimension: partial.groups ?? 65_535,
+    maxTextureDimension2D: partial.maxTextureDimension2D,
   };
-  if (partial.maxTextureDimension2D !== undefined) {
-    limits.maxTextureDimension2D = partial.maxTextureDimension2D;
-  }
   return {
     features: new Set(partial.features ?? ['timestamp-query']),
     limits,
@@ -38,13 +39,56 @@ function snapshot(partial: {
 
 describe('GpuCapabilities', () => {
   it('requests only catalog optional features and never invents required ones', () => {
-    expect(REQUESTED_OPTIONAL_FEATURES).toContain('timestamp-query');
-    expect(REQUESTED_OPTIONAL_FEATURES).toContain('shader-f16');
+    expect(REQUESTED_OPTIONAL_FEATURES).toEqual(['timestamp-query', 'shader-f16']);
+    expect(REQUESTED_OPTIONAL_FEATURES).not.toContain('float32-filterable');
+    expect(REQUESTED_OPTIONAL_FEATURES).not.toContain('bgra8unorm-storage');
     const { enabled, missing } = selectOptionalFeatures(
       snapshot({ features: ['timestamp-query'] }),
     );
     expect(enabled).toEqual(['timestamp-query']);
     expect(missing).toContain('shader-f16');
+  });
+
+  it('does not treat deferred optional features as requested even when the adapter has them', () => {
+    expect(DEFERRED_OPTIONAL_FEATURES).toEqual(
+      expect.arrayContaining([
+        'float32-filterable',
+        'bgra8unorm-storage',
+        'texture-compression-bc',
+        'texture-compression-etc2',
+        'texture-compression-astc',
+        'subgroups',
+        'timestamp-query-inside-passes',
+      ]),
+    );
+    const { enabled, missing } = selectOptionalFeatures(
+      snapshot({
+        features: [
+          'timestamp-query',
+          'shader-f16',
+          'float32-filterable',
+          'bgra8unorm-storage',
+          'subgroups',
+        ],
+      }),
+    );
+    expect(enabled).toEqual(['timestamp-query', 'shader-f16']);
+    expect(missing).toEqual([]);
+  });
+
+  it('requests a core feature level adapter', () => {
+    expect(gpuRequestAdapterOptions('high-performance')).toEqual({
+      powerPreference: 'high-performance',
+      featureLevel: 'core',
+    });
+    expect(gpuRequestAdapterOptions('low-power').featureLevel).toBe('core');
+  });
+
+  it('reports missing required features instead of dropping them', () => {
+    expect(missingRequiredFeatures(new Set(['timestamp-query']), ['shader-f16'])).toEqual([
+      'shader-f16',
+    ]);
+    expect(missingRequiredFeatures(new Set(['shader-f16']), ['shader-f16'])).toEqual([]);
   });
 
   it('uses depth24plus on fallback / low / small-maxDim adapters', () => {

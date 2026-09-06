@@ -3,7 +3,17 @@ import { elevationDeg, type GroundStation } from './GroundStation.js';
 
 export type SatellitePassMethod = 'sgp4-wasm' | 'sgp4-js' | 'keplerian-approximate';
 export interface SatellitePass { aosUtcMs: number; losUtcMs: number; maxUtcMs: number; maxElevationDeg: number; inProgress: boolean; method: SatellitePassMethod }
-export interface PassPredictionOptions { startUtcMs: number; station: GroundStation; positionAtUtc: (utcMs: number) => Vec3 | null; method: SatellitePassMethod; signal?: AbortSignal; maxPasses?: number; horizonMs?: number }
+export interface PassPredictionOptions {
+  startUtcMs: number;
+  station: GroundStation;
+  positionAtUtc: (utcMs: number) => Vec3 | null;
+  /** Coarse 30 s scan: one sat × many epochs (WASM `sgp4_propagate_epochs` when present). */
+  batchPositionsAtUtc?: (utcMs: number[]) => Array<Vec3 | null>;
+  method: SatellitePassMethod;
+  signal?: AbortSignal;
+  maxPasses?: number;
+  horizonMs?: number;
+}
 
 const STEP_MS = 30000;
 async function yieldTask(): Promise<void> { await new Promise<void>((resolve) => setTimeout(resolve, 0)); }
@@ -35,28 +45,66 @@ export async function predictPasses(options: PassPredictionOptions): Promise<Sat
   const results: SatellitePass[] = [];
   const end = options.startUtcMs + (options.horizonMs ?? 7 * 86400000);
   const maxPasses = options.maxPasses ?? 5;
-  const elevationAt = (utcMs: number): number => { const p = options.positionAtUtc(utcMs); return p ? elevationDeg(options.station, p, utcMs) : -90; };
+  const elevationAt = (utcMs: number): number => {
+    const p = options.positionAtUtc(utcMs);
+    return p ? elevationDeg(options.station, p, utcMs) : -90;
+  };
+
+  const scanTimes: number[] = [];
+  for (let t = options.startUtcMs; t < end; t += STEP_MS) scanTimes.push(t);
+  scanTimes.push(end);
+
+  let scanElev: Float64Array | null = null;
+  if (options.batchPositionsAtUtc && scanTimes.length > 0) {
+    if (options.signal?.aborted) throw new DOMException('Pass prediction cancelled', 'AbortError');
+    const positions = options.batchPositionsAtUtc(scanTimes);
+    scanElev = new Float64Array(scanTimes.length);
+    for (let i = 0; i < scanTimes.length; i++) {
+      const p = positions[i];
+      scanElev[i] = p ? elevationDeg(options.station, p, scanTimes[i]) : -90;
+    }
+  }
+
+  const elevAtScan = (index: number): number =>
+    scanElev ? scanElev[index] : elevationAt(scanTimes[index]);
+
   let t = options.startUtcMs;
-  let above = elevationAt(t) >= options.station.minimumElevationDeg;
+  let above = elevAtScan(0) >= options.station.minimumElevationDeg;
   let aos: number | null = null;
   let inProgress = false;
   if (above) {
-    inProgress = true; let back = t;
-    while (back > options.startUtcMs - 86400000 && elevationAt(back) >= options.station.minimumElevationDeg) { back -= STEP_MS; }
+    inProgress = true;
+    let back = t;
+    while (
+      back > options.startUtcMs - 86400000 &&
+      elevationAt(back) >= options.station.minimumElevationDeg
+    ) {
+      back -= STEP_MS;
+    }
     aos = refineCrossing(options, back, back + STEP_MS, true);
   }
   for (let sample = 0; t < end && results.length < maxPasses; sample++) {
     if (options.signal?.aborted) throw new DOMException('Pass prediction cancelled', 'AbortError');
     const next = Math.min(end, t + STEP_MS);
-    const nextAbove = elevationAt(next) >= options.station.minimumElevationDeg;
+    const nextIndex = sample + 1;
+    const nextAbove = elevAtScan(nextIndex) >= options.station.minimumElevationDeg;
     if (!above && nextAbove) aos = refineCrossing(options, t, next, true);
     if (above && !nextAbove && aos !== null) {
       const los = refineCrossing(options, t, next, false);
       const maximum = maximize(options, aos, los);
-      results.push({ aosUtcMs: aos, losUtcMs: los, maxUtcMs: maximum.utcMs, maxElevationDeg: maximum.elevation, inProgress, method: options.method });
-      aos = null; inProgress = false;
+      results.push({
+        aosUtcMs: aos,
+        losUtcMs: los,
+        maxUtcMs: maximum.utcMs,
+        maxElevationDeg: maximum.elevation,
+        inProgress,
+        method: options.method,
+      });
+      aos = null;
+      inProgress = false;
     }
-    above = nextAbove; t = next;
+    above = nextAbove;
+    t = next;
     if (sample % 256 === 255) await yieldTask();
   }
   return results;

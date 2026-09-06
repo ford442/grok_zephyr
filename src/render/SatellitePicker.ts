@@ -20,7 +20,7 @@ export class SatellitePicker {
 
   constructor(private readonly context: WebGPUContext) {}
 
-  initialize(): void {
+  async initialize(): Promise<void> {
     const device = this.context.getDevice();
 
     this.pickBindGroupLayout = device.createBindGroupLayout({
@@ -54,16 +54,22 @@ export class SatellitePicker {
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    this.pickPipeline = device.createRenderPipeline({
+    const pickModule = this.context.createShaderModule(
+      SHADERS.render.satellitesPick,
+      'satellites-pick',
+    );
+    await this.context.awaitShaderCompilation();
+    this.pickPipeline = await this.context.createRenderPipelineAsync({
+      label: 'satellites-pick',
       layout: device.createPipelineLayout({
         bindGroupLayouts: [this.pickBindGroupLayout],
       }),
       vertex: {
-        module: this.context.createShaderModule(SHADERS.render.satellitesPick, 'satellites-pick'),
+        module: pickModule,
         entryPoint: 'vs_pick',
       },
       fragment: {
-        module: this.context.createShaderModule(SHADERS.render.satellitesPick, 'satellites-pick'),
+        module: pickModule,
         entryPoint: 'fs_pick',
         targets: [{ format: 'r32uint' }],
       },

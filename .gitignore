@@ -7,6 +7,9 @@ dist/
 .env
 .DS_Store
 
+# WASM debug profile (release artifacts live in public/)
+native/out/
+
 # Playwright
 test-results/
 playwright-report/

@@ -16,11 +16,18 @@ import {
 import {
   adapterPowerFallbackOrder,
   chooseAdapterCandidate,
+  gpuRequestAdapterOptions,
+  missingRequiredFeatures,
   REQUESTED_OPTIONAL_FEATURES,
   snapshotAdapter,
   type GpuCapabilityProfile,
 } from '@/core/GpuCapabilities.js';
-import type { CanvasPresentationOptions, PresentationMode } from '@/core/HdrPresentation.js';
+import {
+  canvasSwapchainUsage,
+  sdrViewFormats,
+  type CanvasPresentationOptions,
+  type PresentationMode,
+} from '@/core/HdrPresentation.js';
 import {
   WebGPUErrorReporter,
   type WebGPUErrorReportHandler,
@@ -51,9 +58,12 @@ async function readAdapterInfo(adapter: GPUAdapter): Promise<GPUAdapterInfo | un
 }
 
 function getAdapterLimitValue(adapter: GPUAdapter, limit: string): number | undefined {
-  const limits = adapter.limits as unknown as Readonly<Record<string, number>>;
-  const supportedValue = limits[limit];
+  const supportedValue = adapter.limits[limit as keyof GPUSupportedLimits];
   return typeof supportedValue === 'number' ? supportedValue : undefined;
+}
+
+function isDebugQueryEnabled(search: string): boolean {
+  return new URLSearchParams(search).has('debug');
 }
 
 /** WebGPU context initialization result */
@@ -108,6 +118,9 @@ export class WebGPUContext {
   private readonly errorReporter: WebGPUErrorReporter;
   private fleetScale: FleetScale | null = null;
   private capabilityProfile: GpuCapabilityProfile | null = null;
+  private readonly shaderModules = new Map<string, GPUShaderModule>();
+  private pendingShaderChecks: Promise<void>[] = [];
+  private shaderCompilationWait: Promise<void> | null = null;
 
   constructor(canvas: HTMLCanvasElement, options: WebGPUContextOptions = {}) {
     this.canvas = canvas;
@@ -170,8 +183,13 @@ export class WebGPUContext {
 
       this.validateAdapterRequirements(requiredLimits, requiredFeatures);
 
-      // Request device with required limits plus supported optional features
+      // Request device with required limits plus supported optional features.
+      // Features are frozen for the device lifetime; later systems that need
+      // extra optional features must add them to REQUESTED_OPTIONAL_FEATURES
+      // and recoverContext() (new adapter/device).
       this.device = await this.adapter.requestDevice({
+        label: 'grok-zephyr',
+        defaultQueue: { label: 'grok-zephyr-queue' },
         requiredFeatures: [...requiredFeatures, ...optionalFeatures],
         requiredLimits,
       });
@@ -247,6 +265,7 @@ export class WebGPUContext {
     this.context = null;
     this.lostHandler = null;
     this.suppressDeviceLostCallback = false;
+    this.clearShaderState();
     return this.initialize();
   }
 
@@ -287,7 +306,7 @@ export class WebGPUContext {
       [];
 
     for (const preference of order) {
-      const adapter = await navigator.gpu.requestAdapter({ powerPreference: preference });
+      const adapter = await navigator.gpu.requestAdapter(gpuRequestAdapterOptions(preference));
       if (!adapter || seen.has(adapter)) continue;
       seen.add(adapter);
       const info = await readAdapterInfo(adapter);
@@ -330,15 +349,7 @@ export class WebGPUContext {
   }
 
   private getRequiredFeatures(): GPUFeatureName[] {
-    const requested = [...new Set(this.options.requiredFeatures ?? [])];
-    const adapter = this.adapter;
-    if (!adapter) return [];
-    const supported = requested.filter((feature) => adapter.features.has(feature));
-    const dropped = requested.filter((feature) => !adapter.features.has(feature));
-    if (dropped.length > 0) {
-      console.warn('[WebGPU] Dropped unsupported required features:', dropped.join(', '));
-    }
-    return supported;
+    return [...new Set(this.options.requiredFeatures ?? [])];
   }
 
   private validateAdapterRequirements(
@@ -350,7 +361,9 @@ export class WebGPUContext {
     }
 
     const adapter = this.adapter;
-    const missingFeatures = requiredFeatures.filter((feature) => !adapter.features.has(feature));
+    const available = new Set<string>();
+    adapter.features.forEach((feature) => available.add(feature));
+    const missingFeatures = missingRequiredFeatures(available, requiredFeatures);
     if (missingFeatures.length > 0) {
       throw new WebGPUError(
         `This browser/GPU is missing required WebGPU features: ${missingFeatures.join(', ')}.`,
@@ -425,12 +438,6 @@ export class WebGPUContext {
     return this.presentationMode === 'hdr';
   }
 
-  private canvasUsage(): GPUTextureUsageFlags {
-    return (
-      GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC
-    );
-  }
-
   private buildSdrCanvasConfiguration(): GPUCanvasConfiguration {
     const canvasOpts = this.options.canvas;
     this.format = navigator.gpu.getPreferredCanvasFormat();
@@ -439,7 +446,9 @@ export class WebGPUContext {
       device: this.device!,
       format: this.format,
       alphaMode: canvasOpts?.alphaMode ?? 'opaque',
-      usage: this.canvasUsage(),
+      usage: canvasSwapchainUsage(),
+      colorSpace: canvasOpts?.colorSpace ?? 'srgb',
+      viewFormats: sdrViewFormats(this.format),
       toneMapping: { mode: 'standard' },
     };
   }
@@ -450,7 +459,7 @@ export class WebGPUContext {
       device: this.device!,
       format: canvasOpts?.format ?? 'rgba16float',
       alphaMode: canvasOpts?.alphaMode ?? 'opaque',
-      usage: this.canvasUsage(),
+      usage: canvasSwapchainUsage(),
       colorSpace: canvasOpts?.colorSpace ?? 'display-p3',
       toneMapping: canvasOpts?.toneMapping ?? { mode: 'extended' },
     };
@@ -504,28 +513,100 @@ export class WebGPUContext {
   }
 
   /**
-   * Create a shader module from WGSL code
+   * Create a shader module from WGSL code.
+   * Modules are cached per source. Compilation is checked by
+   * {@link awaitShaderCompilation} before pipelines are created.
    */
   createShaderModule(code: string, label?: string): GPUShaderModule {
     const device = this.getDevice();
+    const shaderLabel = label ?? 'unknown';
 
-    // Debug: Check if code is defined
     if (!code || code.trim() === '') {
-      console.error(`❌ SHADER LOAD FAILED: ${label || 'unknown'} — code is undefined or empty!`);
-      throw new Error(`Shader "${label || 'unknown'}" has no code`);
+      throw new WebGPUError(`Shader "${shaderLabel}" has no code`);
     }
-    console.log(`✅ Loading shader: ${label || 'unknown'} (${code.length} chars)`);
+
+    const cached = this.shaderModules.get(code);
+    if (cached) {
+      return cached;
+    }
+
+    if (isDebugQueryEnabled(this.bootSearch())) {
+      console.log(`[WebGPU] Shader module: ${shaderLabel} (${code.length} chars)`);
+    }
 
     const module = device.createShaderModule({
       code,
-      label,
+      label: shaderLabel,
     });
-
-    void this.errorReporter.checkShaderModule(module, label ?? 'unknown').catch((error: unknown) => {
-      console.error(error);
-    });
-
+    this.shaderModules.set(code, module);
+    this.pendingShaderChecks.push(this.errorReporter.checkShaderModule(module, shaderLabel));
     return module;
+  }
+
+  /**
+   * Await pending `getCompilationInfo()` checks. Call this after creating
+   * shader modules and before `create*PipelineAsync` / `startRenderLoop`.
+   */
+  async awaitShaderCompilation(): Promise<void> {
+    const run = async (): Promise<void> => {
+      while (this.pendingShaderChecks.length > 0) {
+        const pending = this.pendingShaderChecks.splice(0);
+        await Promise.all(pending);
+      }
+    };
+
+    if (this.shaderCompilationWait) {
+      await this.shaderCompilationWait;
+      if (this.pendingShaderChecks.length > 0) {
+        return this.awaitShaderCompilation();
+      }
+      return;
+    }
+
+    this.shaderCompilationWait = run().finally(() => {
+      this.shaderCompilationWait = null;
+    });
+    await this.shaderCompilationWait;
+  }
+
+  async createComputePipelineAsync(
+    descriptor: GPUComputePipelineDescriptor,
+  ): Promise<GPUComputePipeline> {
+    const label = descriptor.label ?? descriptor.compute.entryPoint ?? 'compute';
+    try {
+      return await this.getDevice().createComputePipelineAsync(descriptor);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.errorReporter.report({
+        stage: `pipeline:${label}`,
+        kind: 'validation',
+        message,
+      });
+      throw new WebGPUError(`GPU pipeline creation failed (${label}): ${message}`);
+    }
+  }
+
+  async createRenderPipelineAsync(
+    descriptor: GPURenderPipelineDescriptor,
+  ): Promise<GPURenderPipeline> {
+    const label = descriptor.label ?? descriptor.vertex.entryPoint ?? 'render';
+    try {
+      return await this.getDevice().createRenderPipelineAsync(descriptor);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.errorReporter.report({
+        stage: `pipeline:${label}`,
+        kind: 'validation',
+        message,
+      });
+      throw new WebGPUError(`GPU pipeline creation failed (${label}): ${message}`);
+    }
+  }
+
+  private clearShaderState(): void {
+    this.shaderModules.clear();
+    this.pendingShaderChecks = [];
+    this.shaderCompilationWait = null;
   }
 
   /**
@@ -681,6 +762,7 @@ export class WebGPUContext {
     this.adapter = null;
     this.context = null;
     this.lostHandler = null;
+    this.clearShaderState();
   }
 }
 

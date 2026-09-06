@@ -20,27 +20,36 @@ export const OPTIONAL_FEATURE_CATALOG = [
     effect: 'Half-precision bloom downsample (cheaper post-process ALU)',
     fallback: 'f32 Kawase downsample',
   },
-  {
-    name: 'float32-filterable' as const,
-    effect: 'Linear filtering of rgba32float (future HDR internals)',
-    fallback: 'Stay on rgba16float bloom/HDR targets',
-  },
-  {
-    name: 'bgra8unorm-storage' as const,
-    effect: 'Storage binding on BGRA8 textures (capture / compute present)',
-    fallback: 'No storage writes to bgra8unorm',
-  },
 ] as const;
 
 export type OptionalGpuFeature = (typeof OPTIONAL_FEATURE_CATALOG)[number]['name'];
 
-/** Optional features we actually request. Required features stay empty. */
+/**
+ * Optional features a runtime system actually binds. Required features stay empty
+ * at boot; missing required names fail initialization instead of being dropped.
+ */
 export const REQUESTED_OPTIONAL_FEATURES: readonly OptionalGpuFeature[] = [
   'timestamp-query',
   'shader-f16',
+];
+
+/**
+ * Known optional features that must not be requested until a matching system
+ * binds them. Adding one to {@link REQUESTED_OPTIONAL_FEATURES} requires a new
+ * `requestDevice` (see `recoverContext`) — features are frozen for the device
+ * lifetime.
+ */
+export const DEFERRED_OPTIONAL_FEATURES = [
   'float32-filterable',
   'bgra8unorm-storage',
-];
+  'texture-compression-bc',
+  'texture-compression-etc2',
+  'texture-compression-astc',
+  'subgroups',
+  'timestamp-query-inside-passes',
+] as const;
+
+export type DeferredGpuFeature = (typeof DEFERRED_OPTIONAL_FEATURES)[number];
 
 export type DepthAttachmentFormat = 'depth32float' | 'depth24plus';
 export type BloomColorFormat = 'rgba16float';
@@ -68,7 +77,6 @@ export interface GpuCapabilityProfile {
   missingOptional: OptionalGpuFeature[];
   shaderF16Bloom: boolean;
   timestampQuery: boolean;
-  float32Filterable: boolean;
 }
 
 export function snapshotAdapter(
@@ -77,19 +85,41 @@ export function snapshotAdapter(
 ): AdapterSnapshot {
   const features = new Set<string>();
   adapter.features.forEach((f) => features.add(f));
-  const limits = adapter.limits as unknown as Record<string, number>;
+  const { limits } = adapter;
   return {
     features,
-    limits: {
-      maxStorageBufferBindingSize: limits.maxStorageBufferBindingSize,
-      maxBufferSize: limits.maxBufferSize,
-      maxComputeWorkgroupsPerDimension: limits.maxComputeWorkgroupsPerDimension,
-    },
+    limits: snapshotAdapterLimits(limits),
     vendor: info?.vendor,
     architecture: info?.architecture,
     device: info?.device,
     isFallbackAdapter: info?.isFallbackAdapter,
   };
+}
+
+export function snapshotAdapterLimits(limits: GPUSupportedLimits): AdapterLimitSnapshot {
+  return {
+    maxStorageBufferBindingSize: limits.maxStorageBufferBindingSize,
+    maxBufferSize: limits.maxBufferSize,
+    maxComputeWorkgroupsPerDimension: limits.maxComputeWorkgroupsPerDimension,
+    maxTextureDimension2D: limits.maxTextureDimension2D,
+    maxComputeInvocationsPerWorkgroup: limits.maxComputeInvocationsPerWorkgroup,
+    minStorageBufferOffsetAlignment: limits.minStorageBufferOffsetAlignment,
+  };
+}
+
+/** Adapter options that request a core-defaulting adapter (not compatibility mode). */
+export function gpuRequestAdapterOptions(
+  powerPreference: GPUPowerPreference,
+): GPURequestAdapterOptions {
+  return { powerPreference, featureLevel: 'core' };
+}
+
+/** Names in `required` that the adapter does not support. Required means required. */
+export function missingRequiredFeatures(
+  available: ReadonlySet<string>,
+  required: readonly string[],
+): string[] {
+  return required.filter((feature) => !available.has(feature));
 }
 
 export function selectDepthFormat(
@@ -99,8 +129,7 @@ export function selectDepthFormat(
   if (snapshot.isFallbackAdapter || quality === 'low') {
     return 'depth24plus';
   }
-  const maxDim = (snapshot.limits as AdapterLimitSnapshot & { maxTextureDimension2D?: number })
-    .maxTextureDimension2D;
+  const maxDim = snapshot.limits.maxTextureDimension2D;
   if (typeof maxDim === 'number' && maxDim > 0 && maxDim < 8192) {
     return 'depth24plus';
   }
@@ -150,7 +179,6 @@ export function buildCapabilityProfile(
     missingOptional: missing,
     shaderF16Bloom,
     timestampQuery: enabled.includes('timestamp-query'),
-    float32Filterable: enabled.includes('float32-filterable'),
   };
 }
 
@@ -212,24 +240,27 @@ function shortFeatureName(name: OptionalGpuFeature): string {
       return 'ts';
     case 'shader-f16':
       return 'f16';
-    case 'float32-filterable':
-      return 'f32f';
-    case 'bgra8unorm-storage':
-      return 'bgra-store';
     default:
       return name;
   }
 }
 
 export function formatFeatureMatrixMarkdown(): string {
-  const rows = OPTIONAL_FEATURE_CATALOG.map(
+  const requested = OPTIONAL_FEATURE_CATALOG.map(
     (row) => `| \`${row.name}\` | ${row.effect} | ${row.fallback} |`,
+  );
+  const deferred = DEFERRED_OPTIONAL_FEATURES.map(
+    (name) => `| \`${name}\` | Deferred — not requested until a runtime system binds it | — |`,
   );
   return [
     '| Feature | Effect when present | Fallback |',
     '| --- | --- | --- |',
-    ...rows,
+    ...requested,
     '| Depth `depth32float` | Higher precision scene depth | `depth24plus` on fallback/low/small-maxDim adapters |',
     '| HDR `rgba16float` canvas | Extended-range presentation | SDR preferred canvas format |',
+    '',
+    '| Deferred (not requested) | Why it is deferred | |',
+    '| --- | --- | --- |',
+    ...deferred,
   ].join('\n');
 }

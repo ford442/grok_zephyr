@@ -27,7 +27,7 @@ export class MoonRingGuide {
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     if (!this.pipeline) {
-      this.createResources();
+      void this.createResources();
     }
   }
 
@@ -35,7 +35,7 @@ export class MoonRingGuide {
   setSubtleRing(visible: boolean): void {
     this.subtleRing = visible;
     if (visible && !this.pipeline) {
-      this.createResources();
+      void this.createResources();
     }
   }
 
@@ -85,7 +85,7 @@ export class MoonRingGuide {
     this.pipeline = null;
   }
 
-  private createResources(): void {
+  private async createResources(): Promise<void> {
     const device = this.context.getDevice();
     const vertices = this.buildRingVertices();
     this.vertexCount = vertices.length / 3;
@@ -109,9 +109,8 @@ export class MoonRingGuide {
       label: 'MoonRingGuideAlpha',
     });
 
-    const shader = device.createShaderModule({
-      label: 'MoonRingGuide',
-      code: /* wgsl */ `
+    const shader = this.context.createShaderModule(
+      /* wgsl */ `
         struct Uni {
           view_proj: mat4x4f,
           camera_pos: vec4f,
@@ -153,7 +152,9 @@ export class MoonRingGuide {
           return vec4f(c, ring.alpha);
         }
       `,
-    });
+      'MoonRingGuide',
+    );
+    await this.context.awaitShaderCompilation();
 
     const layout = device.createPipelineLayout({
       bindGroupLayouts: [
@@ -174,7 +175,7 @@ export class MoonRingGuide {
       ],
     });
 
-    this.pipeline = device.createRenderPipeline({
+    this.pipeline = await this.context.createRenderPipelineAsync({
       label: 'MoonRingGuide',
       layout,
       vertex: {

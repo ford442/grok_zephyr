@@ -116,6 +116,7 @@ export function resolveCanvasPresentationOptions(
     return {
       format: preferredSdrFormat(),
       alphaMode,
+      colorSpace: 'srgb',
       toneMapping: { mode: 'standard' },
     };
   }
@@ -131,4 +132,16 @@ export function resolveCanvasPresentationOptions(
 /** Human-readable label for the performance dashboard. */
 export function formatPresentationModeLabel(mode: PresentationMode): string {
   return mode === 'hdr' ? 'HDR (extended)' : 'SDR (standard)';
+}
+
+/** Swapchain usage: present only. Capture is 2D `drawImage` of the canvas. */
+export function canvasSwapchainUsage(): GPUTextureUsageFlags {
+  return GPUTextureUsage.RENDER_ATTACHMENT;
+}
+
+/** sRGB view of an 8-bit unorm swapchain for later UI / compositor blending. */
+export function sdrViewFormats(format: GPUTextureFormat): GPUTextureFormat[] {
+  if (format === 'bgra8unorm') return ['bgra8unorm-srgb'];
+  if (format === 'rgba8unorm') return ['rgba8unorm-srgb'];
+  return [];
 }
