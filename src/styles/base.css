@@ -141,6 +141,24 @@ body {
   margin-bottom: 2px;
 }
 
+/*
+ * Close-approach status and honesty line. Deliberately not muted into
+ * invisibility: the caveat that this is not operational collision avoidance
+ * has to stay readable next to the control it qualifies.
+ */
+.capture-note {
+  font-size: clamp(9px, 0.8vw, 10px);
+  line-height: 1.35;
+  color: var(--hud-muted);
+  margin-top: 4px;
+  max-width: 22ch;
+  text-wrap: pretty;
+}
+
+#conjunctionStatus {
+  color: var(--hud-text, #d8e4f0);
+}
+
 .control-group-view {
   min-width: var(--view-group-min-width);
 }

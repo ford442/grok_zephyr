@@ -134,6 +134,16 @@ export async function bootWebGL(
   rt.ui.setConstellationLegend(formatGroupCountLegend(merged.groupCounts));
   rt.ui.setConstellationChips(enabledIds, merged.groupCounts, rt.webglGroupVisibility);
   rt.ui.setRealismControls(false, rt.simulation.hasTleCatalog);
+
+  // Close approaches are a WebGPU compute pass with no GLSL port — the fallback
+  // renderer says so rather than offering a toggle that does nothing.
+  rt.simulation.conjunctionsEnabled = false;
+  rt.simulation.conjunctionUnavailableReason = 'WebGPU only — not available in the WebGL2 fallback';
+  rt.ui.setConjunctionsEnabled(false);
+  rt.ui.setConjunctionsAvailable(false);
+  rt.ui.setConjunctionDensityEnabled(false);
+  rt.ui.setConjunctionStatus('Close pairs: unavailable — WebGPU only');
+  rt.ui.setConjunctionDisclaimer('The WebGL2 fallback renderer has no close-approach pass.');
   rt.dataSourceLabel = dataSourceLabel;
   rt.ui.hideError();
 

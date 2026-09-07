@@ -32,7 +32,9 @@ export async function createScenePipelines({ context, layouts, modules }: Pipeli
     }),
     context.createRenderPipelineAsync({
       label: 'earth',
-      layout: layouts.device.createPipelineLayout({ bindGroupLayouts: [layouts.sceneAtmosphereLayout] }),
+      layout: layouts.device.createPipelineLayout({
+        bindGroupLayouts: [layouts.sceneAtmosphereLayout, layouts.earthMapLayout],
+      }),
       vertex: { module: modules.earth, entryPoint: 'vs', buffers: [layouts.earthVertexLayout] },
       fragment: {
         module: modules.earth,
@@ -128,7 +130,9 @@ export async function createScenePipelines({ context, layouts, modules }: Pipeli
     }),
     context.createRenderPipelineAsync({
       label: 'ground-terrain',
-      layout: layouts.device.createPipelineLayout({ bindGroupLayouts: [layouts.groundTerrainLayout] }),
+      layout: layouts.device.createPipelineLayout({
+        bindGroupLayouts: [layouts.groundTerrainLayout, layouts.earthMapLayout],
+      }),
       vertex: { module: modules.ground, entryPoint: 'vs' },
       fragment: {
         module: modules.ground,

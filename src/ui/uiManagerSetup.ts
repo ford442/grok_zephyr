@@ -29,6 +29,9 @@ export interface UIManagerSetupCallbacks {
   onTrailsToggle: ((enabled: boolean) => void) | null;
   onIslToggle: ((enabled: boolean) => void) | null;
   onIslDensityChange: ((density: number) => void) | null;
+  onConjunctionToggle: ((enabled: boolean) => void) | null;
+  onConjunctionThresholdChange: ((km: number) => void) | null;
+  onConjunctionDensityToggle: ((enabled: boolean) => void) | null;
   onTrailLengthChange: ((mode: 'short' | 'medium' | 'long') => void) | null;
   onExposureModeChange: ((mode: ExposureMode) => void) | null;
   onManualExposureChange: ((value: number) => void) | null;
@@ -54,6 +57,10 @@ export interface UIManagerSetupActions {
   setTrailsEnabled(enabled: boolean): void;
   setIslEnabled(enabled: boolean): void;
   setIslDensity(density: number): void;
+  setConjunctionsEnabled(enabled: boolean): void;
+  setConjunctionThresholdKm(km: number): void;
+  setConjunctionsAvailable(available: boolean): void;
+  setConjunctionDensityEnabled(enabled: boolean): void;
   setDemoAutoEnabled(enabled: boolean): void;
 }
 
@@ -132,6 +139,16 @@ export function getElements(): UIElements {
     islDensitySlider:
       (document.getElementById('islDensity') as HTMLInputElement | null) ?? undefined,
     islDensityValue: document.getElementById('islDensityValue') ?? undefined,
+    conjunctionToggleButton:
+      (document.getElementById('conjunctionToggle') as HTMLButtonElement | null) ?? undefined,
+    conjunctionDensityButton:
+      (document.getElementById('conjunctionDensity') as HTMLButtonElement | null) ?? undefined,
+    conjunctionThresholdSlider:
+      (document.getElementById('conjunctionThreshold') as HTMLInputElement | null) ?? undefined,
+    conjunctionThresholdValue:
+      document.getElementById('conjunctionThresholdValue') ?? undefined,
+    conjunctionStatus: document.getElementById('conjunctionStatus') ?? undefined,
+    conjunctionDisclaimer: document.getElementById('conjunctionDisclaimer') ?? undefined,
     trailsToggleButton:
       (document.getElementById('trailsToggle') as HTMLButtonElement | null) ?? undefined,
     trailsLengthSelect:
@@ -347,6 +364,24 @@ export function setupEventListeners(ctx: UIManagerSetupContext): void {
     const nextEnabled = !(elements.islToggleButton?.classList.contains('active') ?? true);
     actions.setIslEnabled(nextEnabled);
     callbacks.onIslToggle?.(nextEnabled);
+  });
+
+  elements.conjunctionToggleButton?.addEventListener('click', () => {
+    const next = !(elements.conjunctionToggleButton?.classList.contains('active') ?? false);
+    actions.setConjunctionsEnabled(next);
+    callbacks.onConjunctionToggle?.(next);
+  });
+
+  elements.conjunctionDensityButton?.addEventListener('click', () => {
+    const next = !(elements.conjunctionDensityButton?.classList.contains('active') ?? false);
+    actions.setConjunctionDensityEnabled(next);
+    callbacks.onConjunctionDensityToggle?.(next);
+  });
+
+  elements.conjunctionThresholdSlider?.addEventListener('input', () => {
+    const km = parseFloat(elements.conjunctionThresholdSlider?.value ?? '5');
+    actions.setConjunctionThresholdKm(km);
+    callbacks.onConjunctionThresholdChange?.(km);
   });
 
   elements.islDensitySlider?.addEventListener('input', () => {

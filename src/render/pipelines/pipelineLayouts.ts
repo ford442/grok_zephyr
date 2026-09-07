@@ -22,6 +22,7 @@ export interface PipelineLayoutBundle {
   dofCompositeLayout: GPUBindGroupLayout;
   skylineLayout: GPUBindGroupLayout;
   motionBlurLayout: GPUBindGroupLayout;
+  earthMapLayout: GPUBindGroupLayout;
   earthVertexLayout: GPUVertexBufferLayout;
   additiveBlend: GPUBlendState;
   beamComputeLayout: GPUPipelineLayout;
@@ -29,6 +30,9 @@ export interface PipelineLayoutBundle {
   beamCulledRenderLayout: GPUPipelineLayout;
   islComputeLayout: GPUPipelineLayout;
   islFiberLayout: GPUPipelineLayout;
+  conjunctionComputeLayout: GPUPipelineLayout;
+  conjunctionDrawLayout: GPUPipelineLayout;
+  conjunctionDensityLayout: GPUPipelineLayout;
 }
 
 export interface PipelineBuildArgs {
@@ -66,6 +70,20 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
       { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
       { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
       { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+    ],
+  });
+
+  // Earth photometric plate: sampler + albedo/night/cloud plates + settings.
+  // Always bound — unloaded slots hold a 1x1 placeholder so there is one earth
+  // pipeline rather than a textured and a procedural variant.
+  const earthMapLayout = device.createBindGroupLayout({
+    label: 'earth-maps',
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'filtering' } },
+      { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+      { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+      { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+      { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
     ],
   });
 
@@ -335,6 +353,68 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
       }),
     ],
   });
+  // Close approaches: satellite positions in, hash table + pair list out.
+  const conjunctionComputeLayout = device.createPipelineLayout({
+    bindGroupLayouts: [
+      device.createBindGroupLayout({
+        label: 'conjunction-compute',
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+          { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+          { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+        ],
+      }),
+    ],
+  });
+  const conjunctionDrawLayout = device.createPipelineLayout({
+    bindGroupLayouts: [
+      device.createBindGroupLayout({
+        label: 'conjunction-draw',
+        entries: [
+          {
+            binding: 0,
+            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+            buffer: { type: 'uniform' },
+          },
+          { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+          {
+            binding: 2,
+            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+            buffer: { type: 'uniform' },
+          },
+          { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+        ],
+      }),
+    ],
+  });
+
+  const conjunctionDensityLayout = device.createPipelineLayout({
+    bindGroupLayouts: [
+      device.createBindGroupLayout({
+        label: 'conjunction-density',
+        entries: [
+          {
+            binding: 0,
+            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+            buffer: { type: 'uniform' },
+          },
+          { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+          { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+          { binding: 3, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+          {
+            binding: 4,
+            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+            buffer: { type: 'uniform' },
+          },
+        ],
+      }),
+    ],
+  });
+
   const islFiberLayout = device.createPipelineLayout({
     bindGroupLayouts: [
       device.createBindGroupLayout({
@@ -373,6 +453,7 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
     dofCompositeLayout,
     skylineLayout,
     motionBlurLayout,
+    earthMapLayout,
     earthVertexLayout,
     additiveBlend,
     beamComputeLayout,
@@ -380,5 +461,8 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
     beamCulledRenderLayout,
     islComputeLayout,
     islFiberLayout,
+    conjunctionComputeLayout,
+    conjunctionDrawLayout,
+    conjunctionDensityLayout,
   };
 }

@@ -9,6 +9,8 @@ import type { ImageTuningSettings } from '@/core/ImageTuning.js';
 import { packSatelliteVisualUniform, SHIPPING_IMAGE_TUNING } from '@/core/ImageTuning.js';
 import {
   ATMOSPHERE_SETTINGS_BYTE_SIZE,
+  CONJUNCTION_PARAMS_BYTE_SIZE,
+  EARTH_MAP_SETTINGS_BYTE_SIZE,
   AUTO_EXPOSURE_SETTINGS_BYTE_SIZE,
   BLOOM_COMPOSITE_UNI_BYTE_SIZE,
   DOF_UNI_BYTE_SIZE,
@@ -17,6 +19,8 @@ import {
   THRESHOLD_UNI_BYTE_SIZE,
   TONEMAP_UNI_BYTE_SIZE,
   packAtmosphereSettings,
+  packConjunctionParams,
+  packEarthMapSettings,
   packAutoExposureSettings,
   packBloomCompositeUni,
   packDofUni,
@@ -25,6 +29,11 @@ import {
   packThresholdUni,
   packTonemapUni,
 } from '@/shaders/uniformLayouts.js';
+import {
+  EARTH_MAP_CLOUD_GAIN,
+  EARTH_MAP_CLOUD_SPEED,
+  EARTH_MAP_NIGHT_GAIN,
+} from './EarthMaps.js';
 import type { DepthOfFieldQualitySettings } from '@/core/QualityPresets.js';
 import {
   AUTO_EXPOSURE_HISTOGRAM_BINS,
@@ -61,6 +70,10 @@ export class RenderUniformBuffers {
   tonemapUniformBuffer: GPUBuffer | null = null;
   dofUniformBuffer: GPUBuffer | null = null;
   atmosphereSettingsBuffer: GPUBuffer | null = null;
+  earthMapSettingsBuffer: GPUBuffer | null = null;
+  conjunctionParamsBuffer: GPUBuffer | null = null;
+  /** EARTH_MAP_FLAG_* bits for the plates that loaded; 0 = procedural Earth. */
+  earthMapFlags = 0;
   groundParamsBuffer: GPUBuffer | null = null;
   motionBlurUniformBuffer: GPUBuffer | null = null;
   autoExposureHistogramBuffer: GPUBuffer | null = null;
@@ -177,6 +190,25 @@ export class RenderUniformBuffers {
     }
     this.writeAtmosphereScatteringUniform();
 
+    if (!this.earthMapSettingsBuffer) {
+      this.earthMapSettingsBuffer = device.createBuffer({
+        size: EARTH_MAP_SETTINGS_BYTE_SIZE,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        label: 'Earth Map Settings Uniform',
+      });
+    }
+    this.writeEarthMapSettings();
+
+    // 32 bytes, always allocated: the pass's large hash buffers are lazy, but
+    // the params uniform is cheap and keeps the bind group shape fixed.
+    if (!this.conjunctionParamsBuffer) {
+      this.conjunctionParamsBuffer = device.createBuffer({
+        size: CONJUNCTION_PARAMS_BYTE_SIZE,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        label: 'Conjunction Params Uniform',
+      });
+    }
+
     if (!this.groundParamsBuffer) {
       this.groundParamsBuffer = device.createBuffer({
         size: 16,
@@ -275,6 +307,49 @@ export class RenderUniformBuffers {
     this.context.getDevice().queue.writeBuffer(this.atmosphereSettingsBuffer, 0, data);
   }
 
+  /**
+   * Earth plate settings. Written once at init: the cloud sheet scrolls from
+   * `uni.sim_time` in the shader rather than a per-frame CPU update.
+   */
+  writeEarthMapSettings(): void {
+    if (!this.earthMapSettingsBuffer) return;
+    const data = packEarthMapSettings(
+      this.earthMapFlags,
+      EARTH_MAP_CLOUD_SPEED,
+      EARTH_MAP_NIGHT_GAIN,
+      EARTH_MAP_CLOUD_GAIN,
+    );
+    this.context.getDevice().queue.writeBuffer(this.earthMapSettingsBuffer, 0, data);
+  }
+
+  /** Written whenever the toggle, threshold, or fleet size changes. */
+  writeConjunctionParams(params: {
+    enabled: boolean;
+    thresholdKm: number;
+    scanCount: number;
+    bucketMask: number;
+    bucketCapacity: number;
+    maxPairs: number;
+    time: number;
+  }): void {
+    if (!this.conjunctionParamsBuffer) return;
+    this.context
+      .getDevice()
+      .queue.writeBuffer(
+        this.conjunctionParamsBuffer,
+        0,
+        packConjunctionParams(
+          params.enabled,
+          params.thresholdKm,
+          params.scanCount,
+          params.bucketMask,
+          params.bucketCapacity,
+          params.maxPairs,
+          params.time,
+        ),
+      );
+  }
+
   writeGroundViewParams(): void {
     if (!this.groundParamsBuffer) return;
     this.context
@@ -333,6 +408,10 @@ export class RenderUniformBuffers {
     this.dofUniformBuffer = null;
     this.atmosphereSettingsBuffer?.destroy();
     this.atmosphereSettingsBuffer = null;
+    this.earthMapSettingsBuffer?.destroy();
+    this.earthMapSettingsBuffer = null;
+    this.conjunctionParamsBuffer?.destroy();
+    this.conjunctionParamsBuffer = null;
     this.groundParamsBuffer?.destroy();
     this.groundParamsBuffer = null;
     this.motionBlurUniformBuffer?.destroy();

@@ -6,6 +6,7 @@ import { syncTaaToggleUi } from '@/app/GroundObserverUI.js';
 import { getDrawableSize } from '@/app/MobilePresentation.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 import { applyIslForQuality } from '@/app/IslController.js';
+import { applyConjunctionsForQuality } from '@/app/ConjunctionController.js';
 
 export function applyQualityPreset(rt: AppRuntime, level: QualityLevel): void {
   const preset = QUALITY_PRESETS[level];
@@ -48,7 +49,9 @@ export function applyQualityPreset(rt: AppRuntime, level: QualityLevel): void {
   rt.ui.setActiveQualityButton(level);
   rt.ui.setTrailsEnabled(effectiveTrail.enabled);
   rt.ui.setTrailLengthMode(rt.trailLengthMode);
-  applyIslForQuality(rt, level === 'low' || (rt.isMobileDevice && level !== 'cinematic'));
+  const forceOverlaysOff = level === 'low' || (rt.isMobileDevice && level !== 'cinematic');
+  applyIslForQuality(rt, forceOverlaysOff);
+  applyConjunctionsForQuality(rt, forceOverlaysOff);
   saveQualityLevel(level);
 
   console.log(`🎨 Quality preset: ${preset.label} — ${preset.description}`);

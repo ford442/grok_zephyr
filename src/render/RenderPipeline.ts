@@ -12,6 +12,18 @@ import type { ImageTuningSettings } from '@/core/ImageTuning.js';
 import type { DepthOfFieldQualitySettings } from '@/core/QualityPresets.js';
 import { SmileV2Pipeline } from './SmileV2Pipeline.js';
 import { createAtmosphereLUT, type AtmosphereLUTResources } from './AtmosphereLUT.js';
+import { getActiveEarthMapTier } from './EarthMaps.js';
+import { loadEarthTextures, type EarthTextureResources } from './EarthTextures.js';
+import { ConjunctionBuffers, type ConjunctionStats } from './ConjunctionBuffers.js';
+import {
+  encodeConjunctionComputePass,
+  encodeConjunctionDensityPass,
+  encodeConjunctionPass,
+} from './passes/ConjunctionPass.js';
+import {
+  CONJUNCTION_BUCKET_CAPACITY,
+  MAX_CONJUNCTION_PAIRS,
+} from '@/types/conjunction.js';
 import { RenderUniformBuffers } from './RenderUniformBuffers.js';
 import { RenderTargetManager } from './RenderTargets.js';
 import { createPipelines } from './pipelines/PipelineFactory.js';
@@ -79,6 +91,13 @@ export class RenderPipeline {
   private gpuCullingEnabled = true;
   private visibleCountReadbackPending = false;
 
+  private earthTextures: EarthTextureResources | null = null;
+
+  private readonly conjunctionBuffers: ConjunctionBuffers;
+  private conjunctionComputeBindGroup: GPUBindGroup | null = null;
+  private conjunctionDrawBindGroup: GPUBindGroup | null = null;
+  private conjunctionDensityBindGroup: GPUBindGroup | null = null;
+
   private width = 0;
   private height = 0;
   private groundTerrainEnabled = true;
@@ -92,6 +111,7 @@ export class RenderPipeline {
     this.renderTargetManager = new RenderTargetManager(context);
     this.satellitePicker = new SatellitePicker(context);
     this.cullBuffers = new SatelliteCullBuffers(context);
+    this.conjunctionBuffers = new ConjunctionBuffers(context);
   }
 
   async initialize(width: number, height: number): Promise<void> {
@@ -105,6 +125,13 @@ export class RenderPipeline {
     this.pipelines = await createPipelines(this.context);
     this.renderTargets = this.renderTargetManager.initialize(width, height);
     this.atmosphereLUT = createAtmosphereLUT(this.context);
+
+    // Plates load before the bind groups so the cached scene render bundle is
+    // recorded once against final texture views — no late swap, no invalidate.
+    this.earthTextures = await loadEarthTextures(this.context, getActiveEarthMapTier());
+    this.uniforms.earthMapFlags = this.earthTextures.flags;
+    this.uniforms.writeEarthMapSettings();
+
     this.createBindGroups();
 
     this.smileV2Pipeline = new SmileV2Pipeline(this.context, this.buffers);
@@ -157,6 +184,8 @@ export class RenderPipeline {
       !this.pipelines ||
       !this.renderTargets ||
       !this.atmosphereLUT ||
+      !this.earthTextures ||
+      !this.uniforms.earthMapSettingsBuffer ||
       !this.uniforms.bloomThresholdUniformBuffer ||
       !this.uniforms.bloomCompositeUniformBuffer ||
       !this.uniforms.tonemapUniformBuffer ||
@@ -185,6 +214,8 @@ export class RenderPipeline {
       motionBlurUniformBuffer: this.uniforms.motionBlurUniformBuffer,
       satelliteVisualUniformBuffer: this.uniforms.satelliteVisualUniformBuffer,
       cullBuffers: this.cullBuffers,
+      earthTextures: this.earthTextures,
+      earthMapSettingsBuffer: this.uniforms.earthMapSettingsBuffer,
     });
   }
 
@@ -267,6 +298,121 @@ export class RenderPipeline {
 
   encodeIslComputePass(encoder: GPUCommandEncoder): void {
     this.withFrameContext((ctx) => encodeIslComputePass(encoder, ctx));
+  }
+
+  /**
+   * Prepare the close-approach buffers for `fleetSize`. Returns the reason it
+   * could not, so the caller can say so instead of silently rendering nothing.
+   */
+  prepareConjunctions(
+    fleetSize: number,
+    satelliteBufferBytes: number,
+  ): { ok: boolean; reason?: string } {
+    if (!this.pipelines || !this.uniforms.conjunctionParamsBuffer) {
+      return { ok: false, reason: 'render pipeline not initialized' };
+    }
+    const result = this.conjunctionBuffers.ensure(fleetSize, satelliteBufferBytes);
+    if (!result.ok) {
+      this.conjunctionComputeBindGroup = null;
+      this.conjunctionDrawBindGroup = null;
+      this.conjunctionDensityBindGroup = null;
+      return { ok: false, reason: result.reason };
+    }
+
+    const device = this.context.getDevice();
+    const set = result.set;
+    const paramsBuffer = this.uniforms.conjunctionParamsBuffer;
+    this.conjunctionComputeBindGroup = device.createBindGroup({
+      label: 'conjunction-compute',
+      layout: this.pipelines.conjunctionBin.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.buffers.uniforms } },
+        { binding: 1, resource: { buffer: this.currentPositionBuffer() } },
+        { binding: 2, resource: { buffer: set.binCounts } },
+        { binding: 3, resource: { buffer: set.binIndices } },
+        { binding: 4, resource: { buffer: set.pairs } },
+        { binding: 5, resource: { buffer: set.counters } },
+        { binding: 6, resource: { buffer: paramsBuffer } },
+      ],
+    });
+    this.conjunctionDrawBindGroup = device.createBindGroup({
+      label: 'conjunction-draw',
+      layout: this.pipelines.conjunctionDraw.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.buffers.uniforms } },
+        { binding: 1, resource: { buffer: set.pairs } },
+        { binding: 2, resource: { buffer: paramsBuffer } },
+        { binding: 3, resource: { buffer: set.counters } },
+      ],
+    });
+    this.conjunctionDensityBindGroup = device.createBindGroup({
+      label: 'conjunction-density',
+      layout: this.pipelines.conjunctionDensity.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.buffers.uniforms } },
+        { binding: 1, resource: { buffer: this.currentPositionBuffer() } },
+        { binding: 2, resource: { buffer: set.binCounts } },
+        { binding: 3, resource: { buffer: set.binIndices } },
+        { binding: 4, resource: { buffer: paramsBuffer } },
+      ],
+    });
+    return { ok: true };
+  }
+
+  /**
+   * Same resolution the static bind groups use for the position buffer, so the
+   * conjunction pass reads whichever side of a double-buffered pair they do.
+   */
+  private currentPositionBuffer(): GPUBuffer {
+    const positions = this.buffers.positions;
+    return positions instanceof GPUBuffer ? positions : positions.read;
+  }
+
+  writeConjunctionParams(enabled: boolean, thresholdKm: number, time: number): void {
+    const set = this.conjunctionBuffers.get();
+    this.uniforms.writeConjunctionParams({
+      enabled,
+      thresholdKm,
+      scanCount: set?.scanCount ?? 0,
+      bucketMask: set ? set.buckets - 1 : 0,
+      bucketCapacity: CONJUNCTION_BUCKET_CAPACITY,
+      maxPairs: MAX_CONJUNCTION_PAIRS,
+      time,
+    });
+  }
+
+  encodeConjunctionComputePass(encoder: GPUCommandEncoder): void {
+    const set = this.conjunctionBuffers.get();
+    const bindGroup = this.conjunctionComputeBindGroup;
+    if (!set || !bindGroup) return;
+    this.withFrameContext((ctx) => {
+      encodeConjunctionComputePass(encoder, ctx, set, bindGroup);
+      this.conjunctionBuffers.encodeReadback(encoder);
+    });
+  }
+
+  encodeConjunctionPass(encoder: GPUCommandEncoder): void {
+    const bindGroup = this.conjunctionDrawBindGroup;
+    if (!bindGroup) return;
+    this.withFrameContext((ctx) => encodeConjunctionPass(encoder, ctx, bindGroup));
+  }
+
+  encodeConjunctionDensityPass(encoder: GPUCommandEncoder): void {
+    const set = this.conjunctionBuffers.get();
+    const bindGroup = this.conjunctionDensityBindGroup;
+    if (!set || !bindGroup) return;
+    this.withFrameContext((ctx) => encodeConjunctionDensityPass(encoder, ctx, set, bindGroup));
+  }
+
+  async consumeConjunctionStats(): Promise<ConjunctionStats | null> {
+    return this.conjunctionBuffers.consumeReadback();
+  }
+
+  releaseConjunctions(): void {
+    this.conjunctionBuffers.destroy();
+    this.conjunctionComputeBindGroup = null;
+    this.conjunctionDrawBindGroup = null;
+    this.conjunctionDensityBindGroup = null;
   }
 
   encodeIslPass(encoder: GPUCommandEncoder): void {
@@ -533,6 +679,9 @@ export class RenderPipeline {
 
     this.uniforms.destroy();
     this.atmosphereLUT?.texture.destroy();
+    this.earthTextures?.destroy();
+    this.earthTextures = null;
+    this.releaseConjunctions();
     this.atmosphereLUT = null;
 
     if (this.smileV2Pipeline) {

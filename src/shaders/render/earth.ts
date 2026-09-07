@@ -1,14 +1,21 @@
 /**
  * Earth Sphere Shader
- * FBM terrain with biomes, PBR ocean with Fresnel + sun glint, city lights
+ * FBM terrain with biomes, PBR ocean with Fresnel + sun glint, city lights.
+ *
+ * Optional photometric plate on @group(1): Blue Marble albedo, VIIRS night
+ * lights and a MODIS cloud sheet (src/render/EarthTextures.ts). The bindings
+ * are always present — unloaded slots hold a 1x1 placeholder and
+ * `earthMaps.flags` is 0, which selects the procedural path below unchanged.
  */
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
 import { TERRAIN_COMMON } from './terrainCommon.js';
+import { EARTH_MAP_BINDINGS } from './earthMapCommon.js';
 
 export const EARTH_SHADER =
   UNIFORM_STRUCT +
   TERRAIN_COMMON +
+  EARTH_MAP_BINDINGS +
   /* wgsl */ `
 struct VIn  { @location(0) pos:vec3f, @location(1) nrm:vec3f }
 struct VOut { @builtin(position) cp:vec4f, @location(0) wp:vec3f, @location(1) n:vec3f }
@@ -64,17 +71,20 @@ fn getOceanNormal(worldPos:vec3f, time:f32)->vec3f {
 }
 
 fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f32)->vec3f {
+  let deepColor = vec3f(0.02, 0.08, 0.18);
+  let shallowColor = vec3f(0.05, 0.25, 0.40);
+  return oceanColorTinted(worldPos, normal, viewDir, sunDir, time, mix(deepColor, shallowColor, 0.3));
+}
+
+// Same Gerstner/Fresnel/glint ocean, but with the base water color supplied by
+// the caller so the albedo plate's bathymetry survives into the lit result.
+fn oceanColorTinted(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f32, baseColor:vec3f)->vec3f {
   let waveNormal = getOceanNormal(worldPos, time);
   let N = normalize(normal + waveNormal * 0.3);
 
   // Fresnel reflectance
   let VdotN = max(dot(viewDir, N), 0.0);
   let fresnel = schlickFresnel(VdotN, 0.02);
-
-  // Base ocean color with depth variation
-  let deepColor = vec3f(0.02, 0.08, 0.18);
-  let shallowColor = vec3f(0.05, 0.25, 0.40);
-  let baseColor = mix(deepColor, shallowColor, 0.3);
 
   // Diffuse lighting
   let NdotL = max(dot(N, sunDir), 0.0);
@@ -117,64 +127,112 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
   let lat = asin(clamp(wp_rot.z, -1.0, 1.0));
   let lon = atan2(wp_rot.y, wp_rot.x);
 
-  // FBM terrain height sampled in body frame (rotates with the Earth)
-  let terrainPos = wp_rot * 3.0;
-  let height = fbmTerrain(terrainPos, 4);
+  let useAlbedoMap = (earthMaps.flags & 1u) != 0u;
+  let useNightMap  = (earthMaps.flags & 2u) != 0u;
+  let useCloudMap  = (earthMaps.flags & 4u) != 0u;
+
+  // Map UV and its screen-space derivatives. u jumps 1 -> 0 at the
+  // antimeridian; raw dpdx there is ~1 and would select the coarsest mip,
+  // drawing a blurred seam down the Pacific. A half-turn-shifted copy puts the
+  // jump elsewhere, so the smaller of the two derivatives is the honest one.
+  let mapUV = equirectUV(lat, lon);
+  let mapUVShifted = fract(mapUV + vec2f(0.5, 0.0));
+  let ddxRaw = dpdx(mapUV);
+  let ddyRaw = dpdy(mapUV);
+  let ddxAlt = dpdx(mapUVShifted);
+  let ddyAlt = dpdy(mapUVShifted);
+  let mapDdx = vec2f(select(ddxRaw.x, ddxAlt.x, abs(ddxAlt.x) < abs(ddxRaw.x)), ddxRaw.y);
+  let mapDdy = vec2f(select(ddyRaw.x, ddyAlt.x, abs(ddyAlt.x) < abs(ddyRaw.x)), ddyRaw.y);
 
   // Sun–surface dot product (in ECI frame for correct terminator)
   let sunDot = dot(N, sun_dir);
   let diff   = max(sunDot, 0.0);
 
-  // Determine land vs ocean
-  let isLand = height > 0.45;
-
   // Ice caps (polar regions + high altitude)
   let pole = smoothstep(1.1, 1.4, abs(lat));
-  let snowLine = smoothstep(0.82, 0.88, height) * (1.0 - abs(lat) / (PI / 2.0));
 
+  var height = 0.0;
+  var isLand = false;
   var surf: vec3f;
-  if (isLand) {
-    // Terrain normal from body-frame height gradient for self-shadowing
-    let eps = 0.01;
-    let hL = fbmTerrain(normalize(vec3f(wp_rot.x - eps, wp_rot.y, wp_rot.z)) * 3.0, 4);
-    let hR = fbmTerrain(normalize(vec3f(wp_rot.x + eps, wp_rot.y, wp_rot.z)) * 3.0, 4);
-    let hD = fbmTerrain(normalize(vec3f(wp_rot.x, wp_rot.y - eps, wp_rot.z)) * 3.0, 4);
-    let hU = fbmTerrain(normalize(vec3f(wp_rot.x, wp_rot.y + eps, wp_rot.z)) * 3.0, 4);
-    let gradient = vec2f(hR - hL, hU - hD) / (2.0 * eps);
-    let terrNormBody = normalize(vec3f(-gradient.x, -gradient.y, 1.0));
-    // Rotate terrain normal back to ECI frame for correct lighting (inverse of wp_rot above)
-    let terrNormECI = vec3f(
-      terrNormBody.x * cosR - terrNormBody.y * sinR,
-      terrNormBody.x * sinR + terrNormBody.y * cosR,
-      terrNormBody.z
-    );
-    let modN = normalize(N + terrNormECI * 0.3);
 
-    // Slope from terrain gradient magnitude
-    let slope = 1.0 - abs(dot(terrNormBody, vec3f(0.0, 0.0, 1.0)));
-
-    // Get biome color
-    surf = biomeColor(height, lat, slope);
-
-    // Apply ice/snow
-    surf = mix(surf, vec3f(0.90, 0.92, 0.95), max(pole, snowLine));
-
-    // Lighting with terrain-modulated normal
-    let NdotL = max(dot(modN, sun_dir), 0.0);
-    surf = surf * (NdotL * 0.92 + 0.04);
+  if (useAlbedoMap) {
+    let alb = textureSampleGrad(albedoMap, earthMapSampler, mapUV, mapDdx, mapDdy).rgb;
+    // Ocean mask derived from the plate itself rather than a second texture:
+    // open water is the only place where blue clearly dominates. Ice and cloud
+    // are near-neutral, land is green/brown.
+    let oceanMask = smoothstep(0.015, 0.10, alb.b - max(alb.r, alb.g));
+    isLand = oceanMask < 0.5;
+    // The FBM height only still feeds the procedural city lights, so it is
+    // worth computing when no night plate is loaded (the 'low' tier).
+    if (!useNightMap) {
+      height = fbmTerrain(wp_rot * 3.0, 4);
+    }
+    let NdotL = max(dot(N, sun_dir), 0.0);
+    let landSurf = alb * (NdotL * 0.92 + 0.04);
+    let seaSurf = oceanColorTinted(in.wp, N, V, sun_dir, uni.time, alb);
+    surf = mix(landSurf, seaSurf, oceanMask);
   } else {
-    // PBR Ocean with Fresnel and sun glint
-    surf = oceanColor(in.wp, N, V, sun_dir, uni.time);
-    surf = mix(surf, vec3f(0.90, 0.92, 0.95), pole);
+    // FBM terrain height sampled in body frame (rotates with the Earth)
+    let terrainPos = wp_rot * 3.0;
+    height = fbmTerrain(terrainPos, 4);
+
+    // Determine land vs ocean
+    isLand = height > 0.45;
+
+    let snowLine = smoothstep(0.82, 0.88, height) * (1.0 - abs(lat) / (PI / 2.0));
+
+    if (isLand) {
+      // Terrain normal from body-frame height gradient for self-shadowing
+      let eps = 0.01;
+      let hL = fbmTerrain(normalize(vec3f(wp_rot.x - eps, wp_rot.y, wp_rot.z)) * 3.0, 4);
+      let hR = fbmTerrain(normalize(vec3f(wp_rot.x + eps, wp_rot.y, wp_rot.z)) * 3.0, 4);
+      let hD = fbmTerrain(normalize(vec3f(wp_rot.x, wp_rot.y - eps, wp_rot.z)) * 3.0, 4);
+      let hU = fbmTerrain(normalize(vec3f(wp_rot.x, wp_rot.y + eps, wp_rot.z)) * 3.0, 4);
+      let gradient = vec2f(hR - hL, hU - hD) / (2.0 * eps);
+      let terrNormBody = normalize(vec3f(-gradient.x, -gradient.y, 1.0));
+      // Rotate terrain normal back to ECI frame for correct lighting (inverse of wp_rot above)
+      let terrNormECI = vec3f(
+        terrNormBody.x * cosR - terrNormBody.y * sinR,
+        terrNormBody.x * sinR + terrNormBody.y * cosR,
+        terrNormBody.z
+      );
+      let modN = normalize(N + terrNormECI * 0.3);
+
+      // Slope from terrain gradient magnitude
+      let slope = 1.0 - abs(dot(terrNormBody, vec3f(0.0, 0.0, 1.0)));
+
+      // Get biome color
+      surf = biomeColor(height, lat, slope);
+
+      // Apply ice/snow
+      surf = mix(surf, vec3f(0.90, 0.92, 0.95), max(pole, snowLine));
+
+      // Lighting with terrain-modulated normal
+      let NdotL = max(dot(modN, sun_dir), 0.0);
+      surf = surf * (NdotL * 0.92 + 0.04);
+    } else {
+      // PBR Ocean with Fresnel and sun glint
+      surf = oceanColor(in.wp, N, V, sun_dir, uni.time);
+      surf = mix(surf, vec3f(0.90, 0.92, 0.95), pole);
+    }
   }
 
   // Soft terminator: orange-red atmospheric twilight scattering at the day/night boundary
   let twilightBand = smoothstep(-TWILIGHT_COS_HALF, 0.0, sunDot) * (1.0 - smoothstep(0.0, TWILIGHT_COS_HALF, sunDot));
   surf += vec3f(1.0, 0.38, 0.08) * twilightBand * 0.22;
 
-  // City lights: FBM-based for plausible coastal/river density patterns
-  // (shared with the Ground View horizon shader via cityLightEmission).
-  let cityWarm = cityLightEmission(lat, lon, height, isLand, sunDot);
+  // City lights: the VIIRS plate when loaded, otherwise FBM-based coastal/river
+  // density patterns (shared with the Ground View horizon shader).
+  var cityWarm: vec3f;
+  if (useNightMap) {
+    let dnb = textureSampleGrad(nightMap, earthMapSampler, mapUV, mapDdx, mapDdy).rgb;
+    // Squared: the DNB composite has a low airglow floor over empty land and
+    // ocean, and squaring pushes that down while keeping city cores bright.
+    let nightSide = smoothstep(0.05, -0.20, sunDot);
+    cityWarm = dnb * dnb * earthMaps.night_gain * nightSide;
+  } else {
+    cityWarm = cityLightEmission(lat, lon, height, isLand, sunDot);
+  }
 
   let viewDir = normalize(uni.camera_pos.xyz - in.wp);
   let horizonFactor = clamp(1.0 - abs(dot(N, viewDir)), 0.0, 1.0);
@@ -183,10 +241,17 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
   let nightAtm = vec3f(0.05, 0.08, 0.18) * (1.0 - diff);
   surf += (dayAtm + nightAtm) * pow(horizonFactor, 1.8) * 0.36 * 0.7;
 
-  // Procedural animated cloud layer (2-octave, cheap).
-  // Sampled from body-frame rotated position and driven by sim_time so cloud
-  // motion is visible at any time scale (not just real-time).
-  let cloudSample = cloudNoise(wp_rot, uni.sim_time);
+  // Cloud layer: the MODIS sheet scrolled in longitude when loaded, otherwise a
+  // 2-octave procedural noise. Both are driven by sim_time so cloud motion is
+  // visible at any time scale (not just real-time).
+  var cloudSample: f32;
+  if (useCloudMap) {
+    let scrollUV = vec2f(mapUV.x + fract(uni.sim_time * earthMaps.cloud_speed), mapUV.y);
+    cloudSample =
+      textureSampleGrad(cloudMap, earthMapSampler, scrollUV, mapDdx, mapDdy).r * earthMaps.cloud_gain;
+  } else {
+    cloudSample = cloudNoise(wp_rot, uni.sim_time);
+  }
   let cloudAlpha = smoothstep(0.44, 0.62, cloudSample);
   // Forward-scatter brightening on cloud edges facing the sun
   let cloudEdge = smoothstep(0.62, 0.80, cloudSample) * (1.0 - cloudAlpha);

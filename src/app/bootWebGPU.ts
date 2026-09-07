@@ -2,6 +2,12 @@ import { WebGPUContext } from '@/core/WebGPUContext.js';
 import type { WebGPUErrorReport } from '@/core/WebGPUErrorReporter.js';
 import { resolveCanvasPresentationOptions } from '@/core/HdrPresentation.js';
 import { loadSavedQualityLevel } from '@/core/QualityPresets.js';
+import { REQUESTED_OPTIONAL_FEATURES } from '@/core/GpuCapabilities.js';
+import {
+  EARTH_MAP_OPTIONAL_FEATURES,
+  parseEarthMapTier,
+  setActiveEarthMapTier,
+} from '@/render/EarthMaps.js';
 import { parseInitialStateFromURL } from '@/app/UrlState.js';
 import { setupMobileOrientationSupport } from '@/app/MobilePresentation.js';
 import { createGpuResources } from '@/app/createGpuResources.js';
@@ -56,9 +62,19 @@ export async function bootWebGPU(
     loadSavedQualityLevel() ??
     (rt.isMobileDevice ? rt.mobileDefaultQuality : 'high');
 
+  // Earth plates are decided before the device exists: device features are
+  // frozen at creation, so `texture-compression-*` cannot be added later when
+  // the first .ktx2 arrives (see GpuCapabilities.REQUESTED_OPTIONAL_FEATURES).
+  const earthMapTier = parseEarthMapTier(window.location.search, initialQuality);
+  setActiveEarthMapTier(earthMapTier);
+
   rt.context = new WebGPUContext(rt.canvas, {
     canvas: resolveCanvasPresentationOptions(initialQuality),
     qualityLevel: initialQuality,
+    optionalFeatures:
+      earthMapTier === 'off'
+        ? [...REQUESTED_OPTIONAL_FEATURES]
+        : [...REQUESTED_OPTIONAL_FEATURES, ...EARTH_MAP_OPTIONAL_FEATURES],
     onDeviceLost: (info) => {
       void hooks.onDeviceLost(info);
     },

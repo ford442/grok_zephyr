@@ -11,6 +11,9 @@ export interface PipelineShaderModules {
   beamCompute: GPUShaderModule;
   islCompute: GPUShaderModule;
   islFiber: GPUShaderModule;
+  conjunctionCompute: GPUShaderModule;
+  conjunctionDraw: GPUShaderModule;
+  conjunctionDensity: GPUShaderModule;
   autoExposureHistogram: GPUShaderModule;
   autoExposureAdapt: GPUShaderModule;
   stars: GPUShaderModule;
@@ -45,6 +48,9 @@ export function createPipelineModules(context: WebGPUContext): PipelineShaderMod
     beamCompute: shader(SHADERS.compute.beam, 'beam-compute'),
     islCompute: shader(SHADERS.compute.isl, 'isl-compute'),
     islFiber: shader(SHADERS.render.isl, 'isl-fiber'),
+    conjunctionCompute: shader(SHADERS.compute.conjunction, 'conjunction-compute'),
+    conjunctionDraw: shader(SHADERS.render.conjunction, 'conjunction-draw'),
+    conjunctionDensity: shader(SHADERS.render.conjunctionDensity, 'conjunction-density'),
     autoExposureHistogram: shader(
       SHADERS.render.postProcess.autoExposureHistogram,
       'auto-exposure-histogram',

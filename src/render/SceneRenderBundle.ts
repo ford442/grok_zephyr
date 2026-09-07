@@ -64,6 +64,7 @@ export class SceneRenderBundle {
     const drawEarth = (): void => {
       bundleEncoder.setPipeline(ctx.pipelines.earth);
       bundleEncoder.setBindGroup(0, ctx.bindGroups.earth);
+      bundleEncoder.setBindGroup(1, ctx.bindGroups.earthMaps);
       bundleEncoder.setVertexBuffer(0, earthVertexBuffer);
       bundleEncoder.setIndexBuffer(earthIndexBuffer, 'uint32');
       bundleEncoder.drawIndexed(earthIndexCount);
@@ -81,6 +82,7 @@ export class SceneRenderBundle {
       if (key.groundTerrainEnabled) {
         bundleEncoder.setPipeline(ctx.pipelines.groundTerrain);
         bundleEncoder.setBindGroup(0, ctx.bindGroups.groundTerrain);
+        bundleEncoder.setBindGroup(1, ctx.bindGroups.groundEarthMaps);
         bundleEncoder.draw(6);
       }
     } else if (key.variant !== 'moon') {

@@ -21,6 +21,7 @@ import {
   REQUESTED_OPTIONAL_FEATURES,
   snapshotAdapter,
   type GpuCapabilityProfile,
+  type OptionalGpuFeature,
 } from '@/core/GpuCapabilities.js';
 import {
   canvasSwapchainUsage,
@@ -177,8 +178,9 @@ export class WebGPUContext {
 
       const requiredLimits = this.buildRequiredLimits(this.fleetScale.count);
       const requiredFeatures = this.getRequiredFeatures();
+      const requestedOptional = this.requestedOptionalFeatures();
       const optionalFeatures = selected.profile.enabledOptional.filter((feature) =>
-        (this.options.optionalFeatures ?? REQUESTED_OPTIONAL_FEATURES).includes(feature),
+        requestedOptional.includes(feature),
       );
 
       this.validateAdapterRequirements(requiredLimits, requiredFeatures);
@@ -319,7 +321,7 @@ export class WebGPUContext {
 
     const chosen = chooseAdapterCandidate(
       gathered.map(({ preference, snapshot }) => ({ preference, snapshot })),
-      { search, quality },
+      { search, quality, requestedOptional: this.requestedOptionalFeatures() },
     );
     if (!chosen) {
       throw new WebGPUError(
@@ -350,6 +352,17 @@ export class WebGPUContext {
 
   private getRequiredFeatures(): GPUFeatureName[] {
     return [...new Set(this.options.requiredFeatures ?? [])];
+  }
+
+  /**
+   * Optional features to ask the adapter for. `optionalFeatures` may add names
+   * beyond REQUESTED_OPTIONAL_FEATURES — the textured Earth adds the
+   * `texture-compression-*` set — and features are frozen once the device
+   * exists, so this is resolved before both adapter ranking and requestDevice.
+   */
+  private requestedOptionalFeatures(): readonly OptionalGpuFeature[] {
+    const requested = this.options.optionalFeatures ?? REQUESTED_OPTIONAL_FEATURES;
+    return requested as readonly OptionalGpuFeature[];
   }
 
   private validateAdapterRequirements(

@@ -157,7 +157,7 @@ grok_zephyr/
         ├── render/
         │   ├── index.ts          # Render shader exports
         │   ├── stars.ts          # Starfield background
-        │   ├── earth.ts          # Earth sphere rendering
+        │   ├── earth.ts          # Earth sphere rendering (+ optional photometric plates)
         │   ├── atmosphere.ts     # Atmospheric limb glow
         │   ├── satellites.ts     # Satellite billboards (canonical sharp kernel)
         │   ├── beam.ts           # Laser beam rendering
@@ -303,6 +303,14 @@ Optical ISL mesh (`docs/ISL.md`): ≤128k fibers, plane-neighbor Walker topology
 
 See **`docs/FRAMES.md`**. SGP4 TEME is used as the render ECI (no GCRF conversion). Sun lighting: **ART** (default XY-plane cinematic sun) vs **ASTRO** (`?sun=astro`, UTC geometric sun). Earth/Ground View surface rotation: legacy sim-time spin by default (**ART**, bit-identical to visual baselines) vs true-GMST rotation (`?sun=astro` always, or `?earth=1` under ART) that agrees with ground-station ECEF↔ECI — single GMST source is `src/physics/frames.ts::gmstRad`.
 
+## Earth surface
+
+See **`docs/EARTH_MAPS.md`**. Procedural FBM biomes/ocean/city-lights by default. `?earthmap=low|balanced|high|on` swaps in ETC1S KTX2 plates from `public/earth/` (Blue Marble albedo, VIIRS night lights, MODIS clouds), transcoded to BC7/ASTC/ETC2 at load by `public/basis/`. The tier is resolved in `bootWebGPU` **before** `requestDevice` — `texture-compression-*` cannot be added to a live device — and plates load before the bind groups so the cached scene render bundle needs no invalidation. `?earth=proc` forces procedural; unloaded slots hold a 1x1 placeholder so there is one earth pipeline, not two. Ground View samples the same plates at grazing incidence, distance-blended over the FBM — `src/shaders/render/earthMapCommon.ts` is the shared `@group(1)` block.
+
+## Close approaches
+
+See **`docs/CONJUNCTIONS.md`**. Off by default (`?ca=1&caKm=5`, `?caDensity=1`). GPU spatial hash: `clear_bins` / `bin_sats` / `find_pairs` in `src/shaders/compute/conjunction.ts`, cell size = threshold so the 27-cell neighbourhood is exact. `src/physics/conjunctionHash.ts` is the CPU reference the WGSL mirrors and the tests pin (brute-force cross-checked). Plain `atomicAdd`, no `subgroups`. **Buffers are lazily allocated**: `calculateSatelliteBufferBudget` at 1M already reaches the 128 MB Pascal cap exactly, so the pass declines with a HUD reason above ~524k satellites instead of tripping `assertBufferBudget`. Not SSA — the UI copy never claims operational collision avoidance, and a test asserts that.
+
 ## Physics Modes
 
 Controlled by the "PHYSICS MODE" UI buttons:
@@ -344,7 +352,7 @@ lives in `src/app/App.ts`.
 - Time scale and quality preset control
 - Device loss recovery and error handling
 
-**src/core/GpuCapabilities.ts**: Adapter probe / optional-feature catalog / depth + bloom format / fleet ranking. Matrix: `docs/GPU_CAPABILITIES.md`.
+**src/core/GpuCapabilities.ts**: Adapter probe / optional-feature catalog / depth + bloom format / fleet ranking. Matrix and texture-memory budget: `docs/GPU_CAPABILITIES.md`.
 
 **src/core/WebGPUContext.ts**: WebGPU abstraction layer handling:
 

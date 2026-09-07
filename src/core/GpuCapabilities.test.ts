@@ -12,6 +12,7 @@ import {
   selectOptionalFeatures,
   type AdapterSnapshot,
 } from './GpuCapabilities.js';
+import { EARTH_MAP_OPTIONAL_FEATURES } from '@/render/EarthMaps.js';
 
 function snapshot(partial: {
   features?: string[];
@@ -49,14 +50,29 @@ describe('GpuCapabilities', () => {
     expect(missing).toContain('shader-f16');
   });
 
+  it('leaves the texture-compression set unrequested until ?earthmap= asks for it', () => {
+    // The names are in the catalog (EarthTextures binds them) but not in the
+    // default request set — bootWebGPU appends them only for a textured Earth.
+    for (const feature of EARTH_MAP_OPTIONAL_FEATURES) {
+      expect(REQUESTED_OPTIONAL_FEATURES).not.toContain(feature);
+    }
+    const adapter = snapshot({
+      features: ['timestamp-query', 'shader-f16', ...EARTH_MAP_OPTIONAL_FEATURES],
+    });
+    expect(selectOptionalFeatures(adapter).enabled).toEqual(['timestamp-query', 'shader-f16']);
+    expect(
+      selectOptionalFeatures(adapter, [
+        ...REQUESTED_OPTIONAL_FEATURES,
+        ...EARTH_MAP_OPTIONAL_FEATURES,
+      ]).enabled,
+    ).toEqual(['timestamp-query', 'shader-f16', ...EARTH_MAP_OPTIONAL_FEATURES]);
+  });
+
   it('does not treat deferred optional features as requested even when the adapter has them', () => {
     expect(DEFERRED_OPTIONAL_FEATURES).toEqual(
       expect.arrayContaining([
         'float32-filterable',
         'bgra8unorm-storage',
-        'texture-compression-bc',
-        'texture-compression-etc2',
-        'texture-compression-astc',
         'subgroups',
         'timestamp-query-inside-passes',
       ]),

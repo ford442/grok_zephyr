@@ -43,6 +43,8 @@ export interface PipelineBindGroups {
   satelliteCull: GPUBindGroup;
   stars: GPUBindGroup;
   earth: GPUBindGroup;
+  earthMaps: GPUBindGroup;
+  groundEarthMaps: GPUBindGroup;
   atmosphere: GPUBindGroup;
   satellites: GPUBindGroup;
   satellitesCulled: GPUBindGroup;
@@ -64,6 +66,11 @@ export interface Pipelines {
   beamCompute: GPUComputePipeline;
   islCompute: GPUComputePipeline;
   islFiber: GPURenderPipeline;
+  conjunctionClear: GPUComputePipeline;
+  conjunctionBin: GPUComputePipeline;
+  conjunctionPairs: GPUComputePipeline;
+  conjunctionDraw: GPURenderPipeline;
+  conjunctionDensity: GPURenderPipeline;
   satelliteCullSats: GPUComputePipeline;
   satelliteCullBeams: GPUComputePipeline;
   satelliteCullFinalize: GPUComputePipeline;

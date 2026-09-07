@@ -7,6 +7,7 @@ import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
 import type { PipelineBindGroups, Pipelines, RenderTargets } from './types.js';
 
 import type { SatelliteCullBuffers } from '../SatelliteCullBuffers.js';
+import type { EarthTextureResources } from '../EarthTextures.js';
 
 export interface BindGroupResources {
   context: WebGPUContext;
@@ -24,6 +25,8 @@ export interface BindGroupResources {
   motionBlurUniformBuffer: GPUBuffer;
   satelliteVisualUniformBuffer: GPUBuffer;
   cullBuffers: SatelliteCullBuffers;
+  earthTextures: EarthTextureResources;
+  earthMapSettingsBuffer: GPUBuffer;
 }
 
 export function createStaticBindGroups(resources: BindGroupResources): PipelineBindGroups {
@@ -43,6 +46,8 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
     motionBlurUniformBuffer,
     satelliteVisualUniformBuffer,
     cullBuffers,
+    earthTextures,
+    earthMapSettingsBuffer,
   } = resources;
 
   const device = context.getDevice();
@@ -130,6 +135,28 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
         { binding: 1, resource: atmosphereLUTView },
         { binding: 2, resource: linearSampler },
         { binding: 3, resource: { buffer: atmosphereSettingsBuffer } },
+      ],
+    }),
+
+    earthMaps: device.createBindGroup({
+      layout: pipelines.earth.getBindGroupLayout(1),
+      entries: [
+        { binding: 0, resource: earthTextures.sampler },
+        { binding: 1, resource: earthTextures.albedoView },
+        { binding: 2, resource: earthTextures.nightView },
+        { binding: 3, resource: earthTextures.cloudsView },
+        { binding: 4, resource: { buffer: earthMapSettingsBuffer } },
+      ],
+    }),
+
+    groundEarthMaps: device.createBindGroup({
+      layout: pipelines.groundTerrain.getBindGroupLayout(1),
+      entries: [
+        { binding: 0, resource: earthTextures.sampler },
+        { binding: 1, resource: earthTextures.albedoView },
+        { binding: 2, resource: earthTextures.nightView },
+        { binding: 3, resource: earthTextures.cloudsView },
+        { binding: 4, resource: { buffer: earthMapSettingsBuffer } },
       ],
     }),
 

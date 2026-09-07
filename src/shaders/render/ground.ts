@@ -9,7 +9,10 @@
  *    (camera basis + FOV extracted from the matrix rows).
  *  - Rays that hit the Earth sample the same procedural FBM terrain, biome
  *    palette, and city-light clusters as the orbital Earth shader
- *    (terrainCommon.ts), so the horizon matches the photoreal globe.
+ *    (terrainCommon.ts), so the horizon matches the photoreal globe. When the
+ *    photometric plates are loaded (`?earthmap=`) it samples those same
+ *    textures — there is no second Earth — blended in by distance so the FBM
+ *    keeps supplying near-field detail the plates cannot resolve.
  *  - Rays that miss get a physically-plausible sky: twilight scattering,
  *    a low-altitude Mie haze band hugging the horizon (atmosphere LUT when
  *    enabled), and a night-side city-light glow band along the horizon.
@@ -22,10 +25,12 @@
 
 import { UNIFORM_STRUCT } from '../uniforms.js';
 import { TERRAIN_COMMON } from './terrainCommon.js';
+import { EARTH_MAP_BINDINGS } from './earthMapCommon.js';
 
 export const GROUND_TERRAIN =
   UNIFORM_STRUCT +
   TERRAIN_COMMON +
+  EARTH_MAP_BINDINGS +
   /* wgsl */ `
 struct AtmosphereSettings {
   scatteringEnabled: u32,
@@ -184,13 +189,39 @@ fn fs(in: VOut) -> @location(0) vec4f {
       surf += mix(vec3f(0.02, 0.03, 0.07), vec3f(0.40, 0.55, 0.80), day) * fresnel * 0.5;
     }
 
+    // ── Photometric plates, if loaded ──────────────────────────────────────
+    // The same albedo/night textures the orbital shader samples, at grazing
+    // incidence. Weighted in by ray distance: a 4K equirect texel is ~10 km, so
+    // near the observer the FBM detail is what the horizon view exists to show,
+    // while far ground reads as real geography. Explicit LOD rather than
+    // derivatives — this sampling sits inside the hitsGround branch, which is
+    // not uniform control flow, and the ray footprint grows with t anyway.
+    let plateWeight = smoothstep(30.0, 500.0, t) * 0.8;
+    if ((earthMaps.flags & 1u) != 0u) {
+      let plateLod = clamp(log2(max(t, 1.0) / 40.0), 0.0, 10.0);
+      let plate = textureSampleLevel(albedoMap, earthMapSampler, equirectUV(lat, lon), plateLod).rgb;
+      let plateLit = plate * (max(dot(N, sunDir), 0.0) * 0.92 + 0.05);
+      surf = mix(surf, plateLit, plateWeight);
+    }
+
     // Twilight band along the terminator
     let twilightBand = smoothstep(-TWILIGHT_COS_HALF, 0.0, sunDot)
       * (1.0 - smoothstep(0.0, TWILIGHT_COS_HALF, sunDot));
     surf += vec3f(1.0, 0.38, 0.08) * twilightBand * 0.22;
 
     // Night-side city lights, boosted by the preset urban glow
-    surf += cityLightEmission(lat, lon, height, isLand, sunDot) * (1.0 + ground.urban_glow * 1.6);
+    let urbanGlow = 1.0 + ground.urban_glow * 1.6;
+    let fbmLights = cityLightEmission(lat, lon, height, isLand, sunDot) * urbanGlow;
+    if ((earthMaps.flags & 2u) != 0u) {
+      let dnbLod = clamp(log2(max(t, 1.0) / 40.0), 0.0, 10.0);
+      let dnb = textureSampleLevel(nightMap, earthMapSampler, equirectUV(lat, lon), dnbLod).rgb;
+      // Squared, same as the orbital shader: drops the DNB airglow floor.
+      let plateLights =
+        dnb * dnb * earthMaps.night_gain * smoothstep(0.05, -0.20, sunDot) * urbanGlow;
+      surf += mix(fbmLights, plateLights, plateWeight);
+    } else {
+      surf += fbmLights;
+    }
 
     // ── Aerial perspective: distance haze toward the limb ──────────────────
     let hazeAmt = clamp((1.0 - exp(-t * 0.0018)) * ground.haze_boost, 0.0, 1.0);

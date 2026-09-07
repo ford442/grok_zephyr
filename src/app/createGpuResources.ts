@@ -11,6 +11,13 @@ import { getFleetScale } from '@/core/FleetScale.js';
 import { formatGpuCapabilityLine } from '@/core/GpuCapabilities.js';
 import { loadSavedQualityLevel, type QualityLevel } from '@/core/QualityPresets.js';
 import { parseInitialStateFromURL } from '@/app/UrlState.js';
+import {
+  conjunctionDisclaimer,
+  parseConjunctionParams,
+  setConjunctionDensityEnabled,
+  setConjunctionThresholdKm,
+  setConjunctionsEnabled,
+} from '@/app/ConjunctionController.js';
 import { applyQualityPreset } from '@/app/QualityController.js';
 import { applyExposureSettings } from '@/app/AppCallbackBinder.js';
 import { setupImageTuning } from '@/app/ViewModeCoordinator.js';
@@ -173,6 +180,20 @@ export async function createGpuResources(
     setSunLightingMode(rt, urlParams.sunMode ?? readStoredSunMode() ?? 'art');
     if (urlParams.earthRotate !== null) rt.simulation.earthRotationEnabled = urlParams.earthRotate;
     applyGrowthFromUrl();
+
+    // ?ca=1&caKm=<n>. Applied after applyQualityPreset so an explicit deep link
+    // wins over the quality rule that otherwise leaves the overlay off.
+    const conjunctionUrl = parseConjunctionParams(window.location.search);
+    if (conjunctionUrl.thresholdKm !== null) {
+      setConjunctionThresholdKm(rt, conjunctionUrl.thresholdKm);
+    } else {
+      rt.ui.setConjunctionThresholdKm(rt.simulation.conjunctionThresholdKm);
+    }
+    if (conjunctionUrl.enabled !== null) {
+      setConjunctionsEnabled(rt, conjunctionUrl.enabled);
+    }
+    setConjunctionDensityEnabled(rt, conjunctionUrl.density ?? false);
+    rt.ui.setConjunctionDisclaimer(conjunctionDisclaimer(rt.simulation.realismMode));
 
     if (urlParams.patternMode !== null) {
       setPatternMode(rt, urlParams.patternMode);

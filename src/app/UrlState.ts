@@ -28,6 +28,13 @@ export interface InitialUrlState {
  *   ?sun=art|astro       cinematic XY sun vs UTC geometric sun
  *   ?earth=0|1           GMST-true Earth/ground-view rotation (default 0 under art sun;
  *                        always on under ?sun=astro — see docs/FRAMES.md)
+ *   ?earthmap=off|low|balanced|high|on
+ *                        photometric Earth plates (Blue Marble albedo, VIIRS night
+ *                        lights, MODIS clouds). Default off — procedural FBM. Parsed
+ *                        by src/render/EarthMaps.ts at boot, not here, because the
+ *                        tier decides which texture-compression features the device
+ *                        is created with. `?earth=proc` also forces procedural.
+ *                        See docs/EARTH_MAPS.md.
  *   ?era=YYYY-MM         constellation growth deep link (launch-era scrub)
  *   ?t=ISO8601           initial simulated UTC (shareable moment)
  *   ?rate=<n>            sim rate multiplier (0 = paused, up to 10000)

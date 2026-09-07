@@ -9,6 +9,8 @@ export { satellites, satellitesCulled } from './satellites.js';
 export { SATELLITE_PICK_SHADER as satellitesPick } from './satellitesPick.js';
 export { BEAM_SHADER as beam, BEAM_CULLED_SHADER as beamCulled } from './beam.js';
 export { ISL_SHADER as isl } from './isl.js';
+export { CONJUNCTION_SHADER as conjunction } from './conjunction.js';
+export { CONJUNCTION_DENSITY_SHADER as conjunctionDensity } from './conjunctionDensity.js';
 export { GROUND_TERRAIN as ground } from './ground.js';
 export { SKYLINE_BUILDINGS as skyline } from './skyline.js';
 export { VOLUMETRIC_BEAM_SHADER as volumetricBeam } from './volumetricBeams.js';

@@ -74,6 +74,9 @@ export class UIManager {
     onTrailsToggle: null,
     onIslToggle: null,
     onIslDensityChange: null,
+    onConjunctionToggle: null,
+    onConjunctionThresholdChange: null,
+    onConjunctionDensityToggle: null,
     onTrailLengthChange: null,
     onExposureModeChange: null,
     onManualExposureChange: null,
@@ -582,6 +585,18 @@ export class UIManager {
     this.callbacks.onImageTuningChange = callback;
   }
 
+  onConjunctionToggle(callback: (enabled: boolean) => void): void {
+    this.callbacks.onConjunctionToggle = callback;
+  }
+
+  onConjunctionThresholdChange(callback: (km: number) => void): void {
+    this.callbacks.onConjunctionThresholdChange = callback;
+  }
+
+  onConjunctionDensityToggle(callback: (enabled: boolean) => void): void {
+    this.callbacks.onConjunctionDensityToggle = callback;
+  }
+
   onGodIdleOrbitToggle(callback: (enabled: boolean) => void): void {
     this.callbacks.onGodIdleOrbitToggle = callback;
   }
@@ -682,6 +697,52 @@ export class UIManager {
     const label = this.elements.islDensityValue;
     if (slider) slider.value = String(density);
     if (label) label.textContent = `${Math.round(density * 100)}%`;
+  }
+
+  setConjunctionsEnabled(enabled: boolean): void {
+    const btn = this.elements.conjunctionToggleButton;
+    if (!btn) return;
+    btn.textContent = enabled ? 'CLOSE APPROACH ON' : 'CLOSE APPROACH OFF';
+    btn.classList.toggle('active', enabled);
+    btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  }
+
+  setConjunctionDensityEnabled(enabled: boolean): void {
+    const btn = this.elements.conjunctionDensityButton;
+    if (!btn) return;
+    btn.textContent = enabled ? 'DENSITY ON' : 'DENSITY OFF';
+    btn.classList.toggle('active', enabled);
+    btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  }
+
+  /** Disable the control outright where the pass cannot run (WebGL2 fallback). */
+  setConjunctionsAvailable(available: boolean): void {
+    const btn = this.elements.conjunctionToggleButton;
+    const slider = this.elements.conjunctionThresholdSlider;
+    if (btn) {
+      btn.disabled = !available;
+      btn.setAttribute('aria-disabled', available ? 'false' : 'true');
+    }
+    if (slider) slider.disabled = !available;
+  }
+
+  setConjunctionThresholdKm(km: number): void {
+    const slider = this.elements.conjunctionThresholdSlider;
+    const label = this.elements.conjunctionThresholdValue;
+    if (slider) slider.value = String(km);
+    if (label) label.textContent = `${km} km`;
+  }
+
+  /** Pair count plus its caveats; see formatConjunctionStatus. */
+  setConjunctionStatus(text: string): void {
+    const el = this.elements.conjunctionStatus;
+    if (el) el.textContent = text;
+  }
+
+  /** Frame/data honesty line shown next to the control. */
+  setConjunctionDisclaimer(text: string): void {
+    const el = this.elements.conjunctionDisclaimer;
+    if (el) el.textContent = text;
   }
 
   setTrailsEnabled(enabled: boolean): void {

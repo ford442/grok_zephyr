@@ -20,6 +20,21 @@ export const OPTIONAL_FEATURE_CATALOG = [
     effect: 'Half-precision bloom downsample (cheaper post-process ALU)',
     fallback: 'f32 Kawase downsample',
   },
+  {
+    name: 'texture-compression-bc' as const,
+    effect: 'BC7 Earth plates (albedo / night lights / clouds)',
+    fallback: 'ASTC, ETC2, then uncompressed rgba8',
+  },
+  {
+    name: 'texture-compression-etc2' as const,
+    effect: 'ETC2 Earth plates on unorm-only adapters',
+    fallback: 'Uncompressed rgba8 Earth plates',
+  },
+  {
+    name: 'texture-compression-astc' as const,
+    effect: 'ASTC 4x4 Earth plates (mobile / Apple GPUs)',
+    fallback: 'ETC2, then uncompressed rgba8',
+  },
 ] as const;
 
 export type OptionalGpuFeature = (typeof OPTIONAL_FEATURE_CATALOG)[number]['name'];
@@ -27,6 +42,12 @@ export type OptionalGpuFeature = (typeof OPTIONAL_FEATURE_CATALOG)[number]['name
 /**
  * Optional features a runtime system actually binds. Required features stay empty
  * at boot; missing required names fail initialization instead of being dropped.
+ *
+ * The `texture-compression-*` names are deliberately absent: they are requested
+ * only when `?earthmap=` selects a textured Earth, and are appended to this list
+ * by bootWebGPU before the device is created. Requesting them unconditionally
+ * would cost nothing on desktop but would still be a request for a feature no
+ * system binds — the same rule DEFERRED_OPTIONAL_FEATURES documents.
  */
 export const REQUESTED_OPTIONAL_FEATURES: readonly OptionalGpuFeature[] = [
   'timestamp-query',
@@ -42,9 +63,6 @@ export const REQUESTED_OPTIONAL_FEATURES: readonly OptionalGpuFeature[] = [
 export const DEFERRED_OPTIONAL_FEATURES = [
   'float32-filterable',
   'bgra8unorm-storage',
-  'texture-compression-bc',
-  'texture-compression-etc2',
-  'texture-compression-astc',
   'subgroups',
   'timestamp-query-inside-passes',
 ] as const;
@@ -136,13 +154,16 @@ export function selectDepthFormat(
   return 'depth32float';
 }
 
-export function selectOptionalFeatures(snapshot: AdapterSnapshot): {
+export function selectOptionalFeatures(
+  snapshot: AdapterSnapshot,
+  requested: readonly OptionalGpuFeature[] = REQUESTED_OPTIONAL_FEATURES,
+): {
   enabled: OptionalGpuFeature[];
   missing: OptionalGpuFeature[];
 } {
   const enabled: OptionalGpuFeature[] = [];
   const missing: OptionalGpuFeature[] = [];
-  for (const name of REQUESTED_OPTIONAL_FEATURES) {
+  for (const name of requested) {
     if (snapshot.features.has(name)) enabled.push(name);
     else missing.push(name);
   }
@@ -155,6 +176,7 @@ export function buildCapabilityProfile(
     search?: string;
     quality?: QualityLevel;
     powerPreference?: GPUPowerPreference;
+    requestedOptional?: readonly OptionalGpuFeature[];
   } = {},
 ): GpuCapabilityProfile {
   const quality = options.quality ?? 'high';
@@ -163,7 +185,8 @@ export function buildCapabilityProfile(
     quality,
     adapterLimits: snapshot.limits,
   });
-  const { enabled, missing } = selectOptionalFeatures(snapshot);
+  const requestedOptional = options.requestedOptional ?? REQUESTED_OPTIONAL_FEATURES;
+  const { enabled, missing } = selectOptionalFeatures(snapshot, requestedOptional);
   const shaderF16Bloom = enabled.includes('shader-f16');
   return {
     vendor: snapshot.vendor?.trim() || 'unknown',
@@ -174,7 +197,7 @@ export function buildCapabilityProfile(
     depthFormat: selectDepthFormat(snapshot, quality),
     bloomFormat: 'rgba16float',
     hdrTargets: 'rgba16float',
-    requestedOptional: REQUESTED_OPTIONAL_FEATURES,
+    requestedOptional,
     enabledOptional: enabled,
     missingOptional: missing,
     shaderF16Bloom,
@@ -195,7 +218,11 @@ export function chooseAdapterCandidate(
     preference: GPUPowerPreference;
     snapshot: AdapterSnapshot;
   }[],
-  options: { search?: string; quality?: QualityLevel } = {},
+  options: {
+    search?: string;
+    quality?: QualityLevel;
+    requestedOptional?: readonly OptionalGpuFeature[];
+  } = {},
 ): { preference: GPUPowerPreference; snapshot: AdapterSnapshot; profile: GpuCapabilityProfile } | null {
   let best: {
     preference: GPUPowerPreference;
@@ -240,6 +267,12 @@ function shortFeatureName(name: OptionalGpuFeature): string {
       return 'ts';
     case 'shader-f16':
       return 'f16';
+    case 'texture-compression-bc':
+      return 'bc';
+    case 'texture-compression-etc2':
+      return 'etc2';
+    case 'texture-compression-astc':
+      return 'astc';
     default:
       return name;
   }

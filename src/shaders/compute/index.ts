@@ -6,3 +6,4 @@ export { orbital } from './orbital.js';
 export { BEAM_COMPUTE as beam } from './beam.js';
 export { SATELLITE_CULL_CS as satelliteCull } from './satelliteCull.js';
 export { ISL_COMPUTE as isl } from './isl.js';
+export { CONJUNCTION_CS as conjunction } from './conjunction.js';

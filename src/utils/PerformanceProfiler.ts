@@ -37,9 +37,20 @@ export interface DetailedTimings {
   scene: number;
   bloom: number;
   postProcess: number;
+  /** Close-approach bin + pair compute. 0 when the feature is off. */
+  conjunction: number;
 }
 
-export type GPUTimestampPass = 'orbital' | 'beam' | 'cull' | 'scene' | 'post';
+export type GPUTimestampPass =
+  | 'orbital'
+  | 'beam'
+  | 'cull'
+  | 'scene'
+  | 'post'
+  | 'conjunction';
+
+/** Two timestamps (start/end) per pass. */
+const GPU_TIMESTAMP_COUNT = 12;
 
 /** Options for configuring the PerformanceProfiler */
 export interface PerformanceProfilerOptions {
@@ -83,6 +94,7 @@ export class PerformanceProfiler {
   private cullTimeHistory: MetricHistory;
   private bloomTimeHistory: MetricHistory;
   private postProcessTimeHistory: MetricHistory;
+  private conjunctionTimeHistory: MetricHistory;
 
   // Stats
   private visibleSatellites = 0;
@@ -106,6 +118,7 @@ export class PerformanceProfiler {
     this.cullTimeHistory = this.createHistory(this.options.historySize);
     this.bloomTimeHistory = this.createHistory(this.options.historySize);
     this.postProcessTimeHistory = this.createHistory(this.options.historySize);
+    this.conjunctionTimeHistory = this.createHistory(this.options.historySize);
   }
 
   /**
@@ -141,11 +154,11 @@ export class PerformanceProfiler {
     // Create query set for 2 timestamps per frame (start/end)
     const querySet = this.device.createQuerySet({
       type: 'timestamp',
-      count: 10,
+      count: GPU_TIMESTAMP_COUNT,
     });
 
     const resolveBuffer = this.device.createBuffer({
-      size: 10 * 8,
+      size: GPU_TIMESTAMP_COUNT * 8,
       usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
     });
 
@@ -298,6 +311,7 @@ export class PerformanceProfiler {
       scene: this.getAverage(this.sceneTimeHistory),
       bloom: this.getAverage(this.bloomTimeHistory),
       postProcess: this.getAverage(this.postProcessTimeHistory),
+      conjunction: this.getAverage(this.conjunctionTimeHistory),
     };
   }
 
@@ -327,6 +341,8 @@ export class PerformanceProfiler {
         return 6;
       case 'post':
         return 8;
+      case 'conjunction':
+        return 10;
     }
   }
 
@@ -363,11 +379,17 @@ export class PerformanceProfiler {
   resolveTimestamps(encoder: GPUCommandEncoder): void {
     if (!this.timingQuery || !this.supportsGPUTiming) return;
 
-    encoder.resolveQuerySet(this.timingQuery.querySet, 0, 10, this.timingQuery.resolveBuffer, 0);
+    encoder.resolveQuerySet(
+      this.timingQuery.querySet,
+      0,
+      GPU_TIMESTAMP_COUNT,
+      this.timingQuery.resolveBuffer,
+      0,
+    );
 
     if (!this.timingQuery.resultBuffer) {
       this.timingQuery.resultBuffer = this.device!.createBuffer({
-        size: 10 * 8,
+        size: GPU_TIMESTAMP_COUNT * 8,
         usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
       });
     }
@@ -377,7 +399,7 @@ export class PerformanceProfiler {
       0,
       this.timingQuery.resultBuffer,
       0,
-      10 * 8,
+      GPU_TIMESTAMP_COUNT * 8,
     );
 
     this.pendingQueries++;
@@ -399,6 +421,9 @@ export class PerformanceProfiler {
     const cull = toMs(4, 5);
     const scene = toMs(6, 7);
     const post = toMs(8, 9);
+    // Zero on any frame the close-approach pass was skipped, which is what
+    // makes "off costs nothing" measurable rather than asserted.
+    const conjunction = toMs(10, 11);
 
     buffer.unmap();
 
@@ -410,6 +435,7 @@ export class PerformanceProfiler {
     record(this.cullTimeHistory, cull);
     record(this.sceneTimeHistory, scene);
     record(this.postProcessTimeHistory, post);
+    record(this.conjunctionTimeHistory, conjunction);
     record(this.renderTimeHistory, scene + post);
 
     this.pendingQueries--;
@@ -482,6 +508,7 @@ export class PerformanceProfiler {
     this.cullTimeHistory = this.createHistory(this.options.historySize);
     this.bloomTimeHistory = this.createHistory(this.options.historySize);
     this.postProcessTimeHistory = this.createHistory(this.options.historySize);
+    this.conjunctionTimeHistory = this.createHistory(this.options.historySize);
     this.visibleSatellites = 0;
   }
 

@@ -482,6 +482,49 @@
         />
       </section>
 
+      <section
+        id="conjunction-controls"
+        class="control-group"
+        aria-label="Close approach visualization"
+      >
+        <div class="capture-label">CLOSE APPROACH</div>
+        <button
+          class="capture-btn"
+          id="conjunctionToggle"
+          aria-pressed="false"
+          title="Highlight satellite pairs closer than the threshold"
+        >
+          CLOSE APPROACH OFF
+        </button>
+        <button
+          class="capture-btn"
+          id="conjunctionDensity"
+          aria-pressed="false"
+          title="Heat overlay of how crowded each cell is"
+        >
+          DENSITY OFF
+        </button>
+        <label class="tuning-row" for="conjunctionThreshold">
+          <span>Threshold</span>
+          <span id="conjunctionThresholdValue">5 km</span>
+        </label>
+        <input
+          id="conjunctionThreshold"
+          type="range"
+          min="0.5"
+          max="100"
+          step="0.5"
+          value="5"
+          aria-label="Close approach threshold in kilometres"
+        />
+        <div id="conjunctionStatus" class="capture-note" role="status" aria-live="polite">
+          Close pairs: off
+        </div>
+        <div id="conjunctionDisclaimer" class="capture-note">
+          Illustrative shell spacing &mdash; procedural orbits, not real objects.
+        </div>
+      </section>
+
       <section id="trail-controls" class="control-group" aria-label="Orbital Trails">
         <div class="capture-label">TRAILS</div>
         <button

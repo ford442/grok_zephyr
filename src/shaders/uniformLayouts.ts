@@ -133,6 +133,51 @@ export function packAtmosphereSettings(
   return ab;
 }
 
+/** WGSL: EarthMapSettings — render/earth.ts @group(1) @binding(4) */
+export const EARTH_MAP_SETTINGS_BYTE_SIZE = 16;
+
+export function packEarthMapSettings(
+  flags: number,
+  cloudSpeed: number,
+  nightGain: number,
+  cloudGain: number,
+): ArrayBuffer {
+  const ab = new ArrayBuffer(EARTH_MAP_SETTINGS_BYTE_SIZE);
+  const f32 = new Float32Array(ab);
+  const u32 = new Uint32Array(ab);
+  u32[0] = flags >>> 0;
+  f32[1] = cloudSpeed;
+  f32[2] = nightGain;
+  f32[3] = cloudGain;
+  return ab;
+}
+
+/** WGSL: ConjunctionParams — compute/conjunction.ts, render/conjunction.ts */
+export const CONJUNCTION_PARAMS_BYTE_SIZE = 32;
+
+export function packConjunctionParams(
+  enabled: boolean,
+  thresholdKm: number,
+  scanCount: number,
+  bucketMask: number,
+  bucketCapacity: number,
+  maxPairs: number,
+  time: number,
+): ArrayBuffer {
+  const ab = new ArrayBuffer(CONJUNCTION_PARAMS_BYTE_SIZE);
+  const f32 = new Float32Array(ab);
+  const u32 = new Uint32Array(ab);
+  u32[0] = enabled ? 1 : 0;
+  f32[1] = thresholdKm;
+  u32[2] = scanCount >>> 0;
+  u32[3] = bucketMask >>> 0;
+  u32[4] = bucketCapacity >>> 0;
+  u32[5] = maxPairs >>> 0;
+  f32[6] = time;
+  u32[7] = 0;
+  return ab;
+}
+
 /** WGSL: KawaseUni — bloomDownsample.ts / bloomUpsample.ts */
 export const KAWASE_UNI_BYTE_SIZE = KAWASE_UNI_LAYOUT.byteSize;
 

@@ -19,6 +19,11 @@ import { setRealismMode } from '@/app/RealismController.js';
 import { setSunLightingMode } from '@/app/SunLightingController.js';
 import { setIslDensity, setIslEnabled } from '@/app/IslController.js';
 import {
+  setConjunctionDensityEnabled,
+  setConjunctionThresholdKm,
+  setConjunctionsEnabled,
+} from '@/app/ConjunctionController.js';
+import {
   applyConstellationSelection,
   toggleConstellationGroup,
 } from '@/app/loadSatelliteOrbitalData.js';
@@ -164,6 +169,15 @@ export function setupCallbacks(rt: AppRuntime): void {
   });
   rt.ui.onIslDensityChange((density) => {
     setIslDensity(rt, density);
+  });
+  rt.ui.onConjunctionToggle((enabled) => {
+    setConjunctionsEnabled(rt, enabled);
+  });
+  rt.ui.onConjunctionThresholdChange((km) => {
+    setConjunctionThresholdKm(rt, km);
+  });
+  rt.ui.onConjunctionDensityToggle((enabled) => {
+    setConjunctionDensityEnabled(rt, enabled);
   });
   bindGrowthTransport(rt);
 

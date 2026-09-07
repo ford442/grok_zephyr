@@ -1,5 +1,6 @@
 import { resolveBackgroundMode, setBackgroundMode } from '@/core/background.js';
 import { getActiveFleetSize } from '@/core/FleetScale.js';
+import { formatConjunctionStatus } from '@/app/ConjunctionController.js';
 import type { CameraState } from '@/camera/CameraController.js';
 import { skylineEmissiveScale } from '@/core/ViewTuningProfile.js';
 import { v3dot, v3norm, smoothstep } from '@/utils/math.js';
@@ -226,6 +227,18 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
       rt.pipeline.encodeIslComputePass(encoder);
     }
 
+    // Close approaches: no dispatches, no readback and no bound buffers unless
+    // the feature is on. Skipped in ground view for the same reason ISL is —
+    // the markers are orbital-scale and meaningless from the surface.
+    const conjunctionsActive =
+      rt.simulation.conjunctionsEnabled && rt.camera.getViewMode() !== 'ground';
+    if (conjunctionsActive) {
+      rt.pipeline.writeConjunctionParams(true, rt.simulation.conjunctionThresholdKm, time);
+      rt.profiler.beginGPUTimestamp(encoder, 'conjunction');
+      rt.pipeline.encodeConjunctionComputePass(encoder);
+      rt.profiler.endGPUTimestamp(encoder, 'conjunction');
+    }
+
     if (rt.pipeline.isGpuCullingEnabled()) {
       rt.profiler.beginGPUTimestamp(encoder, 'cull');
       rt.pipeline.encodeCullPass(encoder);
@@ -247,6 +260,12 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
       );
       if (rt.simulation.islEnabled) {
         rt.pipeline.encodeIslPass(encoder);
+      }
+      if (conjunctionsActive) {
+        if (rt.simulation.conjunctionDensityEnabled) {
+          rt.pipeline.encodeConjunctionDensityPass(encoder);
+        }
+        rt.pipeline.encodeConjunctionPass(encoder);
       }
     }
 
@@ -351,6 +370,33 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
       recordPassTimings(rt);
     }
     void rt.profiler.readbackTimestamps();
+
+    if (conjunctionsActive) {
+      void rt.pipeline.consumeConjunctionStats().then((stats) => {
+        if (!stats) return;
+        rt.ui.setConjunctionStatus(
+          formatConjunctionStatus({
+            enabled: true,
+            pairCount: stats.pairCount,
+            overflow: stats.overflow,
+            truncated: stats.truncated,
+            fleetSize: getActiveFleetSize(),
+            unavailableReason: rt.simulation.conjunctionUnavailableReason,
+          }),
+        );
+      });
+    } else {
+      rt.ui.setConjunctionStatus(
+        formatConjunctionStatus({
+          enabled: false,
+          pairCount: 0,
+          overflow: 0,
+          truncated: false,
+          fleetSize: getActiveFleetSize(),
+          unavailableReason: rt.simulation.conjunctionUnavailableReason,
+        }),
+      );
+    }
 
     if (rt.pipeline.isGpuCullingEnabled()) {
       void rt.pipeline.consumeVisibleSatelliteCount().then((count) => {

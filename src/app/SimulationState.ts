@@ -33,6 +33,19 @@ export class SimulationState {
   islDensity = 0.35;
   /** null = follow quality preset; otherwise last user toggle. */
   islUserOverride: boolean | null = null;
+  /**
+   * Close-approach visualization. Off by default — it allocates GPU buffers
+   * that do not fit alongside a 1M fleet, and it is a teaching overlay rather
+   * than part of the default scene (see docs/CONJUNCTIONS.md).
+   */
+  conjunctionsEnabled = false;
+  conjunctionThresholdKm = 5;
+  /** Shell-density heat overlay, drawn from the same hash table. */
+  conjunctionDensityEnabled = false;
+  /** null = follow quality preset; otherwise last user toggle. */
+  conjunctionsUserOverride: boolean | null = null;
+  /** Why the pass could not be enabled (buffer budget), for the HUD. */
+  conjunctionUnavailableReason: string | null = null;
   /** Skyline view: 0=auto mix, 1=LED, 2=laser, 3=spots, 4=neon, 5=all */
   skylineDisplayMode: 0 | 1 | 2 | 3 | 4 | 5 = 0;
   hasTleCatalog = false;

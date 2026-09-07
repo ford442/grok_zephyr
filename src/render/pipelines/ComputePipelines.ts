@@ -9,6 +9,11 @@ export async function createComputePipelines({ context, layouts, modules }: Pipe
     beamCompute,
     islCompute,
     islFiber,
+    conjunctionClear,
+    conjunctionBin,
+    conjunctionPairs,
+    conjunctionDraw,
+    conjunctionDensity,
     satelliteCullSats,
     satelliteCullBeams,
     satelliteCullFinalize,
@@ -46,6 +51,53 @@ export async function createComputePipelines({ context, layouts, modules }: Pipe
       },
     }),
     context.createComputePipelineAsync({
+      label: 'conjunction-clear',
+      layout: layouts.conjunctionComputeLayout,
+      compute: { module: modules.conjunctionCompute, entryPoint: 'clear_bins' },
+    }),
+    context.createComputePipelineAsync({
+      label: 'conjunction-bin',
+      layout: layouts.conjunctionComputeLayout,
+      compute: { module: modules.conjunctionCompute, entryPoint: 'bin_sats' },
+    }),
+    context.createComputePipelineAsync({
+      label: 'conjunction-pairs',
+      layout: layouts.conjunctionComputeLayout,
+      compute: { module: modules.conjunctionCompute, entryPoint: 'find_pairs' },
+    }),
+    context.createRenderPipelineAsync({
+      label: 'conjunction-draw',
+      layout: layouts.conjunctionDrawLayout,
+      vertex: { module: modules.conjunctionDraw, entryPoint: 'vs' },
+      fragment: {
+        module: modules.conjunctionDraw,
+        entryPoint: 'fs',
+        targets: [{ format: RENDER.HDR_FORMAT, blend: layouts.additiveBlend }],
+      },
+      primitive: { topology: 'triangle-strip' },
+      depthStencil: {
+        format: depthFormat,
+        depthWriteEnabled: false,
+        depthCompare: 'less',
+      },
+    }),
+    context.createRenderPipelineAsync({
+      label: 'conjunction-density',
+      layout: layouts.conjunctionDensityLayout,
+      vertex: { module: modules.conjunctionDensity, entryPoint: 'vs' },
+      fragment: {
+        module: modules.conjunctionDensity,
+        entryPoint: 'fs',
+        targets: [{ format: RENDER.HDR_FORMAT, blend: layouts.additiveBlend }],
+      },
+      primitive: { topology: 'triangle-strip' },
+      depthStencil: {
+        format: depthFormat,
+        depthWriteEnabled: false,
+        depthCompare: 'less',
+      },
+    }),
+    context.createComputePipelineAsync({
       label: 'satellite-cull-sats',
       layout: layouts.device.createPipelineLayout({ bindGroupLayouts: [layouts.satelliteCullLayout] }),
       compute: { module: modules.satelliteCull, entryPoint: 'cull_satellites', constants: fleet },
@@ -71,5 +123,5 @@ export async function createComputePipelines({ context, layouts, modules }: Pipe
       compute: { module: modules.autoExposureAdapt, entryPoint: 'main' },
     })
   ]);
-  return { compute, beamCompute, islCompute, islFiber, satelliteCullSats, satelliteCullBeams, satelliteCullFinalize, autoExposureHistogram, autoExposureAdapt };
+  return { compute, beamCompute, islCompute, islFiber, conjunctionClear, conjunctionBin, conjunctionPairs, conjunctionDraw, conjunctionDensity, satelliteCullSats, satelliteCullBeams, satelliteCullFinalize, autoExposureHistogram, autoExposureAdapt };
 }

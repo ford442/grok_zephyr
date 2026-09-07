@@ -36,6 +36,12 @@ export interface UIElements {
   islToggleButton?: HTMLButtonElement;
   islDensitySlider?: HTMLInputElement;
   islDensityValue?: HTMLElement;
+  conjunctionToggleButton?: HTMLButtonElement;
+  conjunctionDensityButton?: HTMLButtonElement;
+  conjunctionThresholdSlider?: HTMLInputElement;
+  conjunctionThresholdValue?: HTMLElement;
+  conjunctionStatus?: HTMLElement;
+  conjunctionDisclaimer?: HTMLElement;
   trailsToggleButton?: HTMLButtonElement;
   trailsLengthSelect?: HTMLSelectElement;
   exposureModeSelect?: HTMLSelectElement;
