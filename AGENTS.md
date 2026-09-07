@@ -233,7 +233,7 @@ const NUM_PLANES = 1024; // orbital planes
 const SATELLITES_PER_PLANE = 1024; // satellites per plane
 ```
 
-### Uniform Buffer Layout (256 bytes)
+### Uniform Buffer Layout (272 bytes)
 
 ```
 [0-63]    view_proj:      mat4x4f      // View-projection matrix
@@ -247,8 +247,10 @@ const SATELLITES_PER_PLANE = 1024; // satellites per plane
 [128-223] frustum:        array<vec4f,6>  // Frustum planes
 [224-231] screen_size:    vec2f        // Screen dimensions
 [232-235] time_scale:     f32          // Simulation time multiplier (1x - 100000x)
-[236-239] pad0:           u32          // Padding
+[236-239] background_mode: u32         // Background render mode index
 [240-255] sun_position:   vec4f        // Sun position in ECI frame
+[256-259] earth_rotation_rad: f32      // Earth-fixed rotation angle (GMST convention); see docs/FRAMES.md
+[260-271] —              (padding)    // Struct padded to 16-byte alignment
 ```
 
 ### View Modes
@@ -299,7 +301,7 @@ Optical ISL mesh (`docs/ISL.md`): ≤128k fibers, plane-neighbor Walker topology
 
 ## Reference frames
 
-See **`docs/FRAMES.md`**. SGP4 TEME is used as the render ECI (no GCRF conversion). Sun lighting: **ART** (default XY-plane cinematic sun) vs **ASTRO** (`?sun=astro`, UTC geometric sun).
+See **`docs/FRAMES.md`**. SGP4 TEME is used as the render ECI (no GCRF conversion). Sun lighting: **ART** (default XY-plane cinematic sun) vs **ASTRO** (`?sun=astro`, UTC geometric sun). Earth/Ground View surface rotation: legacy sim-time spin by default (**ART**, bit-identical to visual baselines) vs true-GMST rotation (`?sun=astro` always, or `?earth=1` under ART) that agrees with ground-station ECEF↔ECI — single GMST source is `src/physics/frames.ts::gmstRad`.
 
 ## Physics Modes
 

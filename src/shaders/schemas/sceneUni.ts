@@ -1,6 +1,6 @@
 import { layoutUniformStruct, type UniformSchema } from '../uniformSchema.js';
 
-/** Shared scene uniform block (256 bytes). */
+/** Shared scene uniform block (272 bytes). */
 export const SCENE_UNI_SCHEMA = {
   structName: 'Uni',
   binding: { group: 0, binding: 0, varName: 'uni' },
@@ -18,6 +18,11 @@ export const SCENE_UNI_SCHEMA = {
     { name: 'time_scale', type: 'f32' },
     { name: 'background_mode', type: 'u32' },
     { name: 'sun_position', type: 'vec4f' },
+    // Earth-fixed → render-frame rotation angle; see earthRotationRad() in
+    // src/physics/frames.ts and docs/FRAMES.md. Shaders rotate body-fixed
+    // sampling by `+earth_rotation_rad` using the same rotateZ convention as
+    // eciToEcef.
+    { name: 'earth_rotation_rad', type: 'f32' },
   ],
 } as const satisfies UniformSchema;
 

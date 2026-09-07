@@ -99,16 +99,17 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
   let sun_dir = normalize(uni.sun_position.xyz);
   let V       = normalize(uni.camera_pos.xyz - in.wp);
 
-  // Earth sidereal rotation: one full turn every 86164 seconds.
-  // Rotate the surface sampling position around Z in body frame while
-  // keeping the ECI sphere normal (N) unchanged for correct sun lighting.
-  let earthRotAngle = 2.0 * PI * uni.sim_time / EARTH_SIDEREAL_PERIOD;
+  // Earth-fixed rotation: ECI → body-frame sampling position, keeping the
+  // ECI sphere normal (N) unchanged for correct sun lighting. The angle is
+  // computed on the CPU by earthRotationRad() (src/physics/frames.ts) and
+  // uses the same rotateZ(+angle) convention as eciToEcef, see docs/FRAMES.md.
+  let earthRotAngle = uni.earth_rotation_rad;
   let cosR = cos(earthRotAngle);
   let sinR = sin(earthRotAngle);
   let wp_norm = normalize(in.wp);
   let wp_rot = vec3f(
-    wp_norm.x * cosR - wp_norm.y * sinR,
-    wp_norm.x * sinR + wp_norm.y * cosR,
+    wp_norm.x * cosR + wp_norm.y * sinR,
+   -wp_norm.x * sinR + wp_norm.y * cosR,
     wp_norm.z
   );
 
@@ -141,10 +142,10 @@ fn oceanColor(worldPos:vec3f, normal:vec3f, viewDir:vec3f, sunDir:vec3f, time:f3
     let hU = fbmTerrain(normalize(vec3f(wp_rot.x, wp_rot.y + eps, wp_rot.z)) * 3.0, 4);
     let gradient = vec2f(hR - hL, hU - hD) / (2.0 * eps);
     let terrNormBody = normalize(vec3f(-gradient.x, -gradient.y, 1.0));
-    // Rotate terrain normal back to ECI frame for correct lighting
+    // Rotate terrain normal back to ECI frame for correct lighting (inverse of wp_rot above)
     let terrNormECI = vec3f(
-      terrNormBody.x * cosR + terrNormBody.y * sinR,
-     -terrNormBody.x * sinR + terrNormBody.y * cosR,
+      terrNormBody.x * cosR - terrNormBody.y * sinR,
+      terrNormBody.x * sinR + terrNormBody.y * cosR,
       terrNormBody.z
     );
     let modN = normalize(N + terrNormECI * 0.3);

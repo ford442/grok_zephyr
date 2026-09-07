@@ -19,7 +19,7 @@ import { packBloomCompositeUni, packKawaseUni, packThresholdUni } from './unifor
 import { UNIFORM_STRUCT } from './uniforms.js';
 
 describe('layoutUniformStruct', () => {
-  it('matches the 256-byte scene Uni offsets', () => {
+  it('matches the 272-byte scene Uni offsets', () => {
     const expected: Record<string, number> = {
       view_proj: 0,
       camera_pos: 64,
@@ -34,11 +34,12 @@ describe('layoutUniformStruct', () => {
       time_scale: 232,
       background_mode: 236,
       sun_position: 240,
+      earth_rotation_rad: 256,
     };
     for (const [name, offset] of Object.entries(expected)) {
       expect(SCENE_UNI_LAYOUT.byName.get(name)?.offset, name).toBe(offset);
     }
-    expect(SCENE_UNI_LAYOUT.byteSize).toBe(256);
+    expect(SCENE_UNI_LAYOUT.byteSize).toBe(272);
     expect(SCENE_UNI_LAYOUT.byteSize).toBe(BUFFER_SIZES.UNIFORM);
   });
 
@@ -132,7 +133,8 @@ describe('UniformBufferWriter', () => {
       .set('screen_size', [800, 600])
       .set('time_scale', 1)
       .setU32('background_mode', 2)
-      .set('sun_position', [4, 5, 6, 1]);
+      .set('sun_position', [4, 5, 6, 1])
+      .set('earth_rotation_rad', 1.25);
     const f32 = new Float32Array(writer.bytes());
     const u32 = new Uint32Array(writer.bytes());
     expect(f32[0]).toBe(1);
@@ -145,7 +147,8 @@ describe('UniformBufferWriter', () => {
     expect(f32[56]).toBe(800);
     expect(u32[59]).toBe(2);
     expect(f32[60]).toBe(4);
-    expect(writer.byteSize).toBe(256);
+    expect(f32[64]).toBe(1.25);
+    expect(writer.byteSize).toBe(272);
   });
 });
 

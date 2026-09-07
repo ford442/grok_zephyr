@@ -49,3 +49,27 @@ export function ecefToEci(
 ): [number, number, number] {
   return rotateZ(ecef, -gmstRad(jd));
 }
+
+/** Legacy WGSL earth-spin period (seconds); kept only for ART-mode bit-parity, see below. */
+const ART_EARTH_SIDEREAL_PERIOD_SEC = 86164.0;
+
+export type EarthRotationMode = 'art' | 'gmst';
+
+/**
+ * Earth-fixed rotation angle for the render-frame ECI→body transform shared by
+ * the Earth surface and Ground View shaders (`wp_rot = rotateZ(wp_norm, angle)`,
+ * matching the `eciToEcef` convention above). See docs/FRAMES.md.
+ *
+ * - `'art'`  — legacy sim-time-only spin with no UTC anchor. Deliberately the
+ *   negative of the old (pre-unification) WGSL formula: the shaders used to
+ *   compute `wp_rot` as `rotateZ(wp_norm, -legacyAngle)`, so emitting
+ *   `-legacyAngle` here and having shaders rotate by `+angle` reproduces the
+ *   exact pixels of every existing ART-mode visual baseline.
+ * - `'gmst'` — true Greenwich Mean Sidereal Time from simulated UTC, i.e. the
+ *   same angle `GroundStation.ts` uses for ECEF↔ECI, so a station's zenith
+ *   and the sampled surface agree.
+ */
+export function earthRotationRad(mode: EarthRotationMode, simTimeSec: number, utcMs: number): number {
+  if (mode === 'gmst') return gmstRad(unixMsToJulianDate(utcMs));
+  return -((simTimeSec / ART_EARTH_SIDEREAL_PERIOD_SEC) * Math.PI * 2);
+}

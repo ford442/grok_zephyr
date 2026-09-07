@@ -14,6 +14,7 @@ import { CONSTANTS } from '@/types/constants.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 import { stationGpuState } from '@/ground/GroundStation.js';
 import { artSunPositionEci, resolveSunPosition } from '@/physics/sun.js';
+import { earthRotationRad, type EarthRotationMode } from '@/physics/frames.js';
 
 /**
  * Art-mode sun (XY-plane circle). Kept for visual-baseline compatibility.
@@ -29,6 +30,23 @@ export function sunPositionForRuntime(rt: AppRuntime): [number, number, number] 
     simTimeSec: rt.simulation.clock.simTime,
     utcMs: rt.simulation.clock.simUtcMs,
   });
+}
+
+/**
+ * Astro sun always implies true-GMST Earth rotation (terminator, stations, and
+ * continents must agree); art sun defaults to the legacy sim-time-only spin
+ * unless the user explicitly opts in via `?earth=1` (see docs/FRAMES.md).
+ */
+export function earthRotationModeFor(rt: AppRuntime): EarthRotationMode {
+  return rt.simulation.sunMode === 'astro' || rt.simulation.earthRotationEnabled ? 'gmst' : 'art';
+}
+
+export function earthRotationRadForRuntime(rt: AppRuntime): number {
+  return earthRotationRad(
+    earthRotationModeFor(rt),
+    rt.simulation.clock.simTime,
+    rt.simulation.clock.simUtcMs,
+  );
 }
 
 export function buildConstellationStats(rt: AppRuntime): ConstellationStats {
@@ -153,7 +171,8 @@ export function writeUniforms(
     .set('screen_size', [width, height])
     .set('time_scale', rt.simulation.clock.rate)
     .setU32('background_mode', getBackgroundModeIndex())
-    .set('sun_position', [sunPos[0], sunPos[1], sunPos[2], 1.0]);
+    .set('sun_position', [sunPos[0], sunPos[1], sunPos[2], 1.0])
+    .set('earth_rotation_rad', earthRotationRadForRuntime(rt));
 
   rt.context.writeBuffer(rt.buffers.getBuffers().uniforms, uni.bytes());
   const motionBlurWeight =

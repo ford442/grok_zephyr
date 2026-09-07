@@ -1,4 +1,5 @@
 import type { Vec3 } from '@/types/index.js';
+import { ecefToEci, unixMsToJulianDate } from '@/physics/frames.js';
 
 export type GroundStationSource = 'preset' | 'manual' | 'geolocation' | 'saved';
 
@@ -72,18 +73,15 @@ export function geodeticToEcf(station: Pick<GroundStation, 'latitudeDeg' | 'long
   ];
 }
 
-/** Greenwich mean sidereal angle, IAU-compatible approximation. */
-export function gmstRadians(utcMs: number): number {
-  const jd = utcMs / 86400000 + 2440587.5;
-  const t = (jd - 2451545.0) / 36525;
-  const deg = 280.46061837 + 360.98564736629 * (jd - 2451545) + 0.000387933 * t * t - t * t * t / 38710000;
-  return normalizeLongitude(deg) * Math.PI / 180;
-}
-
+/**
+ * Earth-fixed → inertial rotation for a station's ECEF coordinates.
+ * Delegates to the single GMST/ECEF↔ECI implementation in `src/physics/frames.ts`
+ * (see docs/FRAMES.md) — this file used to carry its own Meeus-degree GMST
+ * polynomial, which agreed with `frames.ts`'s Vallado-seconds form to within
+ * ~1e-6 rad (see `src/physics/frames.test.ts`) but duplicated the math.
+ */
 export function rotateEcfToEci(ecf: Vec3, utcMs: number): Vec3 {
-  const a = gmstRadians(utcMs);
-  const c = Math.cos(a), s = Math.sin(a);
-  return [c * ecf[0] - s * ecf[1], s * ecf[0] + c * ecf[1], ecf[2]];
+  return ecefToEci(ecf, unixMsToJulianDate(utcMs));
 }
 
 export function stationGpuState(station: GroundStation | null, utcMs: number): GroundStationGpuState {

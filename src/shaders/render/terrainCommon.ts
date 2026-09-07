@@ -10,7 +10,6 @@
 
 export const TERRAIN_COMMON = /* wgsl */ `
 const PI: f32 = 3.14159265;
-const EARTH_SIDEREAL_PERIOD: f32 = 86164.0;  // seconds — one sidereal day
 const TWILIGHT_COS_HALF:     f32 = 0.12;     // ≈ 6.9° angular half-width of twilight band
 const NIGHT_START:           f32 = 0.08;     // sun-dot threshold where night begins
 const NIGHT_END:             f32 = -0.06;    // sun-dot threshold where night is full

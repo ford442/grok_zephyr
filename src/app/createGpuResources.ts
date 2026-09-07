@@ -171,6 +171,7 @@ export async function createGpuResources(
     }
 
     setSunLightingMode(rt, urlParams.sunMode ?? readStoredSunMode() ?? 'art');
+    if (urlParams.earthRotate !== null) rt.simulation.earthRotationEnabled = urlParams.earthRotate;
     applyGrowthFromUrl();
 
     if (urlParams.patternMode !== null) {
