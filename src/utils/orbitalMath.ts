@@ -4,17 +4,25 @@
 
 import type { Vec3 } from '@/types/index.js';
 import { CONSTANTS } from '@/types/constants.js';
+import { earthRotationRad } from '@/physics/frames.js';
 
-const EARTH_SIDEREAL_PERIOD_SEC = 86164.0905;
 const MU = 398600.4418;
 const EARTH_RADIUS_KM = CONSTANTS.EARTH_RADIUS_KM;
 
+/**
+ * ECI position → body-fixed lat/lon, for the satellite HUD readout ("over Seattle").
+ * Uses the ART-mode rotation angle from `earthRotationRad()` (src/physics/frames.ts)
+ * so this agrees with what the Earth/Ground View shaders sample at the same
+ * `simTimeSec` — see docs/FRAMES.md. Under `?sun=astro` / `?earth=1` the shaders
+ * switch to true GMST; this HUD readout intentionally stays ART-only since it
+ * has no UTC available at the call site (SatelliteCatalog.buildLiveMetadata).
+ */
 export function eciPositionToLatLon(position: Vec3, simTimeSec: number): { lat: number; lon: number } {
-  const earthRot = (simTimeSec / EARTH_SIDEREAL_PERIOD_SEC) * Math.PI * 2;
-  const c = Math.cos(-earthRot);
-  const s = Math.sin(-earthRot);
-  const x = position[0] * c - position[1] * s;
-  const y = position[0] * s + position[1] * c;
+  const angle = earthRotationRad('art', simTimeSec, 0);
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const x = position[0] * c + position[1] * s;
+  const y = -position[0] * s + position[1] * c;
   const z = position[2];
   const r = Math.hypot(x, y, z) || 1;
   const lat = (Math.asin(z / r) * 180) / Math.PI;

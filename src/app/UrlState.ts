@@ -12,6 +12,7 @@ export interface InitialUrlState {
   animationMode: number | null;
   realismMode: boolean | null;
   sunMode: SunLightingMode | null;
+  earthRotate: boolean | null;
 }
 
 /**
@@ -25,6 +26,8 @@ export interface InitialUrlState {
  *   ?animation=3-5       constellation animation pattern (smile/rain/heartbeat)
  *   ?realism=0|1         SGP4 catalog vs art-directed shells (requires ?tle=)
  *   ?sun=art|astro       cinematic XY sun vs UTC geometric sun
+ *   ?earth=0|1           GMST-true Earth/ground-view rotation (default 0 under art sun;
+ *                        always on under ?sun=astro — see docs/FRAMES.md)
  *   ?era=YYYY-MM         constellation growth deep link (launch-era scrub)
  *   ?t=ISO8601           initial simulated UTC (shareable moment)
  *   ?rate=<n>            sim rate multiplier (0 = paused, up to 10000)
@@ -56,6 +59,7 @@ export function parseInitialStateFromURL(search: string = window.location.search
     animationMode: parseIntParam('animation', 3, 5),
     realismMode: parseBoolParam('realism'),
     sunMode: parseSunLightingMode(params.get('sun')),
+    earthRotate: parseBoolParam('earth'),
   };
 }
 

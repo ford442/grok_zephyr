@@ -7,6 +7,8 @@ export {
   gmstRad,
   eciToEcef,
   ecefToEci,
+  earthRotationRad,
+  type EarthRotationMode,
 } from './frames.js';
 export {
   artSunPositionEci,

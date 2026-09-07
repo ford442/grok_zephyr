@@ -113,12 +113,14 @@ fn fs(in: VOut) -> @location(0) vec4f {
     let p = ro + rd * t;
     let N = p / EARTH_R;
 
-    let earthRotAngle = 2.0 * PI * uni.sim_time / EARTH_SIDEREAL_PERIOD;
+    // Earth-fixed rotation angle from the CPU (earthRotationRad(), see docs/FRAMES.md);
+    // same rotateZ(+angle) convention as the orbital Earth shader / eciToEcef.
+    let earthRotAngle = uni.earth_rotation_rad;
     let cosR = cos(earthRotAngle);
     let sinR = sin(earthRotAngle);
     let wp_rot = vec3f(
-      N.x * cosR - N.y * sinR,
-      N.x * sinR + N.y * cosR,
+      N.x * cosR + N.y * sinR,
+     -N.x * sinR + N.y * cosR,
       N.z
     );
 
@@ -149,8 +151,8 @@ fn fs(in: VOut) -> @location(0) vec4f {
       // Terrain-perturbed lighting
       let terrNormBody = normalize(vec3f(-gradient.x, -gradient.y, 1.0));
       let terrNormECI = vec3f(
-        terrNormBody.x * cosR + terrNormBody.y * sinR,
-       -terrNormBody.x * sinR + terrNormBody.y * cosR,
+        terrNormBody.x * cosR - terrNormBody.y * sinR,
+        terrNormBody.x * sinR + terrNormBody.y * cosR,
         terrNormBody.z
       );
       let modN = normalize(N + terrNormECI * 0.3);

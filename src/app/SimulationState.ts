@@ -22,6 +22,13 @@ export class SimulationState {
   realismMode = false;
   /** Art = cinematic XY sun (default / visual baselines). Astro = UTC geometric sun. */
   sunMode: SunLightingMode = 'art';
+  /**
+   * true = Earth surface/ground-view sampling rotates by true GMST (agrees
+   * with ground-station ECEF↔ECI); false = legacy sim-time-only spin used
+   * for ART-mode visual baselines. Always true when `sunMode === 'astro'`
+   * regardless of this flag — see `earthRotationModeFor()` in UniformWriter.ts.
+   */
+  earthRotationEnabled = false;
   islEnabled = true;
   islDensity = 0.35;
   /** null = follow quality preset; otherwise last user toggle. */

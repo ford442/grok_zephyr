@@ -82,7 +82,7 @@ export const UI = {
 
 /** Buffer sizes */
 export const BUFFER_SIZES = {
-  UNIFORM: 256, // 256 bytes aligned
+  UNIFORM: 272, // must equal SCENE_UNI_BYTE_SIZE (src/shaders/schemas/sceneUni.ts)
   BLOOM_UNIFORM: 32, // 32 bytes for bloom params
   SATELLITE_DATA: 16, // vec4f per satellite
   ORBITAL_ELEMENT: 16, // vec4f per satellite
