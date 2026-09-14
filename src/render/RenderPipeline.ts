@@ -24,6 +24,7 @@ import {
   CONJUNCTION_BUCKET_CAPACITY,
   MAX_CONJUNCTION_PAIRS,
 } from '@/types/conjunction.js';
+import { BRUSH_PARAMS_BYTE_SIZE } from '@/shaders/uniformLayouts.js';
 import { RenderUniformBuffers } from './RenderUniformBuffers.js';
 import { RenderTargetManager } from './RenderTargets.js';
 import { createPipelines } from './pipelines/PipelineFactory.js';
@@ -38,6 +39,7 @@ import type {
 import {
   encodeAutoExposurePasses,
   encodeBeamComputePass,
+  encodeBrushComputePass,
   encodeIslComputePass,
   encodeIslPass,
   encodeBloomPasses,
@@ -97,6 +99,16 @@ export class RenderPipeline {
   private conjunctionComputeBindGroup: GPUBindGroup | null = null;
   private conjunctionDrawBindGroup: GPUBindGroup | null = null;
   private conjunctionDensityBindGroup: GPUBindGroup | null = null;
+
+  /**
+   * Light Brush. Paint lives in the packed animation scratch (animScratch), so
+   * the only thing allocated here is a 288-byte params uniform, on first use.
+   * While `brushOwnsAnimScratch` is set, Smile V2 — the scratch's other writer —
+   * is not dispatched.
+   */
+  private brushParamsBuffer: GPUBuffer | null = null;
+  private brushBindGroup: GPUBindGroup | null = null;
+  private brushOwnsAnimScratch = false;
 
   private width = 0;
   private height = 0;
@@ -415,11 +427,50 @@ export class RenderPipeline {
     this.conjunctionDensityBindGroup = null;
   }
 
+  /** Claim (or release) the animation scratch for brush paint. */
+  setBrushOwnsAnimScratch(owns: boolean): void {
+    this.brushOwnsAnimScratch = owns;
+    if (owns) this.smileV2Pipeline?.disable();
+  }
+
+  /**
+   * Upload this frame's packed BrushParams and dispatch the paint pass. The
+   * caller only calls this while paint is live or still fading, so a disabled
+   * brush costs nothing.
+   */
+  encodeBrushPass(encoder: GPUCommandEncoder, packedParams: ArrayBuffer): void {
+    if (!this.pipelines) return;
+    const device = this.context.getDevice();
+    if (!this.brushParamsBuffer) {
+      this.brushParamsBuffer = device.createBuffer({
+        label: 'Brush Params Uniform',
+        size: BRUSH_PARAMS_BYTE_SIZE,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      });
+      this.brushBindGroup = null;
+    }
+    if (!this.brushBindGroup) {
+      this.brushBindGroup = device.createBindGroup({
+        label: 'brush-paint',
+        layout: this.pipelines.brushPaint.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.brushParamsBuffer } },
+          { binding: 1, resource: { buffer: this.currentPositionBuffer() } },
+          { binding: 2, resource: { buffer: this.buffers.animScratch } },
+        ],
+      });
+    }
+    device.queue.writeBuffer(this.brushParamsBuffer, 0, packedParams);
+    const bindGroup = this.brushBindGroup;
+    this.withFrameContext((ctx) => encodeBrushComputePass(encoder, ctx, bindGroup));
+  }
+
   encodeIslPass(encoder: GPUCommandEncoder): void {
     this.withFrameContext((ctx) => encodeIslPass(encoder, ctx));
   }
 
   encodeSmileV2Pass(encoder: GPUCommandEncoder): void {
+    if (this.brushOwnsAnimScratch) return;
     if (!this.smileV2Pipeline || !this.smileV2Pipeline.isActive()) return;
     this.smileV2Pipeline.encodeComputePass(encoder);
   }
@@ -682,6 +733,9 @@ export class RenderPipeline {
     this.earthTextures?.destroy();
     this.earthTextures = null;
     this.releaseConjunctions();
+    this.brushParamsBuffer?.destroy();
+    this.brushParamsBuffer = null;
+    this.brushBindGroup = null;
     this.atmosphereLUT = null;
 
     if (this.smileV2Pipeline) {

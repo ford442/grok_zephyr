@@ -24,6 +24,14 @@ import {
   setConjunctionsEnabled,
 } from '@/app/ConjunctionController.js';
 import {
+  setBrushColor,
+  setBrushEnabled,
+  setBrushFadeSeconds,
+  setBrushMode,
+  setBrushRadiusKm,
+  parseBrushMode,
+} from '@/app/BrushController.js';
+import {
   applyConstellationSelection,
   toggleConstellationGroup,
 } from '@/app/loadSatelliteOrbitalData.js';
@@ -179,6 +187,22 @@ export function setupCallbacks(rt: AppRuntime): void {
   rt.ui.onConjunctionDensityToggle((enabled) => {
     setConjunctionDensityEnabled(rt, enabled);
   });
+  rt.ui.onBrushToggle((enabled) => {
+    setBrushEnabled(rt, enabled);
+  });
+  rt.ui.onBrushModeChange((name) => {
+    const mode = parseBrushMode(name);
+    if (mode !== null) setBrushMode(rt, mode);
+  });
+  rt.ui.onBrushRadiusChange((km) => {
+    setBrushRadiusKm(rt, km);
+  });
+  rt.ui.onBrushFadeChange((seconds) => {
+    setBrushFadeSeconds(rt, seconds);
+  });
+  rt.ui.onBrushColorChange((css) => {
+    setBrushColor(rt, css);
+  });
   bindGrowthTransport(rt);
 
   rt.ui.onConstellationChipClick((catalogId, shiftKey) => {
@@ -282,6 +306,8 @@ export function setupCallbacks(rt: AppRuntime): void {
     });
   }
 
+  // Before the click handler below: a brush stroke swallows its own click.
+  rt.brush.attach(rt.canvas);
   rt.canvas.addEventListener('click', (e) => rt.focusSatelliteAtScreenPoint(e.clientX, e.clientY));
   rt.canvas.addEventListener('dblclick', () => {
     rt.focusManager?.releaseFocus();

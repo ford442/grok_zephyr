@@ -123,7 +123,7 @@ Grok Zephyr is optimized for high-performance visualization:
 
 - **GPU-Accelerated Compute**: Orbital propagation runs entirely on GPU
 - **Efficient Rendering**: 6-pass pipeline with frustum culling and distance-based LOD
-- **Memory-Optimized**: Double-buffered GPU storage for 1M+ satellites
+- **Memory-Optimized**: ~84 MB of satellite GPU storage at 1M (~116 MB with cinematic trails), under the 128 MB Pascal cap; simulation time is UTC (`SimClock.simUtcMs`, see [docs/FRAMES.md](docs/FRAMES.md))
 - **FPS Monitoring**: Built-in performance profiler with moving averages
 
 Typical performance on modern GPUs:

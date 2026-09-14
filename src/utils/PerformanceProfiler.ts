@@ -10,6 +10,7 @@
 
 import type { PerformanceStats } from '@/types/index.js';
 import { UI } from '@/types/constants.js';
+import { setPassTimestampScope, type PassTimestampWrites } from '@/render/passes/passTimestamps.js';
 
 /** Maximum FPS history entries for sparkline visualization */
 export const MAX_FPS_HISTORY_LENGTH = 120;
@@ -26,8 +27,6 @@ interface GPUTimingQuery {
   querySet: GPUQuerySet;
   resolveBuffer: GPUBuffer;
   resultBuffer: GPUBuffer | null;
-  startIndex: number;
-  endIndex: number;
 }
 
 /** Detailed pass timing information */
@@ -42,15 +41,12 @@ export interface DetailedTimings {
 }
 
 export type GPUTimestampPass =
-  | 'orbital'
-  | 'beam'
-  | 'cull'
-  | 'scene'
-  | 'post'
-  | 'conjunction';
+  'orbital' | 'beam' | 'cull' | 'scene' | 'bloom' | 'post' | 'conjunction';
 
-/** Two timestamps (start/end) per pass. */
-const GPU_TIMESTAMP_COUNT = 12;
+/** Passes timed per frame; extra passes in a frame simply go unmeasured. */
+const MAX_TIMED_PASSES = 64;
+/** Two timestamps (beginning/end of pass) per timed pass. */
+const GPU_TIMESTAMP_COUNT = MAX_TIMED_PASSES * 2;
 
 /** Options for configuring the PerformanceProfiler */
 export interface PerformanceProfilerOptions {
@@ -85,7 +81,10 @@ export class PerformanceProfiler {
   private device: GPUDevice | null = null;
   private supportsGPUTiming = false;
   private timingQuery: GPUTimingQuery | null = null;
-  private pendingQueries = 0;
+  /** Owner of each timed pass encoded so far this frame (pair index = position). */
+  private frameOwners: GPUTimestampPass[] = [];
+  /** Owners of the frame whose timestamps are being copied/read back. */
+  private pendingOwners: GPUTimestampPass[] | null = null;
 
   // Pass timing
   private computeTimeHistory: MetricHistory;
@@ -151,7 +150,7 @@ export class PerformanceProfiler {
   private initializeGPUTiming(): void {
     if (!this.device) return;
 
-    // Create query set for 2 timestamps per frame (start/end)
+    // Beginning/end-of-pass timestamps for up to MAX_TIMED_PASSES passes per frame
     const querySet = this.device.createQuerySet({
       type: 'timestamp',
       count: GPU_TIMESTAMP_COUNT,
@@ -166,8 +165,6 @@ export class PerformanceProfiler {
       querySet,
       resolveBuffer,
       resultBuffer: null,
-      startIndex: 0,
-      endIndex: 1,
     };
   }
 
@@ -329,63 +326,43 @@ export class PerformanceProfiler {
     return this.supportsGPUTiming;
   }
 
-  private passTimestampIndex(pass: GPUTimestampPass): number {
-    switch (pass) {
-      case 'orbital':
-        return 0;
-      case 'beam':
-        return 2;
-      case 'cull':
-        return 4;
-      case 'scene':
-        return 6;
-      case 'post':
-        return 8;
-      case 'conjunction':
-        return 10;
-    }
-  }
-
-  beginGPUTimestamp(encoder: GPUCommandEncoder, pass: GPUTimestampPass): void {
-    if (!this.timingQuery || !this.supportsGPUTiming) return;
-    const index = this.passTimestampIndex(pass);
-    (
-      encoder as unknown as { writeTimestamp(set: GPUQuerySet, index: number): void }
-    ).writeTimestamp(this.timingQuery.querySet, index);
-  }
-
-  endGPUTimestamp(encoder: GPUCommandEncoder, pass: GPUTimestampPass): void {
-    if (!this.timingQuery || !this.supportsGPUTiming) return;
-    const index = this.passTimestampIndex(pass) + 1;
-    (
-      encoder as unknown as { writeTimestamp(set: GPUQuerySet, index: number): void }
-    ).writeTimestamp(this.timingQuery.querySet, index);
-  }
-
   /**
-   * @deprecated Use beginGPUTimestamp/endGPUTimestamp with a pass id.
+   * Open a timing scope. Every pass begun until {@link endGPUTimestamp} takes
+   * its `timestampWrites` from the scope (see `passTimestampWrites`), and the
+   * scope's passes are summed on readback.
    */
-  beginGPUPass(encoder: GPUCommandEncoder, passType: 'compute' | 'render'): void {
-    this.beginGPUTimestamp(encoder, passType === 'compute' ? 'orbital' : 'scene');
+  beginGPUTimestamp(pass: GPUTimestampPass): void {
+    if (!this.timingQuery || !this.supportsGPUTiming) return;
+    setPassTimestampScope(() => this.allocatePassTimestamps(pass));
   }
 
-  /**
-   * @deprecated Use beginGPUTimestamp/endGPUTimestamp with a pass id.
-   */
-  endGPUPass(encoder: GPUCommandEncoder, passType: 'compute' | 'render'): void {
-    this.endGPUTimestamp(encoder, passType === 'compute' ? 'orbital' : 'scene');
+  endGPUTimestamp(_pass: GPUTimestampPass): void {
+    setPassTimestampScope(null);
+  }
+
+  private allocatePassTimestamps(pass: GPUTimestampPass): PassTimestampWrites | undefined {
+    const query = this.timingQuery;
+    if (!query || this.frameOwners.length >= MAX_TIMED_PASSES) return undefined;
+    const begin = this.frameOwners.length * 2;
+    this.frameOwners.push(pass);
+    return {
+      querySet: query.querySet,
+      beginningOfPassWriteIndex: begin,
+      endOfPassWriteIndex: begin + 1,
+    };
   }
 
   resolveTimestamps(encoder: GPUCommandEncoder): void {
-    if (!this.timingQuery || !this.supportsGPUTiming) return;
+    setPassTimestampScope(null);
+    const owners = this.frameOwners;
+    this.frameOwners = [];
+    if (!this.timingQuery || !this.supportsGPUTiming || owners.length === 0) return;
+    // One readback at a time: a mapped or mapping result buffer cannot be a
+    // copy destination, so frames that land mid-readback go unmeasured.
+    if (this.pendingOwners) return;
 
-    encoder.resolveQuerySet(
-      this.timingQuery.querySet,
-      0,
-      GPU_TIMESTAMP_COUNT,
-      this.timingQuery.resolveBuffer,
-      0,
-    );
+    const count = owners.length * 2;
+    encoder.resolveQuerySet(this.timingQuery.querySet, 0, count, this.timingQuery.resolveBuffer, 0);
 
     if (!this.timingQuery.resultBuffer) {
       this.timingQuery.resultBuffer = this.device!.createBuffer({
@@ -399,46 +376,56 @@ export class PerformanceProfiler {
       0,
       this.timingQuery.resultBuffer,
       0,
-      GPU_TIMESTAMP_COUNT * 8,
+      count * 8,
     );
 
-    this.pendingQueries++;
+    this.pendingOwners = owners;
   }
 
   async readbackTimestamps(): Promise<void> {
-    if (!this.timingQuery?.resultBuffer || this.pendingQueries === 0) return;
+    const buffer = this.timingQuery?.resultBuffer;
+    const owners = this.pendingOwners;
+    if (!buffer || !owners || buffer.mapState !== 'unmapped') return;
 
-    const buffer = this.timingQuery.resultBuffer;
+    try {
+      await buffer.mapAsync(GPUMapMode.READ);
+    } catch {
+      this.pendingOwners = null;
+      return;
+    }
+    const data = new BigInt64Array(buffer.getMappedRange(), 0, owners.length * 2);
 
-    await buffer.mapAsync(GPUMapMode.READ);
-    const data = new BigInt64Array(buffer.getMappedRange());
-
-    const toMs = (start: number, end: number): number =>
-      Number(data[end] - data[start]) / 1_000_000;
-
-    const orbital = toMs(0, 1);
-    const beam = toMs(2, 3);
-    const cull = toMs(4, 5);
-    const scene = toMs(6, 7);
-    const post = toMs(8, 9);
-    // Zero on any frame the close-approach pass was skipped, which is what
-    // makes "off costs nothing" measurable rather than asserted.
-    const conjunction = toMs(10, 11);
+    const totals: Record<GPUTimestampPass, number> = {
+      orbital: 0,
+      beam: 0,
+      cull: 0,
+      scene: 0,
+      bloom: 0,
+      post: 0,
+      conjunction: 0,
+    };
+    owners.forEach((pass, i) => {
+      const delta = data[i * 2 + 1] - data[i * 2];
+      // Timestamps are allowed to be non-monotonic (e.g. across power states).
+      if (delta > 0n) totals[pass] += Number(delta) / 1_000_000;
+    });
 
     buffer.unmap();
+    this.pendingOwners = null;
 
     const record = (history: MetricHistory, value: number): void => {
       if (value > 0 && value < 1000) this.addToHistory(history, value);
     };
 
-    record(this.computeTimeHistory, orbital + beam);
-    record(this.cullTimeHistory, cull);
-    record(this.sceneTimeHistory, scene);
-    record(this.postProcessTimeHistory, post);
-    record(this.conjunctionTimeHistory, conjunction);
-    record(this.renderTimeHistory, scene + post);
-
-    this.pendingQueries--;
+    record(this.computeTimeHistory, totals.orbital + totals.beam);
+    record(this.cullTimeHistory, totals.cull);
+    record(this.sceneTimeHistory, totals.scene);
+    record(this.bloomTimeHistory, totals.bloom);
+    record(this.postProcessTimeHistory, totals.post);
+    // Zero on any frame the close-approach pass was skipped, which is what
+    // makes "off costs nothing" measurable rather than asserted.
+    record(this.conjunctionTimeHistory, totals.conjunction);
+    record(this.renderTimeHistory, totals.scene + totals.bloom + totals.post);
   }
 
   hasGpuTimings(): boolean {
@@ -516,6 +503,9 @@ export class PerformanceProfiler {
    * Destroy and cleanup
    */
   destroy(): void {
+    setPassTimestampScope(null);
+    this.frameOwners = [];
+    this.pendingOwners = null;
     if (this.timingQuery) {
       this.timingQuery.querySet.destroy();
       this.timingQuery.resolveBuffer.destroy();

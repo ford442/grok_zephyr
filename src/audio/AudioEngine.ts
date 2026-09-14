@@ -118,6 +118,12 @@ export class AudioEngine {
     this.playTick(this.interactionGain, hue * 1.33, 0.03, 0.02);
   }
 
+  /** Soft cue when a Light Brush stroke starts. */
+  playBrushStroke(): void {
+    if (!this.canPlay()) return;
+    this.playTick(this.interactionGain, 660, 0.05, 0.0012);
+  }
+
   playModeWhoosh(): void {
     if (!this.canPlay()) return;
     const ctx = this.audioContext!;

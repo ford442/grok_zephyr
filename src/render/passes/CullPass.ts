@@ -7,6 +7,7 @@ import { getActiveFleetSize } from '@/core/FleetScale.js';
 import { MAX_BEAMS } from '../pipelines/types.js';
 import type { SatelliteCullBuffers } from '../SatelliteCullBuffers.js';
 import type { FrameContext } from './types.js';
+import { passTimestampWrites } from './passTimestamps.js';
 
 export function encodeCullPass(
   encoder: GPUCommandEncoder,
@@ -16,7 +17,10 @@ export function encodeCullPass(
   const device = ctx.context.getDevice();
   cullBuffers.resetCounters(device);
 
-  const pass = encoder.beginComputePass({ label: 'satellite-cull' });
+  const pass = encoder.beginComputePass({
+    timestampWrites: passTimestampWrites(),
+    label: 'satellite-cull',
+  });
   pass.setPipeline(ctx.pipelines.satelliteCullSats);
   pass.setBindGroup(0, ctx.bindGroups.satelliteCull);
   pass.dispatchWorkgroups(Math.ceil(getActiveFleetSize() / RENDER.WORKGROUP_SIZE));

@@ -148,31 +148,33 @@ grok_zephyr/
     ├── visualHarness.ts          # Playwright visual test harness
     └── shaders/
         ├── index.ts              # Central shader exports (canonical runtime WGSL)
-        ├── uniforms.ts           # Shared uniform struct (TypeScript)
-        ├── uniforms.wgsl         # Legacy include stub (not used at runtime)
+        ├── uniforms.ts           # Uni struct emitted from SCENE_UNI_SCHEMA (no uniforms.wgsl file — wgslPlugin generates it)
+        ├── wgslPlugin.ts         # Vite: `.wgsl` → string, `#import` + generated includes
+        ├── shaderSources.test.ts # Fails if a SHADERS.* export is a TS template not on the allowlist
         ├── compute/
         │   ├── index.ts          # Compute shader exports
-        │   ├── orbital.ts        # Orbital mechanics compute shader
-        │   └── beam.ts           # Beam compute shader
+        │   ├── orbital.wgsl      # Orbital mechanics (orbital.ts re-exports)
+        │   ├── beam.wgsl         # Beam compute
+        │   ├── isl.wgsl          # ISL topology
+        │   └── conjunction.wgsl  # Close-approach spatial hash
         ├── render/
         │   ├── index.ts          # Render shader exports
-        │   ├── stars.ts          # Starfield background
-        │   ├── earth.ts          # Earth sphere rendering (+ optional photometric plates)
-        │   ├── atmosphere.ts     # Atmospheric limb glow
-        │   ├── satellites.ts     # Satellite billboards (canonical sharp kernel)
-        │   ├── beam.ts           # Laser beam rendering
-        │   ├── ground.ts         # Ground terrain rendering
-        │   ├── volumetricBeams.ts
+        │   ├── stars.wgsl        # Starfield background
+        │   ├── earth.wgsl        # Earth sphere (+ optional photometric plates)
+        │   ├── terrainCommon.wgsl, earthMapCommon.wgsl  # #import modules, also used by ground.ts
+        │   ├── atmosphere.wgsl   # Atmospheric limb glow
+        │   ├── satellites.wgsl   # Satellite billboards (canonical sharp kernel)
+        │   ├── beam.wgsl         # Laser beam ribbons (beam.ts derives the culled variant)
+        │   ├── isl.wgsl, conjunction.wgsl, conjunctionDensity.wgsl
+        │   ├── ground.ts, skyline.ts, volumetricBeams.ts, moon*.ts  # still TS templates (allowlisted)
         │   └── postProcess/
         │       ├── index.ts      # Post-process shader exports
-        │       ├── bloomThreshold.ts  # Bloom extraction (canonical)
-        │       ├── bloomBlur.ts
-        │       └── composite.ts  # Final tonemapping
+        │       ├── bloom*.ts     # TS templates (schema-emitted structs, f16 builder)
+        │       └── composite.wgsl  # Final tonemapping
         └── animations/
             ├── index.ts          # Animation shader exports
-            ├── smileV2.ts        # Smile V2 compute shader (canonical)
-            ├── skyStrips.ts
-            └── *.wgsl            # Archival animation shaders (not imported at runtime)
+            ├── smileV2.wgsl      # Smile V2 compute (canonical; #imports smileV2{Common,Geometry,Phases,Compute}.wgsl)
+            └── smileV2.ts        # Re-export
 ```
 
 ## Build and Development Commands
@@ -242,7 +244,7 @@ const SATELLITES_PER_PLANE = 1024; // satellites per plane
 [96-111]  camera_up:      vec4f        // Camera up vector
 [112-115] time:           f32          // Simulation time
 [116-119] delta_time:     f32          // Frame delta time
-[120-123] view_flags:     u32          // Packed: view_mode (bits 0-15), is_ground_view (bit 16), physics_mode (bits 17-19)
+[120-123] view_flags:     u32          // Packed: view_mode (bits 0-15), is_ground_view (bit 16), physics_mode (bits 17-19: 0 simple, 1 Kepler, 2 J2, 3 GPU SGP4)
 [124-127] sim_time:       f32          // Scaled simulation time
 [128-223] frustum:        array<vec4f,6>  // Frustum planes
 [224-231] screen_size:    vec2f        // Screen dimensions
@@ -301,7 +303,7 @@ Optical ISL mesh (`docs/ISL.md`): ≤128k fibers, plane-neighbor Walker topology
 
 ## Reference frames
 
-See **`docs/FRAMES.md`**. SGP4 TEME is used as the render ECI (no GCRF conversion). Sun lighting: **ART** (default XY-plane cinematic sun) vs **ASTRO** (`?sun=astro`, UTC geometric sun). Earth/Ground View surface rotation: legacy sim-time spin by default (**ART**, bit-identical to visual baselines) vs true-GMST rotation (`?sun=astro` always, or `?earth=1` under ART) that agrees with ground-station ECEF↔ECI — single GMST source is `src/physics/frames.ts::gmstRad`.
+See **`docs/FRAMES.md`**. SGP4 TEME is used as the render ECI by default; `?frame=gcrf&sun=astro` rotates re-anchor states TEME→GCRF via WASM `sgp4_teme_to_gcrf` (the GPU mode-3 kernel stays TEME). `sgp4_load_catalog` rejects are counted (`sgp4_catalog_rejected_count`) and shown in the data-source HUD. Sun lighting: **ART** (default XY-plane cinematic sun) vs **ASTRO** (`?sun=astro`, UTC geometric sun). Earth/Ground View surface rotation: legacy sim-time spin by default (**ART**, bit-identical to visual baselines) vs true-GMST rotation (`?sun=astro` always, or `?earth=1` under ART) that agrees with ground-station ECEF↔ECI — single GMST source is `src/physics/frames.ts::gmstRad`.
 
 ## Earth surface
 
@@ -309,7 +311,11 @@ See **`docs/EARTH_MAPS.md`**. Procedural FBM biomes/ocean/city-lights by default
 
 ## Close approaches
 
-See **`docs/CONJUNCTIONS.md`**. Off by default (`?ca=1&caKm=5`, `?caDensity=1`). GPU spatial hash: `clear_bins` / `bin_sats` / `find_pairs` in `src/shaders/compute/conjunction.ts`, cell size = threshold so the 27-cell neighbourhood is exact. `src/physics/conjunctionHash.ts` is the CPU reference the WGSL mirrors and the tests pin (brute-force cross-checked). Plain `atomicAdd`, no `subgroups`. **Buffers are lazily allocated**: `calculateSatelliteBufferBudget` at 1M already reaches the 128 MB Pascal cap exactly, so the pass declines with a HUD reason above ~524k satellites instead of tripping `assertBufferBudget`. Not SSA — the UI copy never claims operational collision avoidance, and a test asserts that.
+See **`docs/CONJUNCTIONS.md`**. Off by default (`?ca=1&caKm=5`, `?caDensity=1`). GPU spatial hash: `clear_bins` / `bin_sats` / `find_pairs` in `src/shaders/compute/conjunction.wgsl`, cell size = threshold so the 27-cell neighbourhood is exact. `src/physics/conjunctionHash.ts` is the CPU reference the WGSL mirrors and the tests pin (brute-force cross-checked). Plain `atomicAdd`, no `subgroups`. **Buffers are lazily allocated**: `calculateSatelliteBufferBudget` at 1M already reaches the 128 MB Pascal cap exactly, so the pass declines with a HUD reason above ~524k satellites instead of tripping `assertBufferBudget`. Not SSA — the UI copy never claims operational collision avoidance, and a test asserts that.
+
+## Light Brush
+
+See **`docs/BRUSH.md`**. Off by default (`?brush=1&brushMode=point|spray|ring&brushKm=400&brushFade=3&brushColor=rrggbb`), forced off on `low`/mobile like ISL, WebGPU only. Paint lives in the packed `animScratch` (rgba8 u32/sat, Smile V2's slot): **no new storage buffer**, only a 288-byte uniform. `src/physics/brushFalloff.ts` is the CPU reference `src/shaders/compute/brush.wgsl` mirrors (tests pin constants and layout). Decay is linear whole 1/255 steps with a carried remainder — exponential decay stalls on 8 bits. Pointer rays are built from view and projection separately, because inverting the Float32 view×projection at near 10 / far 500k km gives garbage. Light only — HUD copy never claims gravity, n-body or SSA, and a test asserts it.
 
 ## Physics Modes
 
@@ -318,6 +324,7 @@ Controlled by the "PHYSICS MODE" UI buttons:
 - **Simple** (`0`) — Multi-shell circular orbits (RAAN / inclination / mean anomaly)
 - **Keplerian** (`1`) — Extended elements (`a`, `e`, `inc`, `Ω`, `ω`, `M0`, `n`) for every satellite
 - **J2 Perturbed** (`2`) — Keplerian plus first-order secular J2 rates on `Ω̇`, `ω̇`, `Ṁ` (WGS-84 `J2` / `Re`)
+- **SGP4 (GPU)** (`3`, `?physics=3`) — simplified near-earth SGP4 in `orbital.wgsl` for TLE slots while orbit realism is on: Vallado `sgp4init`+`sgp4` method `'n'` (secular J2/J4 + full drag, J3 long-period, J2 short-period), WGS-72, TEME. No SDP4 (period ≥ 225 min) and no per-frame CPU re-anchor. Every other slot (procedural, deep-space, slots ≥ 16,384) falls back to J2. `src/physics/sgp4NearEarth.ts` is the CPU mirror the WGSL follows line for line; `sgp4NearEarth.test.ts` pins it to the WASM oracle (< 0.1 km over 6 h, also with f32 coefficients). Mean elements live in a compact `sgp4Elements` buffer (binding 7, 48 B/slot, < 1 MB, in the ledger), not per-fleet. Phases are pre-advanced in float64 to a base sim time and re-based every 30 sim-min — f32 cannot hold `ṁ·tsince` for a days-old TLE.
 
 ### Constellation Configuration
 
@@ -363,7 +370,7 @@ lives in `src/app/App.ts`.
 
 **src/core/SatelliteGPUBuffer.ts**: Public façade (`initialize` / `destroy` / getters). Implementation lives in:
 
-- `src/core/buffer/BufferAllocator.ts` — GPU buffer creation, Pascal 128 MB budget (~118 MB accounted)
+- `src/core/buffer/BufferAllocator.ts` — GPU buffer creation, Pascal 128 MB budget (single ledger `calculateSatelliteBufferBudget`, uniforms included: ~84 MB at 1M, ~116 MB with cinematic trails)
 - `src/core/buffer/BufferUpload.ts` — staging + bloom / extended-range writes
 - `src/core/orbital/OrbitalDataStore.ts` — CPU orbital / extended / group arrays + worker generate/load
 - `src/core/orbital/Sgp4ReanchorService.ts` — `TlePropagator` ownership, chunked `tick` / `force` re-anchor
@@ -377,12 +384,13 @@ GPU memory manager for:
 - 16MB position buffer (read-write storage)
 - 256-byte uniform buffer
 - 4MB per-satellite color buffer (rgba8unorm packed)
-- 16MB pattern buffer (Sky Strips)
+- 4MB animation scratch (`animScratch`, Smile V2 output, rgba8unorm packed)
 - 2MB beam data buffer (64k beams)
-- 32MB trail buffer (2 frames)
+- 4MB group IDs, 4MB ISL links, 2MB packed-u16 activeFrom
+- 32MB trail buffer (2 frames) — cinematic only (`trailHistory`), otherwise not allocated
 - Various uniform buffers for bloom, beams, patterns, Smile V2
 - Double-buffered staging uploads (zero CPU stall)
-- Total ~118 MB (under Pascal 128 MB safe limit)
+- Total ~84 MB at 1M (~116 MB cinematic) under the Pascal 128 MB safe limit; `doubleBuffer` ping-pong adds 16 MB and is incompatible with a full cinematic fleet
 
 ### Rendering
 
@@ -415,9 +423,9 @@ Shaders are organized into three domains under `src/shaders/`:
 
 - **compute/** — Compute shaders (orbital mechanics, beams)
 - **render/** — Render shaders (stars, Earth, atmosphere, satellites, ground, post-process)
-- **animations/** — Animation shaders (Smile V2, Sky Strips, digital rain, heartbeat, etc.)
+- **animations/** — Animation compute shaders (Smile V2). Digital rain and heartbeat are evaluated in `satellites.wgsl`.
 
-The central export is `src/shaders/index.ts` which exposes `SHADERS.compute`, `SHADERS.render`, and `SHADERS.animations`. Orbital, satellite, and composite shaders are authored as `.wgsl` with `#import` (generated `uniforms.wgsl` from `SCENE_UNI_SCHEMA`). Fleet size is a WGSL `override num_satellites` set via `fleetPipelineConstants()` at pipeline create. WebGL GLSL in `src/webgl/shaders.ts` is inspection/a11y only — do not hand-port new WebGPU passes (ISL, J2, volumetrics) to GLSL.
+The central export is `src/shaders/index.ts` which exposes `SHADERS.compute`, `SHADERS.render`, and `SHADERS.animations`. Canonical sources are `.wgsl` files with `#import` — `uniforms.wgsl`, `uni_struct.wgsl` and `bloom_composite.wgsl` are virtual includes generated from the TS schemas, not checked-in files. The remaining TS template-string shaders are listed with a reason in `shaderSources.test.ts`; new shaders should be `.wgsl`. Fleet size is a WGSL `override num_satellites` set via `fleetPipelineConstants()` at pipeline create. WebGL GLSL in `src/webgl/shaders.ts` is inspection/a11y only — do not hand-port new WebGPU passes (ISL, J2, volumetrics) to GLSL.
 
 ## Vite Configuration Features
 
@@ -538,7 +546,8 @@ WebGL2 (`?renderer=webgl`) remains the high-coverage visual suite. WebGPU offscr
 - `src/data/SatelliteCatalog.test.ts` — catalog management
 
 **Physics:**
-- `src/physics/Sgp4WasmEngine.test.ts` — WASM SGP4 accuracy (1e-3 km @ 24h)
+- `src/physics/Sgp4WasmEngine.test.ts` — WASM SGP4 accuracy (1e-3 km @ 24h), reject count, GCRF re-anchor
+- `src/physics/sgp4NearEarth.test.ts` — GPU near-earth SGP4 mirror vs WASM (< 0.1 km @ 6h)
 - `src/physics/Sgp4Benchmark.test.ts` — WASM vs JS speedup
 - `src/physics/TlePropagator.test.ts` — propagator orchestration
 - `src/physics/keplerianFromState.test.ts` — ECI to Keplerian conversion
@@ -588,7 +597,7 @@ npm run build && npm run preview
 - **Distance Culling**: Satellites >150,000km from camera are not rendered (increased for Ground/Moon views)
 - **HDR Rendering**: Uses `rgba16float` format for intermediate buffers
 - **Texture Views**: Cached to avoid `createView()` calls every frame
-- **Pascal Safety**: Total GPU buffer footprint is kept under ~118 MB (128 MB safe limit) through tight packing (rgba8unorm colors, compact extended elements, reduced trail frames)
+- **Pascal Safety**: Total GPU buffer footprint is ~84 MB at 1M (~116 MB cinematic; 128 MB safe limit) through tight packing (rgba8unorm colors and Smile output, compact extended elements, cinematic-only trail history)
 
 ## TLE Mode (Real Satellite Data)
 
@@ -645,7 +654,7 @@ If TLE fetch/parse fails (network error, CORS, invalid format), the app logs a w
 
 - **Scale**: Real constellations have ~6K sats vs 1M procedural. Padded sats use the standard Walker pattern.
 - **Accuracy**: TLE slots are re-anchored with WASM Vallado SGP4 (or `satellite.js` fallback). The GPU interpolates Keplerian/J2 between anchors; full GPU SGP4 is not implemented.
-- **Epoch**: Simulation uses wall-clock elapsed time, not UTC. Positions drift from reality over time.
+- **Epoch**: Simulation time is UTC — `SimClock.simUtcMs` (`epochMs + simTime * 1000`) drives SGP4 re-anchor, pass prediction and GMST Earth rotation. See [docs/FRAMES.md](docs/FRAMES.md). Between re-anchors the GPU interpolates Keplerian/J2, so TLE accuracy still degrades with distance from the anchor.
 - **CORS**: CelesTrak allows cross-origin. Custom URLs need CORS headers.
 
 ## Known Limitations and TODOs
@@ -686,14 +695,14 @@ If TLE fetch/parse fails (network error, CORS, invalid format), the app logs a w
 
 ### Adding New Beam Patterns
 
-1. Update the beam compute shader in `src/shaders/compute/beam.ts`
+1. Update the beam compute shader in `src/shaders/compute/beam.wgsl`
 2. Add UI button in `index.html` with `data-pattern` attribute
 3. Update `setPatternMode()` in `src/app/PatternController.ts` if pattern param semantics change
 
 ### Adding New Animation Patterns
 
-1. Create WGSL shader in `src/shaders/animations/`
-2. Export from `src/shaders/animations/index.ts`
+1. Create a `.wgsl` shader in `src/shaders/animations/` (`#import "uniforms.wgsl"` if it needs `Uni`); write per-satellite output into the shared `animScratch` buffer (packed rgba8 u32) instead of allocating another per-fleet buffer
+2. Re-export it from a `.ts` module and `src/shaders/animations/index.ts`
 3. Add UI button in `index.html` under `#animation-controls`
 4. Wire up in `UIManager.ts` and `src/app/PatternController.ts`
 

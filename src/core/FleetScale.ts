@@ -17,7 +17,6 @@ export const QUALITY_FLEET_SIZE: Record<QualityLevel, number> = {
   cinematic: 1_048_576,
 };
 
-const STORAGE_KEY = 'zephyr.fleetSize';
 const TRAIL_HISTORY_FRAMES = 2;
 
 export interface AdapterLimitSnapshot {
@@ -146,26 +145,6 @@ export function resolveFleetScale(options: {
     autoReduced: count < requested,
     source: count < requested ? 'adapter' : source,
   };
-}
-
-export function persistSuccessfulFleetSize(count: number): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, String(count));
-  } catch {
-    // ignore
-  }
-}
-
-export function readPersistedFleetSize(): number | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const n = parseInt(raw, 10);
-    if (isNaN(n) || n < 1) return null;
-    return Math.min(n, FLEET_SIZE_MAX);
-  } catch {
-    return null;
-  }
 }
 
 /** Pipeline override constants matching WGSL `override num_satellites`. */

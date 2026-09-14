@@ -7,6 +7,7 @@ import { getDrawableSize } from '@/app/MobilePresentation.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 import { applyIslForQuality } from '@/app/IslController.js';
 import { applyConjunctionsForQuality } from '@/app/ConjunctionController.js';
+import { applyBrushForQuality } from '@/app/BrushController.js';
 
 export function applyQualityPreset(rt: AppRuntime, level: QualityLevel): void {
   const preset = QUALITY_PRESETS[level];
@@ -52,6 +53,7 @@ export function applyQualityPreset(rt: AppRuntime, level: QualityLevel): void {
   const forceOverlaysOff = level === 'low' || (rt.isMobileDevice && level !== 'cinematic');
   applyIslForQuality(rt, forceOverlaysOff);
   applyConjunctionsForQuality(rt, forceOverlaysOff);
+  applyBrushForQuality(rt, forceOverlaysOff);
   saveQualityLevel(level);
 
   console.log(`🎨 Quality preset: ${preset.label} — ${preset.description}`);

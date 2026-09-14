@@ -159,4 +159,37 @@ describe('TlePropagator WASM integration', () => {
     expect(propagator.isWasmActive()).toBe(true);
     expect(propagator.getBackend()).toBe('wasm');
   });
+
+  it('reports TLEs Vallado rejected on catalog load', async () => {
+    const tles = TLELoader.parse(SAMPLE_TLE);
+    const propagator = new TlePropagator();
+    // 40 rev/day puts perigee inside the Earth: sgp4init's t=0 call errors (6).
+    const sunk = {
+      name: 'SUNK',
+      line1: tles[1].line1,
+      line2: tles[1].line2.slice(0, 52) + '40.00000000' + tles[1].line2.slice(63),
+    };
+    propagator.load([tles[0], sunk, tles[1]]);
+    expect(await propagator.initWasm()).toBe(true);
+    expect(propagator.rejectedCount()).toBe(1);
+  });
+
+  it('rotates re-anchor elements into GCRF only when asked (TEME stays default)', async () => {
+    const tles = TLELoader.parse(SAMPLE_TLE);
+    const propagator = new TlePropagator();
+    propagator.load(tles);
+    expect(await propagator.initWasm()).toBe(true);
+    const dateMs = Date.UTC(2024, 11, 22, 12, 0, 0);
+    const teme = (await propagator.applyPackedBatch(dateMs, 0, 1)).extended.slice();
+    propagator.setOutputFrame('gcrf');
+    expect(propagator.usesSgp4Worker()).toBe(false);
+    const gcrf = (await propagator.applyPackedBatch(dateMs, 0, 1)).extended;
+    // Same orbit size/shape, frame rotation shows up in the node (~0.1–0.5°).
+    expect(Math.abs(gcrf[0] - teme[0])).toBeLessThan(0.5);
+    const dNode = Math.abs(gcrf[3] - teme[3]);
+    expect(dNode).toBeGreaterThan(1e-4);
+    expect(dNode).toBeLessThan(0.02);
+    propagator.setOutputFrame('teme');
+    expect(Array.from((await propagator.applyPackedBatch(dateMs, 0, 1)).extended)).toEqual(Array.from(teme));
+  });
 });

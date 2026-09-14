@@ -10,7 +10,6 @@ import type { QualityLevel } from '@/core/QualityPresets.js';
 import {
   fleetLimitsForCount,
   installActiveFleetScale,
-  persistSuccessfulFleetSize,
   type FleetScale,
 } from '@/core/FleetScale.js';
 import {
@@ -219,7 +218,6 @@ export class WebGPUContext {
       console.log('[WebGPU] Context initialized successfully');
       console.log(`[WebGPU] Format: ${this.format}`);
       console.log(`[WebGPU] Presentation: ${this.presentationMode}`);
-      persistSuccessfulFleetSize(this.fleetScale.count);
       console.log(
         `[WebGPU] Fleet size: ${this.fleetScale.count.toLocaleString()}` +
           (this.fleetScale.autoReduced

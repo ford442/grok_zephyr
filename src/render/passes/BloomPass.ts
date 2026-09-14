@@ -5,6 +5,7 @@
 import { createBloomThresholdBindGroup } from '../pipelines/BindGroupFactory.js';
 import { MAX_BLOOM_LEVELS, MIN_BLOOM_LEVELS } from '../pipelines/types.js';
 import type { FrameContext } from './types.js';
+import { passTimestampWrites } from './passTimestamps.js';
 
 export function encodeBloomPasses(
   encoder: GPUCommandEncoder,
@@ -35,6 +36,7 @@ export function encodeBloomPasses(
 
   {
     const pass = encoder.beginRenderPass({
+      timestampWrites: passTimestampWrites(),
       colorAttachments: [
         {
           view: ctx.renderTargets.bloomAView,
@@ -72,6 +74,7 @@ export function encodeBloomPasses(
     });
 
     const pass = encoder.beginRenderPass({
+      timestampWrites: passTimestampWrites(),
       colorAttachments: [
         {
           view: dstViews[i],
@@ -104,6 +107,7 @@ export function encodeBloomPasses(
     });
 
     const pass = encoder.beginRenderPass({
+      timestampWrites: passTimestampWrites(),
       colorAttachments: [
         {
           view: ctx.renderTargets.bloomMipViews[i - 1],

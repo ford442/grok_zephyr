@@ -9,6 +9,11 @@ export interface BufferPair {
 export interface SatelliteBufferConfig {
   /** Enable double-buffering for ping-pong rendering */
   doubleBuffer: boolean;
+  /**
+   * Allocate the 2-frame trail history buffer (32 MB at 1M). Cinematic only;
+   * combined with doubleBuffer it does not fit a 1M fleet under 128 MB.
+   */
+  trailHistory: boolean;
   /** Enable CPU readback (for debug/visualization) */
   enableReadback: boolean;
   /** Buffer usage flags */
@@ -49,14 +54,12 @@ export interface SatelliteBufferSet {
   patternParams: GPUBuffer;
   /** Per-satellite RGBA color (packed rgba8unorm u32, 4 MB for 1M sats) */
   colors: GPUBuffer;
-  /** Sky Strips: Per-satellite pattern data (16 bytes per sat: brightness, patternId, phase, speed) */
-  patterns: GPUBuffer;
-  /** Sky Strips: Uniform buffer for pattern compute shader */
-  skyStripUniforms: GPUBuffer;
+  /** Animation scratch — Smile V2 sat_output: packed rgba8unorm u32 per satellite (4 MB for 1M sats) */
+  animScratch: GPUBuffer;
   /** Smile V2: Uniform buffer for animation state (96 bytes) */
   smileV2Uniforms: GPUBuffer;
-  /** Smile V2: Trail buffer for phase 6 trails (2 frames × 16 bytes) */
-  trailBuffer: GPUBuffer;
+  /** Trail history (2 frames × 16 bytes); null unless config.trailHistory (cinematic) */
+  trailBuffer: GPUBuffer | null;
   /** Per-satellite constellation group id (u32, 4 MB for 1M sats) */
   groupIds: GPUBuffer;
   /** Per-group render parameters (colors, size, visibility) */
@@ -69,6 +72,8 @@ export interface SatelliteBufferSet {
   activeFrom: GPUBuffer;
   /** Growth era uniform (16 bytes) */
   growthParams: GPUBuffer;
+  /** Near-earth SGP4 mean elements for TLE slots (physics mode 3), see sgp4NearEarth.ts */
+  sgp4Elements: GPUBuffer;
 }
 
 export function isBufferPair(buffer: GPUBuffer | BufferPair): buffer is BufferPair {

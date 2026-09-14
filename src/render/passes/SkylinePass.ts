@@ -1,4 +1,5 @@
 import type { FrameContext } from './types.js';
+import { passTimestampWrites } from './passTimestamps.js';
 
 export function encodeSkylinePass(
   encoder: GPUCommandEncoder,
@@ -8,6 +9,7 @@ export function encodeSkylinePass(
   if (!ctx.skylineBindGroup) return;
 
   const pass = encoder.beginRenderPass({
+    timestampWrites: passTimestampWrites(),
     colorAttachments: [
       {
         view: ctx.renderTargets.hdrView,

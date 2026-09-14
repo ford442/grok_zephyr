@@ -1,3 +1,5 @@
+> **Historical (stamped 2026-09-14).** This plan predates the beam, ISL and buffer-ledger work; laser beams exist (`MAX_BEAMS` = 64k) and its buffer numbers are stale. See `src/core/buffer/BufferAllocator.ts`.
+
 # Update Plan: Grok Zephyr / Colossus Fleet
 
 ## Current Status

@@ -1,4 +1,4 @@
-export const SMILE_V2_COMMON = /* wgsl */ `// =================================================================================
+// =================================================================================
 // CONSTANTS & CONFIGURATION
 // =================================================================================
 
@@ -120,19 +120,18 @@ struct SmileV2Params {
 
 /**
  * Output color buffer (read-write)
- * Layout: vec4f per satellite
- *   rgb: Output color for this satellite
+ * Layout: packed rgba8unorm u32 per satellite (pack4x8unorm, 4 B — was vec4f)
+ *   rgb: Output color for this satellite, clamped to [0, 1]
  *   a:   Feature ID (0-4) encoded as normalized value
  * 
  * Feature ID encoding: 
  *   0.0 = none, 0.25 = left eye, 0.5 = right eye, 
  *   0.75 = smile, 1.0 = morph
  */
-@group(0) @binding(2) var<storage, read_write> sat_output: array<vec4f>;
+@group(0) @binding(2) var<storage, read_write> sat_output: array<u32>;
 
 /**
  * Feature assignment buffer (optional, for caching)
  * Stores precomputed feature IDs to avoid recalculation
  */
 @group(0) @binding(3) var<storage, read_write> feature_cache: array<u32>;
-`;

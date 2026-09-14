@@ -5,5 +5,7 @@ export function setSunLightingMode(rt: AppRuntime, mode: SunLightingMode): void 
   rt.simulation.sunMode = mode;
   persistSunMode(mode);
   rt.ui.setActiveSunButton(mode);
+  const frame = rt.simulation.gcrfRequested && mode === 'astro' ? 'gcrf' : 'teme';
+  rt.buffers?.setSgp4OutputFrame(frame, rt.simulation.simTime);
   console.log(`☀️ Sun lighting: ${mode === 'astro' ? 'Astro (UTC geometric)' : 'Art (cinematic XY)'}`);
 }

@@ -10,6 +10,11 @@ import {
   type SatelliteBufferConfig,
   type SatelliteBufferSet,
 } from './bufferTypes.js';
+import {
+  SGP4_GPU_CAPACITY,
+  SGP4_GPU_FLOATS_PER_SLOT,
+  SGP4_GPU_HEADER_FLOATS,
+} from '@/physics/sgp4NearEarth.js';
 
 export interface SatelliteBufferSizes {
   numSatellites: number;
@@ -18,54 +23,91 @@ export interface SatelliteBufferSizes {
   extended: number;
 }
 
+/** Options that change which satellite buffers are actually allocated. */
+export type SatelliteBudgetOptions = Pick<SatelliteBufferConfig, 'doubleBuffer' | 'trailHistory'>;
+
+/** Bytes per satellite in the packed rgba8 animation scratch (Smile V2 sat_output). */
+export const ANIM_SCRATCH_BYTES_PER_SAT = 4;
+/** Trail history frames × vec4f, allocated only when `trailHistory` is on. */
+export const TRAIL_HISTORY_FRAMES = 2;
+
 /**
- * Budget for 1M satellites (must stay under Pascal 128 MB):
- * - Position: 16 MB (vec4<f32>)
- * - Elements: 16 MB (vec4<f32>)
- * - Extended: 32 MB (8 floats × 4 bytes)
- * - Colors: 4 MB (rgba8unorm packed)
- * - Patterns: 16 MB (Sky Strips)
- * - Beams: 2 MB (64k × 32 bytes)
- * - Trails: 32 MB (2 frames × vec4f)
- * - Group IDs: 4 MB
- * - Uniforms: ~1 KB
- * Total: ~118 MB
+ * Single source of truth for satellite GPU memory. Allocation, the boot-time
+ * assert, getMemoryUsage and the conjunction budget all read this ledger, and
+ * `total` includes uniforms — nothing is excluded.
+ *
+ * 1,048,576 satellites (MB = MiB):
+ * - Position:   16 MB (vec4<f32>; ×2 = 32 MB with doubleBuffer ping-pong)
+ * - Elements:   16 MB (vec4<f32>)
+ * - Extended:   32 MB (8 floats × 4 bytes)
+ * - Colors:      4 MB (rgba8unorm packed u32)
+ * - AnimScratch: 4 MB (Smile V2 sat_output, rgba8unorm packed u32)
+ * - Beams:       2 MB (64k × 32 bytes)
+ * - Trails:     32 MB (2 frames × vec4f) — cinematic only (`trailHistory`)
+ * - Group IDs:   4 MB
+ * - ISL links:   4 MB (128k × 32 bytes)
+ * - ActiveFrom:  2 MB (packed u16, ceil(n/2) × 4 bytes)
+ * - SGP4 GPU:  <1 MB (near-earth mean elements, ≤16,384 TLE slots × 48 bytes)
+ * - Uniforms:   <1 KB
+ * Total: ~84 MB default, ~116 MB with trail history.
+ *
+ * doubleBuffer + trailHistory at 1M is 132 MB and exceeds the cap; ping-pong
+ * positions are incompatible with a full cinematic fleet.
  */
-export function calculateSatelliteBufferBudget(numSats: number): {
+export function calculateSatelliteBufferBudget(
+  numSats: number,
+  options: SatelliteBudgetOptions = { doubleBuffer: false, trailHistory: false },
+): {
   total: number;
   breakdown: Record<string, number>;
 } {
   const breakdown = {
-    position: numSats * 16,
+    position: numSats * 16 * (options.doubleBuffer ? 2 : 1),
     elements: numSats * 16,
     extended: numSats * 32,
     colors: numSats * 4,
-    patterns: numSats * 16,
+    animScratch: numSats * ANIM_SCRATCH_BYTES_PER_SAT,
     beams: MAX_BEAMS * 32,
-    trails: numSats * 16 * 2,
+    trails: options.trailHistory ? numSats * 16 * TRAIL_HISTORY_FRAMES : 0,
     groupIds: numSats * 4,
     isl: MAX_ISL_LINKS * 32,
     activeFrom: Math.ceil(numSats / 2) * 4,
+    sgp4: sgp4GpuBufferBytes(numSats),
     uniforms:
-      256 + 32 + 16 + 16 + 64 + 32 + 48 + 96 + GROUP_PARAMS_UNIFORM_SIZE + ISL_PARAM_BYTES,
+      BUFFER_SIZES.UNIFORM +
+      32 +
+      BUFFER_SIZES.BLOOM_UNIFORM * 2 +
+      256 +
+      16 +
+      96 +
+      16 +
+      GROUP_PARAMS_UNIFORM_SIZE +
+      ISL_PARAM_BYTES,
   };
   const total = Object.values(breakdown).reduce((a, b) => a + b, 0);
   return { total, breakdown };
 }
 
+/** Compact physics-mode-3 buffer: header + 12 floats per TLE slot, capped. */
+export function sgp4GpuBufferBytes(numSats: number): number {
+  const slots = Math.max(1, Math.min(SGP4_GPU_CAPACITY, numSats));
+  return (SGP4_GPU_HEADER_FLOATS + slots * SGP4_GPU_FLOATS_PER_SLOT) * 4;
+}
+
 export function logBufferBudget(numSats: number, total: number, breakdown: Record<string, number>): void {
   const mb = (n: number) => (n / 1024 / 1024).toFixed(2);
   console.log(`[Buffer Size Debug] Breakdown for ${numSats.toLocaleString()} satellites:`);
-  console.log(`  Position:   ${mb(breakdown.position)} MB (${numSats} × 16 bytes)`);
+  console.log(`  Position:   ${mb(breakdown.position)} MB (${numSats} × 16 bytes${breakdown.position > numSats * 16 ? ' × 2, ping-pong' : ''})`);
   console.log(`  Elements:   ${mb(breakdown.elements)} MB (${numSats} × 16 bytes)`);
   console.log(`  Extended:   ${mb(breakdown.extended)} MB (${numSats} × 32 bytes, COMPACT)`);
   console.log(`  Colors:     ${mb(breakdown.colors)} MB (${numSats} × 4 bytes)`);
-  console.log(`  Patterns:   ${mb(breakdown.patterns)} MB (${numSats} × 16 bytes)`);
+  console.log(`  AnimScratch: ${mb(breakdown.animScratch)} MB (${numSats} × ${ANIM_SCRATCH_BYTES_PER_SAT} bytes, rgba8)`);
   console.log(`  Beams:      ${mb(breakdown.beams)} MB (${MAX_BEAMS} × 32 bytes)`);
-  console.log(`  Trails:     ${mb(breakdown.trails)} MB (${numSats} × 16 × 2 frames, REDUCED)`);
+  console.log(`  Trails:     ${mb(breakdown.trails)} MB ${breakdown.trails ? `(${numSats} × 16 × ${TRAIL_HISTORY_FRAMES} frames)` : '(off — cinematic only)'}`);
   console.log(`  Group IDs:  ${mb(breakdown.groupIds)} MB`);
   console.log(`  ISL links:  ${mb(breakdown.isl)} MB (${MAX_ISL_LINKS} × 32 bytes)`);
-  console.log(`  ActiveFrom: ${mb(breakdown.activeFrom)} MB (${numSats} × 4 bytes)`);
+  console.log(`  ActiveFrom: ${mb(breakdown.activeFrom)} MB (${Math.ceil(numSats / 2)} × 4 bytes, packed u16)`);
+  console.log(`  SGP4 GPU:   ${(breakdown.sgp4 / 1024).toFixed(2)} KB (near-earth TLE slots, mode 3)`);
   console.log(`  Uniforms:   ${(breakdown.uniforms / 1024).toFixed(2)} KB`);
   console.log(`  TOTAL:      ${mb(total)} MB`);
   console.log(`  LIMIT:      128.00 MB (Pascal safe limit)`);
@@ -144,37 +186,23 @@ export function allocateSatelliteBuffers(
   colorData.fill(0xffffffff);
   context.writeBuffer(colors, colorData);
 
-  const patterns = context.createBuffer(
-    numSats * 16,
+  // Smile V2 sat_output: one packed rgba8unorm u32 per satellite (written by
+  // pack4x8unorm in the compute shader). Starts zeroed.
+  const animScratch = context.createBuffer(
+    numSats * ANIM_SCRATCH_BYTES_PER_SAT,
     GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   );
-  const patternData = new Float32Array(numSats * 4);
-  for (let i = 0; i < numSats; i++) {
-    const idx = i * 4;
-    patternData[idx + 0] = 0.7 + Math.random() * 0.3;
-    patternData[idx + 1] = 0;
-    patternData[idx + 2] = (i % 1000) * 0.01;
-    patternData[idx + 3] = 0.8 + Math.random() * 0.4;
-  }
-  context.writeBuffer(patterns, patternData);
-
-  const skyStripUniforms = context.createUniformBuffer(48);
-  const skyStripUniformsData = new Float32Array(12);
-  skyStripUniformsData[3] = 120;
-  skyStripUniformsData[4] = 0.8;
-  skyStripUniformsData[5] = 1.0;
-  skyStripUniformsData[6] = 15;
-  skyStripUniformsData[7] = 0.1;
-  context.writeBuffer(skyStripUniforms, skyStripUniformsData);
 
   const smileV2Uniforms = context.createUniformBuffer(96);
   context.writeBuffer(smileV2Uniforms, new Float32Array(24));
 
-  const trailBuffer = context.createBuffer(
-    numSats * 16 * 2,
-    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-  );
-  context.writeBuffer(trailBuffer, new Float32Array(numSats * 4 * 2));
+  // 32 MB at 1M — only the cinematic tier pays for trail history.
+  const trailBuffer = config.trailHistory
+    ? context.createBuffer(
+        numSats * 16 * TRAIL_HISTORY_FRAMES,
+        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      )
+    : null;
 
   const groupIds = context.createBuffer(
     numSats * 4,
@@ -192,6 +220,11 @@ export function allocateSatelliteBuffers(
     GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   );
   context.writeBuffer(activeFrom, new Uint32Array(Math.ceil(numSats / 2)));
+  const sgp4Elements = context.createBuffer(
+    sgp4GpuBufferBytes(numSats),
+    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  );
+  context.writeBuffer(sgp4Elements, new Float32Array(SGP4_GPU_HEADER_FLOATS));
   const growthParams = context.createUniformBuffer(16);
   context.writeBuffer(growthParams, new Uint32Array(4));
 
@@ -199,10 +232,12 @@ export function allocateSatelliteBuffers(
     `[SatelliteGPUBuffer] Color buffer: ${((numSats * 4) / 1024 / 1024).toFixed(2)} MB (rgba8unorm)`,
   );
   console.log(
-    `[SatelliteGPUBuffer] Pattern buffer: ${((numSats * 16) / 1024 / 1024).toFixed(2)} MB (Sky Strips)`,
+    `[SatelliteGPUBuffer] Anim scratch: ${((numSats * ANIM_SCRATCH_BYTES_PER_SAT) / 1024 / 1024).toFixed(2)} MB (Smile V2 output, rgba8)`,
   );
   console.log(
-    `[SatelliteGPUBuffer] Trail buffer: ${((numSats * 16 * 2) / 1024 / 1024).toFixed(2)} MB (2 frames)`,
+    trailBuffer
+      ? `[SatelliteGPUBuffer] Trail buffer: ${(trailBuffer.size / 1024 / 1024).toFixed(2)} MB (${TRAIL_HISTORY_FRAMES} frames)`
+      : '[SatelliteGPUBuffer] Trail buffer: not allocated (trail history is cinematic-only)',
   );
   console.log(
     `[SatelliteGPUBuffer] Group IDs buffer: ${((numSats * 4) / 1024 / 1024).toFixed(2)} MB`,
@@ -225,8 +260,7 @@ export function allocateSatelliteBuffers(
     beamParams,
     patternParams,
     colors,
-    patterns,
-    skyStripUniforms,
+    animScratch,
     smileV2Uniforms,
     trailBuffer,
     groupIds,
@@ -235,6 +269,7 @@ export function allocateSatelliteBuffers(
     islParams,
     activeFrom,
     growthParams,
+    sgp4Elements,
   };
 }
 
@@ -249,16 +284,16 @@ export function destroySatelliteBuffers(buffers: SatelliteBufferSet): void {
   buffers.beamParams.destroy();
   buffers.patternParams.destroy();
   buffers.colors.destroy();
-  buffers.patterns.destroy();
-  buffers.skyStripUniforms.destroy();
+  buffers.animScratch.destroy();
   buffers.smileV2Uniforms.destroy();
-  buffers.trailBuffer.destroy();
+  buffers.trailBuffer?.destroy();
   buffers.groupIds.destroy();
   buffers.groupParams.destroy();
   buffers.islLinks.destroy();
   buffers.islParams.destroy();
   buffers.activeFrom.destroy();
   buffers.growthParams.destroy();
+  buffers.sgp4Elements.destroy();
   if (isBufferPair(buffers.positions)) {
     buffers.positions.read.destroy();
     buffers.positions.write.destroy();
@@ -272,29 +307,5 @@ export function memoryUsageBytes(
   config: SatelliteBufferConfig,
   initialized: boolean,
 ): number {
-  const { numSatellites: numSats, position, elements, extended } = sizes;
-  let total =
-    elements +
-    extended +
-    BUFFER_SIZES.UNIFORM +
-    32 +
-    BUFFER_SIZES.BLOOM_UNIFORM * 2 +
-    (config.doubleBuffer ? position * 2 : position);
-  if (initialized) {
-    total +=
-      MAX_BEAMS * 32 +
-      16 +
-      16 +
-      numSats * 4 +
-      numSats * 16 +
-      48 +
-      96 +
-      numSats * 16 * 2 +
-      numSats * 4 +
-      GROUP_PARAMS_UNIFORM_SIZE +
-      MAX_ISL_LINKS * 32 +
-      ISL_PARAM_BYTES +
-      Math.ceil(numSats / 2) * 4;
-  }
-  return total;
+  return initialized ? calculateSatelliteBufferBudget(sizes.numSatellites, config).total : 0;
 }

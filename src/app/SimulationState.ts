@@ -22,6 +22,8 @@ export class SimulationState {
   realismMode = false;
   /** Art = cinematic XY sun (default / visual baselines). Astro = UTC geometric sun. */
   sunMode: SunLightingMode = 'art';
+  /** `?frame=gcrf` request; only honoured while `sunMode === 'astro'` (docs/FRAMES.md). */
+  gcrfRequested = false;
   /**
    * true = Earth surface/ground-view sampling rotates by true GMST (agrees
    * with ground-station ECEF↔ECI); false = legacy sim-time-only spin used

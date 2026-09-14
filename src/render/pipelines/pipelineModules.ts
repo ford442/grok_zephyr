@@ -14,6 +14,7 @@ export interface PipelineShaderModules {
   conjunctionCompute: GPUShaderModule;
   conjunctionDraw: GPUShaderModule;
   conjunctionDensity: GPUShaderModule;
+  brushCompute: GPUShaderModule;
   autoExposureHistogram: GPUShaderModule;
   autoExposureAdapt: GPUShaderModule;
   stars: GPUShaderModule;
@@ -51,6 +52,7 @@ export function createPipelineModules(context: WebGPUContext): PipelineShaderMod
     conjunctionCompute: shader(SHADERS.compute.conjunction, 'conjunction-compute'),
     conjunctionDraw: shader(SHADERS.render.conjunction, 'conjunction-draw'),
     conjunctionDensity: shader(SHADERS.render.conjunctionDensity, 'conjunction-density'),
+    brushCompute: shader(SHADERS.compute.brush, 'brush-compute'),
     autoExposureHistogram: shader(
       SHADERS.render.postProcess.autoExposureHistogram,
       'auto-exposure-histogram',

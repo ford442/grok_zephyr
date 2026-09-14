@@ -19,6 +19,10 @@ Shader modules are cached per WGSL source. `getCompilationInfo()` is awaited dur
 | Canvas `viewFormats` | sRGB view of `bgra8unorm` / `rgba8unorm` for later UI blending | none on `rgba16float` HDR |
 | `?alpha=premultiplied` | Premultiplied swapchain alpha | `opaque` |
 
+## GPU pass timing
+
+`timestamp-query` alone covers pass timing: `PerformanceProfiler.beginGPUTimestamp(name)` opens a scope, and every `beginComputePass` / `beginRenderPass` in `src/render/passes/*` takes `timestampWrites` from `passTimestampWrites()` (beginning/end-of-pass indices into one per-frame query set). Passes in a scope are summed on readback into the dashboard's orbital / cull / scene / bloom / post / conjunction rows. There is no encoder-level `writeTimestamp` in shipping WebGPU. Passes encoded outside `src/render/passes` (volumetric beams, post-process stack, atmosphere clouds) are not timed. Without the feature, `recordPassTimings` supplies CPU estimates.
+
 ## Deferred (not requested)
 
 These names are documented so later systems can add them **explicitly** to `REQUESTED_OPTIONAL_FEATURES`. Device features are frozen at `requestDevice`; enabling a new one requires `recoverContext()` (new adapter/device). Do not silently drop a required feature to make boot succeed.
@@ -28,7 +32,6 @@ These names are documented so later systems can add them **explicitly** to `REQU
 | `float32-filterable` | rgba32float internals (not used; HDR/bloom stay `rgba16float`) |
 | `bgra8unorm-storage` | Storage writes to BGRA8 (not used; capture does not copy into the swapchain) |
 | `subgroups` | Spatial-hash compute |
-| `timestamp-query-inside-passes` | Nested GPU timing |
 
 ## Texture memory
 

@@ -2,7 +2,7 @@ import { getBeamPatternTitle } from '@/patterns/index.js';
 import type { FocusSelection } from '@/camera/FocusManager.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 import { syncVolumetricBeamConfig } from '@/app/QualityController.js';
-import { PHYSICS_MODE_NAMES } from '@/physics/physicsMode.js';
+import { PHYSICS_MODE, PHYSICS_MODE_NAMES } from '@/physics/physicsMode.js';
 
 export function setupPatternButtons(rt: AppRuntime): void {
   const patternButtons = document.querySelectorAll('.pbtn');
@@ -89,7 +89,7 @@ export function setAnimationPattern(rt: AppRuntime, mode: number): void {
 }
 
 export function setPhysicsMode(rt: AppRuntime, mode: number): void {
-  if (mode < 0 || mode > 2) {
+  if (mode < 0 || mode > PHYSICS_MODE.SGP4) {
     console.warn(`Invalid physics mode: ${mode}`);
     return;
   }

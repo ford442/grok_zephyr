@@ -13,6 +13,8 @@ export interface InitialUrlState {
   realismMode: boolean | null;
   sunMode: SunLightingMode | null;
   earthRotate: boolean | null;
+  /** ?frame=gcrf — TEME→GCRF on SGP4 re-anchor, honoured only with ?sun=astro. */
+  gcrfFrame: boolean;
 }
 
 /**
@@ -21,13 +23,14 @@ export interface InitialUrlState {
  * Supported params:
  *   ?mode=0-5            view mode index
  *   ?preset=low|balanced|high|cinematic   quality preset
- *   ?physics=0-2         physics mode
+ *   ?physics=0-3         physics mode (3 = GPU near-earth SGP4, needs ?tle= + realism)
  *   ?pattern=0-2         beam pattern mode
  *   ?animation=3-5       constellation animation pattern (smile/rain/heartbeat)
  *   ?realism=0|1         SGP4 catalog vs art-directed shells (requires ?tle=)
  *   ?sun=art|astro       cinematic XY sun vs UTC geometric sun
  *   ?earth=0|1           GMST-true Earth/ground-view rotation (default 0 under art sun;
  *                        always on under ?sun=astro — see docs/FRAMES.md)
+ *   ?frame=teme|gcrf     SGP4 re-anchor frame; gcrf only takes effect with ?sun=astro
  *   ?earthmap=off|low|balanced|high|on
  *                        photometric Earth plates (Blue Marble albedo, VIIRS night
  *                        lights, MODIS clouds). Default off — procedural FBM. Parsed
@@ -61,12 +64,13 @@ export function parseInitialStateFromURL(search: string = window.location.search
   return {
     viewMode: parseIntParam('mode', 0, 5),
     qualityLevel: parseQualityParam(params.get('preset')),
-    physicsMode: parseIntParam('physics', 0, 2),
+    physicsMode: parseIntParam('physics', 0, 3),
     patternMode: parseIntParam('pattern', 0, 2),
     animationMode: parseIntParam('animation', 3, 5),
     realismMode: parseBoolParam('realism'),
     sunMode: parseSunLightingMode(params.get('sun')),
     earthRotate: parseBoolParam('earth'),
+    gcrfFrame: params.get('frame')?.toLowerCase() === 'gcrf',
   };
 }
 

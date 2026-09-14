@@ -152,7 +152,7 @@ export function packEarthMapSettings(
   return ab;
 }
 
-/** WGSL: ConjunctionParams — compute/conjunction.ts, render/conjunction.ts */
+/** WGSL: ConjunctionParams — compute/conjunction.wgsl, render/conjunction.wgsl */
 export const CONJUNCTION_PARAMS_BYTE_SIZE = 32;
 
 export function packConjunctionParams(
@@ -213,6 +213,45 @@ export function packMotionBlurUni(
     f32[36] = hostVelocity[0];
     f32[37] = hostVelocity[1];
     f32[38] = hostVelocity[2];
+  }
+  return ab;
+}
+
+/** WGSL: BrushParams — compute/brush.wgsl (8 × u32 header + BRUSH_MAX_STAMPS × 32-byte stamps) */
+export const BRUSH_PARAMS_BYTE_SIZE = 32 + 8 * 32;
+
+export function packBrushParams(params: {
+  mode: number;
+  decaySteps: number;
+  rgb: number;
+  seed: number;
+  stamps: readonly {
+    center: readonly [number, number, number];
+    radiusKm: number;
+    axis: readonly [number, number, number];
+    strength: number;
+  }[];
+}): ArrayBuffer {
+  const ab = new ArrayBuffer(BRUSH_PARAMS_BYTE_SIZE);
+  const f32 = new Float32Array(ab);
+  const u32 = new Uint32Array(ab);
+  const count = Math.min(params.stamps.length, 8);
+  u32[0] = count;
+  u32[1] = params.mode >>> 0;
+  u32[2] = Math.min(255, Math.max(0, Math.floor(params.decaySteps)));
+  u32[3] = params.rgb & 0xffffff;
+  u32[4] = params.seed >>> 0;
+  for (let s = 0; s < count; s++) {
+    const stamp = params.stamps[s];
+    const o = 8 + s * 8;
+    f32[o] = stamp.center[0];
+    f32[o + 1] = stamp.center[1];
+    f32[o + 2] = stamp.center[2];
+    f32[o + 3] = stamp.radiusKm;
+    f32[o + 4] = stamp.axis[0];
+    f32[o + 5] = stamp.axis[1];
+    f32[o + 6] = stamp.axis[2];
+    f32[o + 7] = stamp.strength;
   }
   return ab;
 }

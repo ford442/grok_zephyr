@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { KeplerianState } from '@/physics/index.js';
+import { SGP4_GPU_REBASE_SIM_SEC } from '@/physics/sgp4NearEarth.js';
 import { OrbitalDataStore } from './OrbitalDataStore.js';
 import {
   REANCHOR_CHUNK_SIZE,
@@ -75,5 +76,25 @@ describe('Sgp4ReanchorService', () => {
     expect(sgp4.tick(1000)).toBeNull();
     sgp4.realismEnabled = true;
     expect(sgp4.tick(1000)).toBeNull();
+  });
+
+  it('packs GPU SGP4 records once and re-bases only past the drift window', () => {
+    const store = new OrbitalDataStore(64);
+    const sgp4 = new Sgp4ReanchorService(store);
+    const el = {
+      no: 0.0654, ecco: 0.001, inclo: 0.93, nodeo: 1, argpo: 2, mo: 3, bstar: 1e-4,
+      epochJd: 2460666.5,
+    };
+    sgp4.propagator = { ...fakePropagator([]), meanElements: (i) => (i === 1 ? null : el) };
+    sgp4.tleRealCount = 3;
+
+    expect(sgp4.tickGpuSgp4(0)).toBe(true);
+    expect(sgp4.gpuSgp4Data[1]).toBe(3);
+    expect(sgp4.gpuSgp4Slots).toBe(2);
+    expect(sgp4.tickGpuSgp4(SGP4_GPU_REBASE_SIM_SEC - 1)).toBe(false);
+    expect(sgp4.tickGpuSgp4(SGP4_GPU_REBASE_SIM_SEC + 1)).toBe(true);
+    expect(sgp4.gpuSgp4Data[0]).toBe(SGP4_GPU_REBASE_SIM_SEC + 1);
+    sgp4.simEpochMs += 1000;
+    expect(sgp4.tickGpuSgp4(SGP4_GPU_REBASE_SIM_SEC + 1)).toBe(true);
   });
 });

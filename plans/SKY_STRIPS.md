@@ -1,3 +1,5 @@
+> **Status (2026-09):** never shipped. The `skyStrips.ts` stub and `skyStripUniforms` buffer were removed; the per-satellite scratch is `animScratch` (Smile V2 output, packed rgba8). A future Sky Strips pass must write into that buffer, not allocate its own.
+
 # Sky Strips v1 - Implementation Summary
 
 ## What Was Built

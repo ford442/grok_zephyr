@@ -64,7 +64,6 @@ export const DEFERRED_OPTIONAL_FEATURES = [
   'float32-filterable',
   'bgra8unorm-storage',
   'subgroups',
-  'timestamp-query-inside-passes',
 ] as const;
 
 export type DeferredGpuFeature = (typeof DEFERRED_OPTIONAL_FEATURES)[number];

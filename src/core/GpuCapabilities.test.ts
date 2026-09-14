@@ -74,7 +74,6 @@ describe('GpuCapabilities', () => {
         'float32-filterable',
         'bgra8unorm-storage',
         'subgroups',
-        'timestamp-query-inside-passes',
       ]),
     );
     const { enabled, missing } = selectOptionalFeatures(

@@ -1,7 +1,7 @@
 /**
  * Ground Observer Camera System
  *
- * Provides immersive ground-based perspectives for viewing Sky Strips.
+ * Provides immersive ground-based perspectives of the constellation.
  * Each preset simulates a different real-world viewing scenario with
  * appropriate camera positioning and visual effects.
  */

@@ -3,6 +3,7 @@
  */
 
 import type { FrameContext } from './types.js';
+import { passTimestampWrites } from './passTimestamps.js';
 
 export function encodeMotionBlurPass(
   encoder: GPUCommandEncoder,
@@ -24,6 +25,7 @@ export function encodeMotionBlurPass(
   });
 
   const pass = encoder.beginRenderPass({
+    timestampWrites: passTimestampWrites(),
     colorAttachments: [
       {
         view: ctx.renderTargets.motionBlurView,

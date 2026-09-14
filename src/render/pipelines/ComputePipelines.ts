@@ -14,6 +14,7 @@ export async function createComputePipelines({ context, layouts, modules }: Pipe
     conjunctionPairs,
     conjunctionDraw,
     conjunctionDensity,
+    brushPaint,
     satelliteCullSats,
     satelliteCullBeams,
     satelliteCullFinalize,
@@ -98,6 +99,11 @@ export async function createComputePipelines({ context, layouts, modules }: Pipe
       },
     }),
     context.createComputePipelineAsync({
+      label: 'brush-paint',
+      layout: layouts.brushComputeLayout,
+      compute: { module: modules.brushCompute, entryPoint: 'main', constants: fleet },
+    }),
+    context.createComputePipelineAsync({
       label: 'satellite-cull-sats',
       layout: layouts.device.createPipelineLayout({ bindGroupLayouts: [layouts.satelliteCullLayout] }),
       compute: { module: modules.satelliteCull, entryPoint: 'cull_satellites', constants: fleet },
@@ -123,5 +129,5 @@ export async function createComputePipelines({ context, layouts, modules }: Pipe
       compute: { module: modules.autoExposureAdapt, entryPoint: 'main' },
     })
   ]);
-  return { compute, beamCompute, islCompute, islFiber, conjunctionClear, conjunctionBin, conjunctionPairs, conjunctionDraw, conjunctionDensity, satelliteCullSats, satelliteCullBeams, satelliteCullFinalize, autoExposureHistogram, autoExposureAdapt };
+  return { compute, beamCompute, islCompute, islFiber, conjunctionClear, conjunctionBin, conjunctionPairs, conjunctionDraw, conjunctionDensity, brushPaint, satelliteCullSats, satelliteCullBeams, satelliteCullFinalize, autoExposureHistogram, autoExposureAdapt };
 }

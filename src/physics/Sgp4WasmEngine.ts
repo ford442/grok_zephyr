@@ -28,6 +28,7 @@ export interface Sgp4WasmModule {
   _sgp4_teme_to_gcrf?(inPtr: number, outPtr: number, unixMs: number, count: number): number;
   _sgp4_catalog_epoch_jd?(index: number): number;
   _sgp4_catalog_count(): number;
+  _sgp4_catalog_rejected_count?(): number;
   _sgp4_clear_catalog(): void;
   HEAPU8: Uint8Array;
   HEAPF32: Float32Array;
@@ -68,6 +69,7 @@ function defaultWasmUrl(path: string): string {
 
 export class Sgp4WasmEngine {
   private catalogCount = 0;
+  private rejectedCount = 0;
 
   private constructor(private readonly mod: Sgp4WasmModule) {}
 
@@ -134,6 +136,11 @@ export class Sgp4WasmEngine {
     return this.catalogCount;
   }
 
+  /** TLE records Vallado rejected on the last load (skipped, so later indices shift). */
+  get rejected(): number {
+    return this.rejectedCount;
+  }
+
   loadCatalog(tles: readonly TleLinePair[]): number {
     return this.loadPacked(packTleCatalog(tles));
   }
@@ -143,6 +150,10 @@ export class Sgp4WasmEngine {
     try {
       this.mod.HEAPU8.set(packed, ptr);
       this.catalogCount = this.mod._sgp4_load_catalog(ptr, packed.byteLength);
+      const records = Math.floor(packed.byteLength / 260);
+      this.rejectedCount = this.mod._sgp4_catalog_rejected_count
+        ? this.mod._sgp4_catalog_rejected_count()
+        : Math.max(0, records - this.catalogCount);
       return this.catalogCount;
     } finally {
       this.mod._free(ptr);
@@ -312,5 +323,6 @@ export class Sgp4WasmEngine {
   clear(): void {
     this.mod._sgp4_clear_catalog();
     this.catalogCount = 0;
+    this.rejectedCount = 0;
   }
 }

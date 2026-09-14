@@ -36,6 +36,8 @@ constexpr int kStateFloats = 6;
 std::vector<elsetrec> g_catalog;
 sgp4wasm::NearEarthSoa g_near;
 gravconsttype g_grav = wgs72;
+/** Records the last sgp4_load_catalog skipped (twoline2rv / sgp4init error). */
+int g_rejected = 0;
 
 std::vector<float> g_rx, g_ry, g_rz, g_vx, g_vy, g_vz;
 std::vector<int> g_err_scratch;
@@ -119,7 +121,11 @@ extern "C" {
 
 int sgp4_catalog_count() { return static_cast<int>(g_catalog.size()); }
 
+/** TLE records rejected by the last sgp4_load_catalog (they are compacted out). */
+int sgp4_catalog_rejected_count() { return g_rejected; }
+
 void sgp4_clear_catalog() {
+  g_rejected = 0;
   g_catalog.clear();
   g_near.clear();
   g_rx.clear();
@@ -136,6 +142,7 @@ void sgp4_clear_catalog() {
 int sgp4_load_catalog(const char* data, int byte_length) {
   g_catalog.clear();
   g_near.clear();
+  g_rejected = 0;
   if (!data || byte_length < kTleRecordBytes) {
     return 0;
   }
@@ -148,6 +155,8 @@ int sgp4_load_catalog(const char* data, int byte_length) {
     elsetrec satrec{};
     if (loadSatrecFromLines(record, record + kTleLineBytes, satrec)) {
       g_catalog.push_back(satrec);
+    } else {
+      g_rejected++;
     }
   }
 

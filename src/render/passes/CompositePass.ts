@@ -4,6 +4,7 @@
 
 import { createCompositeBindGroup } from '../pipelines/BindGroupFactory.js';
 import type { FrameContext } from './types.js';
+import { passTimestampWrites } from './passTimestamps.js';
 
 export function encodeCompositePass(
   encoder: GPUCommandEncoder,
@@ -28,6 +29,7 @@ export function encodeCompositePass(
     : ctx.bindGroups.composite;
 
   const pass = encoder.beginRenderPass({
+    timestampWrites: passTimestampWrites(),
     colorAttachments: [
       {
         view: outputView,

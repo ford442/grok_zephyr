@@ -18,6 +18,7 @@ import { WebGLRenderer } from '@/webgl/WebGLRenderer.js';
 import { WebGLDebugOverlay, parseDebugFlags } from '@/webgl/WebGLDebug.js';
 import { parseVisualHarnessParams } from '@/testing/visualHarness.js';
 import { applyVisualHarnessParams, parseInitialStateFromURL } from '@/app/UrlState.js';
+import { setBrushUnavailable } from '@/app/BrushController.js';
 import { syncSimClockFromTleEpoch } from '@/app/SimClockController.js';
 import { setupImageTuning } from '@/app/ViewModeCoordinator.js';
 import { getDrawableSize, setupMobileOrientationSupport } from '@/app/MobilePresentation.js';
@@ -144,6 +145,7 @@ export async function bootWebGL(
   rt.ui.setConjunctionDensityEnabled(false);
   rt.ui.setConjunctionStatus('Close pairs: unavailable — WebGPU only');
   rt.ui.setConjunctionDisclaimer('The WebGL2 fallback renderer has no close-approach pass.');
+  setBrushUnavailable(rt, 'WebGPU only');
   rt.dataSourceLabel = dataSourceLabel;
   rt.ui.hideError();
 

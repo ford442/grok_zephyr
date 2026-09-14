@@ -1,10 +1,10 @@
 /**
  * Close-approach GPU buffers — allocated on first enable, never at boot.
  *
- * At a 1M fleet the satellite buffers already consume the whole 128 MB Pascal
- * cap (calculateSatelliteBufferBudget), so allocating a hash table up front
- * would either trip assertBufferBudget or quietly push a real GPU into
- * eviction. These buffers therefore appear only when the feature is switched
+ * The satellite buffers take most of the 128 MB Pascal cap at 1M
+ * (calculateSatelliteBufferBudget — ~116 MB with cinematic trails), so
+ * allocating a hash table up front could trip assertBufferBudget or quietly
+ * push a real GPU into eviction. These buffers therefore appear only when the feature is switched
  * on, and only when what is left of the budget can hold them.
  */
 

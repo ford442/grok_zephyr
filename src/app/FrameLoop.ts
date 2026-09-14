@@ -168,8 +168,19 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
     // Mono path: one ViewDescriptor from camera (stereo/XR can pass explicit descriptors).
     const viewDesc = resolveViewDescriptor(rt, time, cameraState, width, height);
     const viewProjection = viewDesc.viewProjection;
-    const guideSatellite = rt.selectedSatelliteIndex >= 0 ? simBuffers!.calculateSatellitePosition(rt.selectedSatelliteIndex, simTime) : null;
-    rt.groundStationGuides.update({ station: rt.simulation.groundStations.active, utcMs: rt.simulation.clock.simUtcMs, satellite: guideSatellite, camera: cameraState, viewProjection, showFootprint: rt.simulation.groundStations.showFootprint, showLos: rt.simulation.groundStations.showLos });
+    const guideSatellite =
+      rt.selectedSatelliteIndex >= 0
+        ? simBuffers!.calculateSatellitePosition(rt.selectedSatelliteIndex, simTime)
+        : null;
+    rt.groundStationGuides.update({
+      station: rt.simulation.groundStations.active,
+      utcMs: rt.simulation.clock.simUtcMs,
+      satellite: guideSatellite,
+      camera: cameraState,
+      viewProjection,
+      showFootprint: rt.simulation.groundStations.showFootprint,
+      showLos: rt.simulation.groundStations.showLos,
+    });
     const sunPos = sunPositionForRuntime(rt);
     applyHorizonViewEffects(rt, cameraState, viewProjection, sunPos, height);
     applyGodViewEffects(rt, cameraState);
@@ -193,11 +204,7 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
       forward[0] /= fLen;
       forward[1] /= fLen;
       forward[2] /= fLen;
-      rt.trailRenderer.updateGeometry(
-        simTime,
-        new Float32Array(cameraState.position),
-        forward,
-      );
+      rt.trailRenderer.updateGeometry(simTime, new Float32Array(cameraState.position), forward);
     }
     writeUniforms(rt, time, deltaTime, cameraState, viewDesc);
     simBuffers?.tickSgp4Reanchor(simTime);
@@ -214,13 +221,13 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
 
     const encoder = rt.context.createCommandEncoder('frame');
 
-    rt.profiler.beginGPUTimestamp(encoder, 'orbital');
+    rt.profiler.beginGPUTimestamp('orbital');
     rt.pipeline.encodeComputePass(encoder);
-    rt.profiler.endGPUTimestamp(encoder, 'orbital');
+    rt.profiler.endGPUTimestamp('orbital');
 
-    rt.profiler.beginGPUTimestamp(encoder, 'beam');
+    rt.profiler.beginGPUTimestamp('beam');
     rt.pipeline.encodeBeamComputePass(encoder);
-    rt.profiler.endGPUTimestamp(encoder, 'beam');
+    rt.profiler.endGPUTimestamp('beam');
 
     if (rt.simulation.islEnabled && rt.camera.getViewMode() !== 'ground') {
       writeIslParams(rt);
@@ -234,18 +241,32 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
       rt.simulation.conjunctionsEnabled && rt.camera.getViewMode() !== 'ground';
     if (conjunctionsActive) {
       rt.pipeline.writeConjunctionParams(true, rt.simulation.conjunctionThresholdKm, time);
-      rt.profiler.beginGPUTimestamp(encoder, 'conjunction');
+      rt.profiler.beginGPUTimestamp('conjunction');
       rt.pipeline.encodeConjunctionComputePass(encoder);
-      rt.profiler.endGPUTimestamp(encoder, 'conjunction');
+      rt.profiler.endGPUTimestamp('conjunction');
+    }
+
+    // Light Brush: builds stamps against this frame's camera and dispatches only
+    // while a stroke is live or paint is still fading.
+    rt.pipeline.setBrushOwnsAnimScratch(rt.brush.ownsScratch());
+    const brushParams = rt.brush.tick(deltaTime, {
+      cameraPosition: cameraState.position,
+      cameraUp: cameraState.up,
+      view: viewDesc.view,
+      projection: viewDesc.projection,
+      getRect: () => rt.canvas.getBoundingClientRect(),
+    });
+    if (brushParams) {
+      rt.pipeline.encodeBrushPass(encoder, brushParams);
     }
 
     if (rt.pipeline.isGpuCullingEnabled()) {
-      rt.profiler.beginGPUTimestamp(encoder, 'cull');
+      rt.profiler.beginGPUTimestamp('cull');
       rt.pipeline.encodeCullPass(encoder);
-      rt.profiler.endGPUTimestamp(encoder, 'cull');
+      rt.profiler.endGPUTimestamp('cull');
     }
 
-    rt.profiler.beginGPUTimestamp(encoder, 'scene');
+    rt.profiler.beginGPUTimestamp('scene');
     if (rt.camera.getViewMode() === 'ground') {
       const hz = rt.groundObserver.getHorizonSettings();
       rt.pipeline.setGroundViewParams(hz.oceanBias, hz.urbanGlow, hz.overlayFade, hz.hazeBoost);
@@ -318,13 +339,19 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
       rt.pipeline.encodeSkylinePass(encoder, rt.skyline.buildingCount);
     }
 
-    rt.profiler.endGPUTimestamp(encoder, 'scene');
+    rt.profiler.endGPUTimestamp('scene');
 
-    rt.profiler.beginGPUTimestamp(encoder, 'post');
+    rt.profiler.beginGPUTimestamp('post');
     const sceneSourceView = rt.pipeline.encodeDepthOfFieldPasses(encoder);
     const motionBlurSourceView = rt.pipeline.encodeMotionBlurPass(encoder, sceneSourceView);
     rt.pipeline.encodeAutoExposurePasses(encoder, motionBlurSourceView, deltaTime);
+    rt.profiler.endGPUTimestamp('post');
+
+    rt.profiler.beginGPUTimestamp('bloom');
     rt.pipeline.encodeBloomPasses(encoder, motionBlurSourceView);
+    rt.profiler.endGPUTimestamp('bloom');
+
+    rt.profiler.beginGPUTimestamp('post');
 
     const { width: canvasWidth, height: canvasHeight } = rt.context.getCanvasSize();
     const offscreen = rt.loop.offscreenCapture;
@@ -358,7 +385,7 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
       );
     }
 
-    rt.profiler.endGPUTimestamp(encoder, 'post');
+    rt.profiler.endGPUTimestamp('post');
     rt.profiler.resolveTimestamps(encoder);
 
     offscreen?.encodeReadback(encoder);
@@ -483,8 +510,19 @@ export function createWebGLRenderLoop(rt: AppRuntime): (timestamp: number) => vo
       time,
     );
     const { viewProjection } = rt.camera.buildViewProjection(cameraState, aspect);
-    const guideSatellite = rt.selectedSatelliteIndex >= 0 ? orbital.calculatePosition(rt.selectedSatelliteIndex, simTime) : null;
-    rt.groundStationGuides.update({ station: rt.simulation.groundStations.active, utcMs: rt.simulation.clock.simUtcMs, satellite: guideSatellite, camera: cameraState, viewProjection, showFootprint: rt.simulation.groundStations.showFootprint, showLos: rt.simulation.groundStations.showLos });
+    const guideSatellite =
+      rt.selectedSatelliteIndex >= 0
+        ? orbital.calculatePosition(rt.selectedSatelliteIndex, simTime)
+        : null;
+    rt.groundStationGuides.update({
+      station: rt.simulation.groundStations.active,
+      utcMs: rt.simulation.clock.simUtcMs,
+      satellite: guideSatellite,
+      camera: cameraState,
+      viewProjection,
+      showFootprint: rt.simulation.groundStations.showFootprint,
+      showLos: rt.simulation.groundStations.showLos,
+    });
     const sun = sunPositionForRuntime(rt);
     applyHorizonViewEffects(rt, cameraState, viewProjection, sun, rt.canvas.height);
     applyGodViewEffects(rt, cameraState);

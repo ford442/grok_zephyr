@@ -18,6 +18,7 @@ import {
   setConjunctionThresholdKm,
   setConjunctionsEnabled,
 } from '@/app/ConjunctionController.js';
+import { applyBrushFromUrl } from '@/app/BrushController.js';
 import { applyQualityPreset } from '@/app/QualityController.js';
 import { applyExposureSettings } from '@/app/AppCallbackBinder.js';
 import { setupImageTuning } from '@/app/ViewModeCoordinator.js';
@@ -65,7 +66,9 @@ export async function createGpuResources(
     rt.profiler.initialize(device);
   });
 
-  rt.buffers = new SatelliteGPUBuffer(rt.context);
+  rt.buffers = new SatelliteGPUBuffer(rt.context, {
+    trailHistory: rt.simulation.currentQualityLevel === 'cinematic',
+  });
   rt.buffers.setPhysicsMode(rt.simulation.currentPhysicsMode);
   const bufferSet = await reporter.withScope(device, 'satellite-buffers', () =>
     rt.buffers!.initialize(),
@@ -177,6 +180,7 @@ export async function createGpuResources(
       rt.ui.setActivePhysicsButton(urlParams.physicsMode);
     }
 
+    rt.simulation.gcrfRequested = urlParams.gcrfFrame;
     setSunLightingMode(rt, urlParams.sunMode ?? readStoredSunMode() ?? 'art');
     if (urlParams.earthRotate !== null) rt.simulation.earthRotationEnabled = urlParams.earthRotate;
     applyGrowthFromUrl();
@@ -194,6 +198,8 @@ export async function createGpuResources(
     }
     setConjunctionDensityEnabled(rt, conjunctionUrl.density ?? false);
     rt.ui.setConjunctionDisclaimer(conjunctionDisclaimer(rt.simulation.realismMode));
+    // ?brush=1 etc. — after the quality preset, which can still force it off.
+    applyBrushFromUrl(rt);
 
     if (urlParams.patternMode !== null) {
       setPatternMode(rt, urlParams.patternMode);

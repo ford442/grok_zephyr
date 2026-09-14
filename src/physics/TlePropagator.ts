@@ -11,6 +11,8 @@ import { eciStateToKeplerian, type KeplerianState } from './keplerianFromState.j
 import { packTleCatalog } from './packTleCatalog.js';
 import { Sgp4WasmEngine } from './Sgp4WasmEngine.js';
 import { Sgp4WorkerClient, type Sgp4PropagatePacked } from './Sgp4Worker.js';
+import { packExtendedFromEciBatch } from './sgp4PackExtended.js';
+import { sgp4MeanElementsFromSatrec, type Sgp4MeanElements } from './sgp4NearEarth.js';
 
 export interface TleRecord {
   name: string;
@@ -20,6 +22,8 @@ export interface TleRecord {
 }
 
 export type Sgp4Backend = 'wasm' | 'js';
+/** Re-anchor output frame. 'gcrf' needs WASM (`sgp4_teme_to_gcrf`); JS fallback stays TEME. */
+export type Sgp4OutputFrame = 'teme' | 'gcrf';
 
 export class TlePropagator {
   private records: TleRecord[] = [];
@@ -28,10 +32,14 @@ export class TlePropagator {
   private wasmInitPromise: Promise<boolean> | null = null;
   private wasmInitAttempted = false;
   private batchScratch: Float32Array | null = null;
+  /** TLEs satellite.js could not parse (never reach the WASM catalog). */
+  private parseRejected = 0;
+  private outputFrame: Sgp4OutputFrame = 'teme';
 
   /** Parse and retain TLE records for SGP4 propagation. */
   load(tles: TLEData[], maxCount = Number.POSITIVE_INFINITY): number {
     this.records = [];
+    this.parseRejected = 0;
     const limit = Math.min(tles.length, maxCount);
     for (let i = 0; i < limit; i++) {
       const tle = tles[i];
@@ -44,6 +52,7 @@ export class TlePropagator {
           satrec,
         });
       } catch (error) {
+        this.parseRejected++;
         console.warn(`[TlePropagator] Skipping invalid TLE for ${tle.name}:`, error);
       }
     }
@@ -56,6 +65,46 @@ export class TlePropagator {
     }
 
     return this.records.length;
+  }
+
+  /** Near-earth SGP4 mean elements for the GPU kernel; null for deep-space or errored records. */
+  meanElements(index: number): Sgp4MeanElements | null {
+    const rec = this.records[index];
+    return rec ? sgp4MeanElementsFromSatrec(rec.satrec) : null;
+  }
+
+  /**
+   * TLEs rejected on load: satellite.js parse failures plus records Vallado
+   * refused (WASM `sgp4_catalog_rejected_count`, or satrec.error before WASM is up).
+   */
+  rejectedCount(): number {
+    if (this.wasmEngine) return this.parseRejected + this.wasmEngine.rejected;
+    let errored = 0;
+    for (const rec of this.records) if (rec.satrec.error) errored++;
+    return this.parseRejected + errored;
+  }
+
+  setOutputFrame(frame: Sgp4OutputFrame): void {
+    this.outputFrame = frame;
+  }
+
+  getOutputFrame(): Sgp4OutputFrame {
+    return this.outputFrame;
+  }
+
+  /** True when re-anchors rotate TEME→GCRF (WASM present and frame = 'gcrf'). */
+  private rotatesToGcrf(): boolean {
+    return this.outputFrame === 'gcrf' && this.wasmEngine !== null;
+  }
+
+  /** WASM TEME state → GCRF → 8-float extended elements (count × 8). */
+  private packGcrfBatch(dateMs: number, startIndex: number, count: number): Float32Array {
+    const engine = this.wasmEngine!;
+    const { eci, errors } = engine.propagateBatchEx(dateMs, startIndex, count);
+    const gcrf = engine.temeToGcrf(eci, dateMs);
+    const dest = new Float32Array(errors.length * 8);
+    packExtendedFromEciBatch(gcrf, errors, dest, 0);
+    return dest;
   }
 
   get count(): number {
@@ -173,7 +222,9 @@ export class TlePropagator {
     dest?: Float32Array,
   ): void {
     if (this.wasmEngine) {
-      const packed = this.wasmEngine.propagateBatchKeplerian(dateMs, startIndex, count);
+      const packed = this.rotatesToGcrf()
+        ? this.packGcrfBatch(dateMs, startIndex, count)
+        : this.wasmEngine.propagateBatchKeplerian(dateMs, startIndex, count);
       const nSats = packed.length / 8;
       if (dest) {
         dest.set(packed, startIndex * 8);
@@ -208,8 +259,12 @@ export class TlePropagator {
 
   /** Off-main-thread pack when the SGP4 worker is available. */
   async applyPackedBatch(dateMs: number, startIndex: number, count: number): Promise<Sgp4PropagatePacked> {
-    if (this.worker?.isActive()) {
+    if (this.worker?.isActive() && !this.rotatesToGcrf()) {
       return this.worker.propagatePacked(dateMs, startIndex, count);
+    }
+    if (this.rotatesToGcrf()) {
+      const dest = this.packGcrfBatch(dateMs, startIndex, count);
+      return { start: startIndex, count: dest.length / 8, extended: dest };
     }
     if (this.wasmEngine) {
       const dest = this.wasmEngine.propagateBatchKeplerian(dateMs, startIndex, count);
@@ -262,6 +317,8 @@ export class TlePropagator {
   }
 
   usesSgp4Worker(): boolean {
+    // GCRF re-anchors rotate on the main-thread WASM instance (the worker packs TEME only).
+    if (this.rotatesToGcrf()) return false;
     return this.worker?.usesWorker() ?? false;
   }
 

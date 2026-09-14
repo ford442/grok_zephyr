@@ -1,4 +1,4 @@
-export const SMILE_V2_COMPUTE = /* wgsl */ `// =================================================================================
+// =================================================================================
 // MAIN PATTERN FUNCTION
 // =================================================================================
 
@@ -218,7 +218,7 @@ fn smile_v2_compute(@builtin(global_invocation_id) gid: vec3u) {
   }
   
   // Store result
-  sat_output[sat_idx] = final_output;
+  sat_output[sat_idx] = pack4x8unorm(clamp(final_output, vec4f(0.0), vec4f(1.0)));
 }
 
 // =================================================================================
@@ -278,6 +278,5 @@ fn check_facing(@builtin(global_invocation_id) gid: vec3u) {
   
   // Store facing status as float in output buffer
   let facing_val = select(0.0, 1.0, facing > FACING_THRESHOLD);
-  sat_output[sat_idx] = vec4f(facing_val, 0.0, 0.0, 0.0);
+  sat_output[sat_idx] = pack4x8unorm(vec4f(facing_val, 0.0, 0.0, 0.0));
 }
-`;

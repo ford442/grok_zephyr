@@ -117,7 +117,7 @@ export class SmileV2Pipeline {
     const device = this.context.getDevice();
 
     // Bind group layout must match the smile_v2 compute shader bindings
-    // (src/shaders/animations/smileV2Common.ts):
+    // (src/shaders/animations/smileV2Common.wgsl):
     // Binding 0: params        (uniform)
     // Binding 1: sat_positions (storage, read)
     // Binding 2: sat_output    (storage, read_write)
@@ -183,7 +183,7 @@ export class SmileV2Pipeline {
         : (this.buffers.positions as { read: GPUBuffer }).read;
 
     // Bindings mirror the smile_v2 compute shader: params, read-only positions,
-    // a read-write vec4f output buffer (patterns, 16 bytes/sat) and a read-write
+    // a read-write packed rgba8 u32 output buffer (animScratch, 4 bytes/sat) and a read-write
     // u32 feature-cache buffer (colors, 4 bytes/sat).
     this.bindGroup = device.createBindGroup({
       label: 'SmileV2BindGroup',
@@ -191,7 +191,7 @@ export class SmileV2Pipeline {
       entries: [
         { binding: 0, resource: { buffer: this.buffers.smileV2Uniforms } },
         { binding: 1, resource: { buffer: posBuffer } },
-        { binding: 2, resource: { buffer: this.buffers.patterns } },
+        { binding: 2, resource: { buffer: this.buffers.animScratch } },
         { binding: 3, resource: { buffer: this.buffers.colors } },
       ],
     });

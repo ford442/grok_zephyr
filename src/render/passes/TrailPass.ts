@@ -1,4 +1,5 @@
 import type { FrameContext } from './types.js';
+import { passTimestampWrites } from './passTimestamps.js';
 
 export function encodeTrailPass(
   encoder: GPUCommandEncoder,
@@ -10,6 +11,7 @@ export function encodeTrailPass(
   if (!trailRenderer) return;
 
   const pass = encoder.beginRenderPass({
+    timestampWrites: passTimestampWrites(),
     colorAttachments: [
       {
         view: ctx.renderTargets.hdrView,

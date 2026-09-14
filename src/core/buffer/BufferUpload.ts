@@ -46,7 +46,7 @@ export async function uploadDynamicSatelliteData(
   buffers: SatelliteBufferSet,
   data: {
     position?: ArrayBufferLike;
-    pattern?: ArrayBufferLike;
+    animScratch?: ArrayBufferLike;
     color?: ArrayBufferLike;
   },
   commandEncoder: GPUCommandEncoder,
@@ -55,8 +55,8 @@ export async function uploadDynamicSatelliteData(
     const target = isBufferPair(buffers.positions) ? buffers.positions.write : buffers.positions;
     await staging.upload(data.position, target, commandEncoder);
   }
-  if (data.pattern) {
-    await staging.upload(data.pattern, buffers.patterns, commandEncoder);
+  if (data.animScratch) {
+    await staging.upload(data.animScratch, buffers.animScratch, commandEncoder);
   }
   if (data.color) {
     await staging.upload(data.color, buffers.colors, commandEncoder);

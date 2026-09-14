@@ -1,7 +1,7 @@
 /**
  * Spatial hash for close-approach detection — CPU reference.
  *
- * This is the authority for the hash: `src/shaders/compute/conjunction.ts`
+ * This is the authority for the hash: `src/shaders/compute/conjunction.wgsl`
  * reimplements `cellCoord` and `hashCell` in WGSL and must stay bit-identical,
  * which is what the tests pin. Running the whole search on the CPU also gives
  * the pass a checkable definition of "how many pairs should there be", without

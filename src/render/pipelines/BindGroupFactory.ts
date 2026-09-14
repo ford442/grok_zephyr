@@ -69,6 +69,7 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
         { binding: 4, resource: { buffer: buffers.stationUniform } },
         { binding: 5, resource: { buffer: buffers.activeFrom } },
         { binding: 6, resource: { buffer: buffers.growthParams } },
+        { binding: 7, resource: { buffer: buffers.sgp4Elements } },
       ],
     }),
 
@@ -180,6 +181,7 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
         { binding: 4, resource: { buffer: motionBlurUniformBuffer } },
         { binding: 5, resource: { buffer: satelliteVisualUniformBuffer } },
         { binding: 7, resource: { buffer: buffers.groupParams } },
+        { binding: 8, resource: { buffer: buffers.animScratch } },
       ],
     }),
 
@@ -194,6 +196,7 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
         { binding: 5, resource: { buffer: satelliteVisualUniformBuffer } },
         { binding: 6, resource: { buffer: cullBuffers.visibleSatIndices } },
         { binding: 7, resource: { buffer: buffers.groupParams } },
+        { binding: 8, resource: { buffer: buffers.animScratch } },
       ],
     }),
 

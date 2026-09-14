@@ -3,6 +3,8 @@ export const PHYSICS_MODE = {
   SIMPLE: 0,
   KEPLERIAN: 1,
   J2: 2,
+  /** Near-earth SGP4 on GPU for TLE slots (realism on); others fall back to J2. */
+  SGP4: 3,
 } as const;
 
 export type PhysicsMode = (typeof PHYSICS_MODE)[keyof typeof PHYSICS_MODE];
@@ -10,7 +12,7 @@ export type PhysicsMode = (typeof PHYSICS_MODE)[keyof typeof PHYSICS_MODE];
 export const PHYSICS_MODE_SHIFT = 17;
 export const PHYSICS_MODE_MASK = 7;
 
-export const PHYSICS_MODE_NAMES = ['Simple', 'Keplerian', 'J2 Perturbed'] as const;
+export const PHYSICS_MODE_NAMES = ['Simple', 'Keplerian', 'J2 Perturbed', 'SGP4 (GPU)'] as const;
 
 export function unpackPhysicsMode(viewFlags: number): number {
   return (viewFlags >>> PHYSICS_MODE_SHIFT) & PHYSICS_MODE_MASK;

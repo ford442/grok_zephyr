@@ -9,6 +9,7 @@
 import { MAX_CONJUNCTION_PAIRS } from '@/types/conjunction.js';
 import type { ConjunctionBufferSet } from '../ConjunctionBuffers.js';
 import type { FrameContext } from './types.js';
+import { passTimestampWrites } from './passTimestamps.js';
 
 const WORKGROUP_SIZE = 256;
 
@@ -18,7 +19,10 @@ export function encodeConjunctionComputePass(
   set: ConjunctionBufferSet,
   bindGroup: GPUBindGroup,
 ): void {
-  const pass = encoder.beginComputePass({ label: 'conjunction' });
+  const pass = encoder.beginComputePass({
+    timestampWrites: passTimestampWrites(),
+    label: 'conjunction',
+  });
   pass.setBindGroup(0, bindGroup);
 
   // Clear covers the bucket table; the counters are reset by invocation 0.
@@ -43,6 +47,7 @@ export function encodeConjunctionDensityPass(
   bindGroup: GPUBindGroup,
 ): void {
   const pass = encoder.beginRenderPass({
+    timestampWrites: passTimestampWrites(),
     label: 'conjunction-density',
     colorAttachments: [{ view: ctx.renderTargets.hdrView, loadOp: 'load', storeOp: 'store' }],
     depthStencilAttachment: {
@@ -65,6 +70,7 @@ export function encodeConjunctionPass(
   bindGroup: GPUBindGroup,
 ): void {
   const pass = encoder.beginRenderPass({
+    timestampWrites: passTimestampWrites(),
     label: 'conjunction-markers',
     colorAttachments: [
       {

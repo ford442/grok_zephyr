@@ -25,6 +25,11 @@ export function installZephyrDebugHooks(rt: AppRuntime): void {
   const win = window as unknown as {
     zephyrDebug?: { loseDevice: () => void };
     zephyrGPU?: { capture: () => Promise<string> };
+    zephyrBrush?: {
+      stampNdc: (x: number, y: number) => void;
+      release: () => void;
+      isEnabled: () => boolean;
+    };
   };
 
   win.zephyrDebug = {
@@ -46,6 +51,13 @@ export function installZephyrDebugHooks(rt: AppRuntime): void {
       }
       return cap.capture();
     },
+  };
+
+  // Deterministic strokes for golden frames and scripted demos (?brush=1).
+  win.zephyrBrush = {
+    stampNdc: (x, y) => rt.brush.beginNdcStroke(x, y),
+    release: () => rt.brush.endStroke(),
+    isEnabled: () => rt.brush.enabled,
   };
 }
 

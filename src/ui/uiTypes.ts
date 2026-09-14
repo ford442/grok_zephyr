@@ -42,6 +42,14 @@ export interface UIElements {
   conjunctionThresholdValue?: HTMLElement;
   conjunctionStatus?: HTMLElement;
   conjunctionDisclaimer?: HTMLElement;
+  brushToggleButton?: HTMLButtonElement;
+  brushModeSelect?: HTMLSelectElement;
+  brushRadiusSlider?: HTMLInputElement;
+  brushRadiusValue?: HTMLElement;
+  brushFadeSlider?: HTMLInputElement;
+  brushFadeValue?: HTMLElement;
+  brushColorInput?: HTMLInputElement;
+  brushStatus?: HTMLElement;
   trailsToggleButton?: HTMLButtonElement;
   trailsLengthSelect?: HTMLSelectElement;
   exposureModeSelect?: HTMLSelectElement;

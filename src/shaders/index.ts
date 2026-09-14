@@ -1,9 +1,10 @@
 /**
  * Grok Zephyr - Shader Collection
  *
- * Runtime WGSL is authored under compute/, render/, and animations/.
- * Orbital, satellite, and composite shaders load from `.wgsl` files via the
- * Vite wgslPlugin (`#import` + generated uniform structs from SCENE_UNI_SCHEMA).
+ * Runtime WGSL is authored as `.wgsl` under compute/, render/, and animations/
+ * and loaded by the Vite wgslPlugin (`#import` + generated uniform structs from
+ * the TS schemas). Remaining TS template-string shaders are allowlisted in
+ * shaderSources.test.ts.
  */
 
 import { UNIFORM_STRUCT } from './uniforms.js';

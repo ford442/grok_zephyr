@@ -106,8 +106,8 @@ export function applyConjunctionsForQuality(rt: AppRuntime, qualityForcesOff: bo
 
 /**
  * Allocate or release the GPU buffers to match the current toggle. Allocation
- * can fail on a full buffer budget — at a 1M fleet the satellite buffers
- * already fill the 128 MB Pascal cap — in which case the feature turns itself
+ * can fail on a full buffer budget (e.g. 1M with doubleBuffer + trail
+ * history), measured against the buffers actually allocated — in which case the feature turns itself
  * back off and records why.
  */
 export function applyConjunctionBuffers(rt: AppRuntime): void {
@@ -120,7 +120,8 @@ export function applyConjunctionBuffers(rt: AppRuntime): void {
   }
 
   const fleetSize = getActiveFleetSize();
-  const satelliteBytes = calculateSatelliteBufferBudget(fleetSize).total;
+  const satelliteBytes =
+    rt.buffers?.getMemoryUsage() || calculateSatelliteBufferBudget(fleetSize).total;
   const result = rt.pipeline.prepareConjunctions(fleetSize, satelliteBytes);
   if (!result.ok) {
     rt.simulation.conjunctionsEnabled = false;

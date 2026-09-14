@@ -3,6 +3,7 @@
  */
 
 import type { FrameContext } from './types.js';
+import { passTimestampWrites } from './passTimestamps.js';
 
 export function encodeAutoExposurePasses(
   encoder: GPUCommandEncoder,
@@ -47,7 +48,7 @@ export function encodeAutoExposurePasses(
     ],
   });
 
-  const pass = encoder.beginComputePass();
+  const pass = encoder.beginComputePass({ timestampWrites: passTimestampWrites() });
   pass.setPipeline(ctx.pipelines.autoExposureHistogram);
   pass.setBindGroup(0, histogramBG);
   pass.dispatchWorkgroups(Math.ceil(ctx.width / 16), Math.ceil(ctx.height / 16));

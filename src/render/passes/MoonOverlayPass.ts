@@ -1,4 +1,5 @@
 import type { FrameContext } from './types.js';
+import { passTimestampWrites } from './passTimestamps.js';
 
 export function encodeMoonOverlayPass(
   encoder: GPUCommandEncoder,
@@ -10,6 +11,7 @@ export function encodeMoonOverlayPass(
   const { pipelines, bindGroups, renderTargets, width, height } = ctx;
 
   const pass = encoder.beginRenderPass({
+    timestampWrites: passTimestampWrites(),
     colorAttachments: [
       {
         view: renderTargets.hdrView,

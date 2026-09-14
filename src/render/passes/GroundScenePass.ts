@@ -1,6 +1,7 @@
 import { SceneRenderBundle } from '../SceneRenderBundle.js';
 import type { SatelliteCullBuffers } from '../SatelliteCullBuffers.js';
 import type { FrameContext } from './types.js';
+import { passTimestampWrites } from './passTimestamps.js';
 
 const groundSceneBundle = new SceneRenderBundle();
 
@@ -17,6 +18,7 @@ export function encodeGroundScenePass(
   const { renderTargets, width, height } = ctx;
 
   const pass = encoder.beginRenderPass({
+    timestampWrites: passTimestampWrites(),
     colorAttachments: [
       {
         view: renderTargets.hdrView,

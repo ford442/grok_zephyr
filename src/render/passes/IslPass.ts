@@ -4,9 +4,11 @@
 
 import { MAX_ISL_LINKS } from '@/types/isl.js';
 import type { FrameContext } from './types.js';
+import { passTimestampWrites } from './passTimestamps.js';
 
 export function encodeIslPass(encoder: GPUCommandEncoder, ctx: FrameContext): void {
   const pass = encoder.beginRenderPass({
+    timestampWrites: passTimestampWrites(),
     label: 'isl-fibers',
     colorAttachments: [
       {

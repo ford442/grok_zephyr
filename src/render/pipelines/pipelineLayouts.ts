@@ -33,6 +33,7 @@ export interface PipelineLayoutBundle {
   conjunctionComputeLayout: GPUPipelineLayout;
   conjunctionDrawLayout: GPUPipelineLayout;
   conjunctionDensityLayout: GPUPipelineLayout;
+  brushComputeLayout: GPUPipelineLayout;
 }
 
 export interface PipelineBuildArgs {
@@ -54,6 +55,8 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
           { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
           { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
           { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+          // Physics mode 3 near-earth SGP4 elements (orbital.wgsl sgp4_elem).
+          { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
         ],
       }),
     ],
@@ -124,6 +127,8 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
         buffer: { type: 'uniform' },
       },
       { binding: 7, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+      // Packed animation scratch (Light Brush paint), read in the vertex stage.
+      { binding: 8, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
     ],
   });
 
@@ -149,6 +154,8 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
       },
       { binding: 6, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
       { binding: 7, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+      // Packed animation scratch (Light Brush paint), read in the vertex stage.
+      { binding: 8, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
     ],
   });
 
@@ -415,6 +422,20 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
     ],
   });
 
+  // Light Brush: params + positions in, packed animation scratch read-write.
+  const brushComputeLayout = device.createPipelineLayout({
+    bindGroupLayouts: [
+      device.createBindGroupLayout({
+        label: 'brush-compute',
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+          { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+          { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        ],
+      }),
+    ],
+  });
+
   const islFiberLayout = device.createPipelineLayout({
     bindGroupLayouts: [
       device.createBindGroupLayout({
@@ -464,5 +485,6 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
     conjunctionComputeLayout,
     conjunctionDrawLayout,
     conjunctionDensityLayout,
+    brushComputeLayout,
   };
 }

@@ -1,4 +1,5 @@
 import type { FrameContext } from './types.js';
+import { passTimestampWrites } from './passTimestamps.js';
 
 export function encodeConstellationGuidesPass(
   encoder: GPUCommandEncoder,
@@ -8,6 +9,7 @@ export function encodeConstellationGuidesPass(
   if (!guides) return;
 
   const pass = encoder.beginRenderPass({
+    timestampWrites: passTimestampWrites(),
     colorAttachments: [
       {
         view: ctx.renderTargets.hdrView,

@@ -10,7 +10,7 @@ NATIVE="$ROOT/native"
 PROFILE="${1:-release}"
 WASM_MAX_BYTES="${WASM_MAX_BYTES:-81920}"
 
-EXPORTS='["_sgp4_load_catalog","_sgp4_propagate_batch","_sgp4_propagate_batch_ex","_sgp4_propagate_batch_keplerian","_sgp4_propagate_epochs","_sgp4_teme_to_gcrf","_sgp4_catalog_epoch_jd","_sgp4_catalog_count","_sgp4_clear_catalog","_malloc","_free"]'
+EXPORTS='["_sgp4_load_catalog","_sgp4_propagate_batch","_sgp4_propagate_batch_ex","_sgp4_propagate_batch_keplerian","_sgp4_propagate_epochs","_sgp4_teme_to_gcrf","_sgp4_catalog_epoch_jd","_sgp4_catalog_count","_sgp4_catalog_rejected_count","_sgp4_clear_catalog","_malloc","_free"]'
 RUNTIME='["ccall","cwrap","HEAPF32","HEAPF64","HEAPU8","HEAP32"]'
 COMMON=(
   -std=c++17

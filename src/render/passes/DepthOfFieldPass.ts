@@ -3,6 +3,7 @@
  */
 
 import type { FrameContext } from './types.js';
+import { passTimestampWrites } from './passTimestamps.js';
 
 export function encodeDepthOfFieldPasses(
   encoder: GPUCommandEncoder,
@@ -53,6 +54,7 @@ export function encodeDepthOfFieldPasses(
 
   {
     const pass = encoder.beginRenderPass({
+      timestampWrites: passTimestampWrites(),
       colorAttachments: [
         {
           view: ctx.renderTargets.dofHalfAView,
@@ -70,6 +72,7 @@ export function encodeDepthOfFieldPasses(
   }
   {
     const pass = encoder.beginRenderPass({
+      timestampWrites: passTimestampWrites(),
       colorAttachments: [
         {
           view: ctx.renderTargets.dofHalfBView,
@@ -87,6 +90,7 @@ export function encodeDepthOfFieldPasses(
   }
   {
     const pass = encoder.beginRenderPass({
+      timestampWrites: passTimestampWrites(),
       colorAttachments: [
         {
           view: ctx.renderTargets.dofHalfAView,
@@ -104,6 +108,7 @@ export function encodeDepthOfFieldPasses(
   }
   {
     const pass = encoder.beginRenderPass({
+      timestampWrites: passTimestampWrites(),
       colorAttachments: [
         {
           view: ctx.renderTargets.dofCompositeView,

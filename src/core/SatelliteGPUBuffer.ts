@@ -78,6 +78,7 @@ export class SatelliteGPUBuffer implements SatelliteFrameBuffers {
     this.context = context;
     this.config = {
       doubleBuffer: false,
+      trailHistory: false,
       enableReadback: false,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       ...config,
@@ -99,7 +100,7 @@ export class SatelliteGPUBuffer implements SatelliteFrameBuffers {
 
   initialize(): SatelliteBufferSet {
     const { numSatellites: numSats } = this.sizes;
-    const { total, breakdown } = calculateSatelliteBufferBudget(numSats);
+    const { total, breakdown } = calculateSatelliteBufferBudget(numSats, this.config);
     console.log(
       `[SatelliteGPUBuffer] Initializing buffers for ${numSats.toLocaleString()} satellites`,
     );
@@ -125,7 +126,7 @@ export class SatelliteGPUBuffer implements SatelliteFrameBuffers {
   async uploadDynamicData(
     data: {
       position?: ArrayBufferLike;
-      pattern?: ArrayBufferLike;
+      animScratch?: ArrayBufferLike;
       color?: ArrayBufferLike;
     },
     commandEncoder: GPUCommandEncoder,
@@ -187,6 +188,12 @@ export class SatelliteGPUBuffer implements SatelliteFrameBuffers {
 
   tickSgp4Reanchor(simTime: number): void {
     if (!this.buffers) return;
+    if (this.sgp4.tickGpuSgp4(simTime)) {
+      const data = this.sgp4.gpuSgp4Data;
+      this.context
+        .getDevice()
+        .queue.writeBuffer(this.buffers.sgp4Elements, 0, data.buffer, data.byteOffset, data.byteLength);
+    }
     const plan = this.sgp4.planChunk(simTime);
     if (!plan) return;
     void this.sgp4.runChunkAsync(plan).then((range) => {
@@ -202,6 +209,11 @@ export class SatelliteGPUBuffer implements SatelliteFrameBuffers {
     });
   }
 
+  /** TLE slots running the GPU near-earth SGP4 kernel in physics mode 3. */
+  getGpuSgp4SlotCount(): number {
+    return this.sgp4.gpuSgp4Slots;
+  }
+
   getLastReanchorMainMs(): number {
     return this.sgp4.lastReanchorMainMs;
   }
@@ -211,6 +223,13 @@ export class SatelliteGPUBuffer implements SatelliteFrameBuffers {
     const error = ext.realismFlag < 0 ? Math.round(-ext.realismFlag) : null;
     const prop = this.sgp4.propagator as { catalogEpochJd?: (i: number) => number } | null;
     return { error, epochJd: prop?.catalogEpochJd?.(index) ?? 0 };
+  }
+
+  /** TEME (default) or GCRF re-anchor frame; re-anchors immediately when realism is live. */
+  setSgp4OutputFrame(frame: 'teme' | 'gcrf', simTime: number): void {
+    if (this.sgp4.setOutputFrame(frame) && this.buffers) {
+      this.forceSgp4Reanchor(simTime);
+    }
   }
 
   forceSgp4Reanchor(simTime: number): void {
@@ -351,6 +370,7 @@ export class SatelliteGPUBuffer implements SatelliteFrameBuffers {
       realismEnabled: this.sgp4.realismEnabled,
       physicsMode: this.physicsMode,
       orbital: this.store.orbital,
+      gpuSgp4Data: this.sgp4.gpuSgp4Data,
     });
   }
 

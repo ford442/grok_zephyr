@@ -197,17 +197,22 @@ describe('buffer sizing', () => {
     expect(conjunctionScanLimit(1048576)).toBe(131072);
   });
 
-  it('fits the storage budget at fleet sizes below 1M and refuses at 1M', () => {
+  it('fits the storage budget up to a full 1M fleet', () => {
     const bytesFor = (n: number): number => calculateSatelliteBufferBudget(n).total;
 
     const mid = conjunctionsFitBudget(bytesFor(262144), 262144);
     expect(mid.fits).toBe(true);
 
-    // At 1M the satellite buffers already consume the entire 128 MB Pascal cap,
-    // so the feature must decline rather than allocate and trip the assert.
+    // Packed patterns + cinematic-only trails leave ~44 MB free at 1M.
     const full = conjunctionsFitBudget(bytesFor(1048576), 1048576);
-    expect(full.freeBytes).toBeLessThanOrEqual(0);
-    expect(full.fits).toBe(false);
+    expect(full.fits).toBe(true);
+
+    // Cinematic trail history still leaves room for the prefix hash.
+    const trails = calculateSatelliteBufferBudget(1048576, {
+      doubleBuffer: false,
+      trailHistory: true,
+    }).total;
+    expect(conjunctionsFitBudget(trails, 1048576).fits).toBe(true);
   });
 
   it('stays a small allocation next to the satellite buffers', () => {

@@ -9,7 +9,7 @@
  *    (camera basis + FOV extracted from the matrix rows).
  *  - Rays that hit the Earth sample the same procedural FBM terrain, biome
  *    palette, and city-light clusters as the orbital Earth shader
- *    (terrainCommon.ts), so the horizon matches the photoreal globe. When the
+ *    (terrainCommon.wgsl), so the horizon matches the photoreal globe. When the
  *    photometric plates are loaded (`?earthmap=`) it samples those same
  *    textures — there is no second Earth — blended in by distance so the FBM
  *    keeps supplying near-field detail the plates cannot resolve.

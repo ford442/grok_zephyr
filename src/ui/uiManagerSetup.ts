@@ -32,6 +32,11 @@ export interface UIManagerSetupCallbacks {
   onConjunctionToggle: ((enabled: boolean) => void) | null;
   onConjunctionThresholdChange: ((km: number) => void) | null;
   onConjunctionDensityToggle: ((enabled: boolean) => void) | null;
+  onBrushToggle: ((enabled: boolean) => void) | null;
+  onBrushModeChange: ((mode: 'point' | 'spray' | 'ring') => void) | null;
+  onBrushRadiusChange: ((km: number) => void) | null;
+  onBrushFadeChange: ((seconds: number) => void) | null;
+  onBrushColorChange: ((css: string) => void) | null;
   onTrailLengthChange: ((mode: 'short' | 'medium' | 'long') => void) | null;
   onExposureModeChange: ((mode: ExposureMode) => void) | null;
   onManualExposureChange: ((value: number) => void) | null;
@@ -116,6 +121,7 @@ export function getElements(): UIElements {
       document.getElementById('phys0') as HTMLButtonElement,
       document.getElementById('phys1') as HTMLButtonElement,
       document.getElementById('phys2') as HTMLButtonElement,
+      document.getElementById('phys3') as HTMLButtonElement,
     ],
     realismButtons: [
       document.getElementById('realism0') as HTMLButtonElement,
@@ -149,6 +155,16 @@ export function getElements(): UIElements {
       document.getElementById('conjunctionThresholdValue') ?? undefined,
     conjunctionStatus: document.getElementById('conjunctionStatus') ?? undefined,
     conjunctionDisclaimer: document.getElementById('conjunctionDisclaimer') ?? undefined,
+    brushToggleButton:
+      (document.getElementById('brushToggle') as HTMLButtonElement | null) ?? undefined,
+    brushModeSelect: (document.getElementById('brushMode') as HTMLSelectElement | null) ?? undefined,
+    brushRadiusSlider:
+      (document.getElementById('brushRadius') as HTMLInputElement | null) ?? undefined,
+    brushRadiusValue: document.getElementById('brushRadiusValue') ?? undefined,
+    brushFadeSlider: (document.getElementById('brushFade') as HTMLInputElement | null) ?? undefined,
+    brushFadeValue: document.getElementById('brushFadeValue') ?? undefined,
+    brushColorInput: (document.getElementById('brushColor') as HTMLInputElement | null) ?? undefined,
+    brushStatus: document.getElementById('brushStatus') ?? undefined,
     trailsToggleButton:
       (document.getElementById('trailsToggle') as HTMLButtonElement | null) ?? undefined,
     trailsLengthSelect:
@@ -382,6 +398,32 @@ export function setupEventListeners(ctx: UIManagerSetupContext): void {
     const km = parseFloat(elements.conjunctionThresholdSlider?.value ?? '5');
     actions.setConjunctionThresholdKm(km);
     callbacks.onConjunctionThresholdChange?.(km);
+  });
+
+  // Light Brush. The toggle only reports intent: the controller applies the
+  // quality rule and calls back into setBrushEnabled with the real state.
+  elements.brushToggleButton?.addEventListener('click', () => {
+    const next = !(elements.brushToggleButton?.classList.contains('active') ?? false);
+    callbacks.onBrushToggle?.(next);
+  });
+
+  elements.brushModeSelect?.addEventListener('change', () => {
+    const value = elements.brushModeSelect?.value;
+    if (value === 'point' || value === 'spray' || value === 'ring') {
+      callbacks.onBrushModeChange?.(value);
+    }
+  });
+
+  elements.brushRadiusSlider?.addEventListener('input', () => {
+    callbacks.onBrushRadiusChange?.(parseFloat(elements.brushRadiusSlider?.value ?? '400'));
+  });
+
+  elements.brushFadeSlider?.addEventListener('input', () => {
+    callbacks.onBrushFadeChange?.(parseFloat(elements.brushFadeSlider?.value ?? '3'));
+  });
+
+  elements.brushColorInput?.addEventListener('input', () => {
+    callbacks.onBrushColorChange?.(elements.brushColorInput?.value ?? '#39c8ff');
   });
 
   elements.islDensitySlider?.addEventListener('input', () => {

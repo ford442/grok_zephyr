@@ -77,6 +77,11 @@ export class UIManager {
     onConjunctionToggle: null,
     onConjunctionThresholdChange: null,
     onConjunctionDensityToggle: null,
+    onBrushToggle: null,
+    onBrushModeChange: null,
+    onBrushRadiusChange: null,
+    onBrushFadeChange: null,
+    onBrushColorChange: null,
     onTrailLengthChange: null,
     onExposureModeChange: null,
     onManualExposureChange: null,
@@ -597,6 +602,26 @@ export class UIManager {
     this.callbacks.onConjunctionDensityToggle = callback;
   }
 
+  onBrushToggle(callback: (enabled: boolean) => void): void {
+    this.callbacks.onBrushToggle = callback;
+  }
+
+  onBrushModeChange(callback: (mode: 'point' | 'spray' | 'ring') => void): void {
+    this.callbacks.onBrushModeChange = callback;
+  }
+
+  onBrushRadiusChange(callback: (km: number) => void): void {
+    this.callbacks.onBrushRadiusChange = callback;
+  }
+
+  onBrushFadeChange(callback: (seconds: number) => void): void {
+    this.callbacks.onBrushFadeChange = callback;
+  }
+
+  onBrushColorChange(callback: (css: string) => void): void {
+    this.callbacks.onBrushColorChange = callback;
+  }
+
   onGodIdleOrbitToggle(callback: (enabled: boolean) => void): void {
     this.callbacks.onGodIdleOrbitToggle = callback;
   }
@@ -742,6 +767,50 @@ export class UIManager {
   /** Frame/data honesty line shown next to the control. */
   setConjunctionDisclaimer(text: string): void {
     const el = this.elements.conjunctionDisclaimer;
+    if (el) el.textContent = text;
+  }
+
+  setBrushEnabled(enabled: boolean): void {
+    const btn = this.elements.brushToggleButton;
+    if (!btn) return;
+    btn.textContent = enabled ? 'BRUSH ON' : 'BRUSH OFF';
+    btn.classList.toggle('active', enabled);
+    btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  }
+
+  /** Disable the controls outright where the pass cannot run (WebGL2 fallback). */
+  setBrushAvailable(available: boolean): void {
+    const { brushToggleButton, brushModeSelect, brushRadiusSlider, brushFadeSlider, brushColorInput } =
+      this.elements;
+    if (brushToggleButton) {
+      brushToggleButton.disabled = !available;
+      brushToggleButton.setAttribute('aria-disabled', available ? 'false' : 'true');
+    }
+    for (const el of [brushModeSelect, brushRadiusSlider, brushFadeSlider, brushColorInput]) {
+      if (el) el.disabled = !available;
+    }
+  }
+
+  setBrushMode(mode: 'point' | 'spray' | 'ring'): void {
+    if (this.elements.brushModeSelect) this.elements.brushModeSelect.value = mode;
+  }
+
+  setBrushRadiusKm(km: number): void {
+    if (this.elements.brushRadiusSlider) this.elements.brushRadiusSlider.value = String(km);
+    if (this.elements.brushRadiusValue) this.elements.brushRadiusValue.textContent = `${Math.round(km)} km`;
+  }
+
+  setBrushFadeSeconds(seconds: number): void {
+    if (this.elements.brushFadeSlider) this.elements.brushFadeSlider.value = String(seconds);
+    if (this.elements.brushFadeValue) this.elements.brushFadeValue.textContent = `${seconds.toFixed(1)} s`;
+  }
+
+  setBrushColor(css: string): void {
+    if (this.elements.brushColorInput) this.elements.brushColorInput.value = css;
+  }
+
+  setBrushStatus(text: string): void {
+    const el = this.elements.brushStatus;
     if (el) el.textContent = text;
   }
 

@@ -331,6 +331,14 @@
         >
           J2
         </button>
+        <button
+          class="physics-btn"
+          id="phys3"
+          data-physics="3"
+          aria-label="GPU near-earth SGP4 for TLE satellites (orbit realism on)"
+        >
+          SGP4
+        </button>
       </section>
 
       <section id="sun-controls" class="control-group" aria-label="Sun Lighting">
@@ -522,6 +530,60 @@
         </div>
         <div id="conjunctionDisclaimer" class="capture-note">
           Illustrative shell spacing &mdash; procedural orbits, not real objects.
+        </div>
+      </section>
+
+      <section id="brush-controls" class="control-group" aria-label="Light brush">
+        <div class="capture-label">LIGHT BRUSH</div>
+        <button
+          class="capture-btn"
+          id="brushToggle"
+          aria-pressed="false"
+          title="Drag across the fleet to paint light that fades in a few seconds"
+        >
+          BRUSH OFF
+        </button>
+        <label class="tuning-row" for="brushMode">
+          <span>Mode</span>
+        </label>
+        <select id="brushMode" aria-label="Brush mode">
+          <option value="point" selected>Point</option>
+          <option value="spray">Spray</option>
+          <option value="ring">Plane ring</option>
+        </select>
+        <label class="tuning-row" for="brushRadius">
+          <span>Size</span>
+          <span id="brushRadiusValue">400 km</span>
+        </label>
+        <input
+          id="brushRadius"
+          type="range"
+          min="50"
+          max="2000"
+          step="25"
+          value="400"
+          aria-label="Brush radius in kilometres"
+        />
+        <label class="tuning-row" for="brushFade">
+          <span>Fade</span>
+          <span id="brushFadeValue">3.0 s</span>
+        </label>
+        <input
+          id="brushFade"
+          type="range"
+          min="2"
+          max="5"
+          step="0.5"
+          value="3"
+          aria-label="Brush fade time in seconds"
+        />
+        <label class="tuning-row" for="brushColor">
+          <span>Color</span>
+          <input id="brushColor" type="color" value="#39c8ff" aria-label="Brush color" />
+        </label>
+        <div id="brushStatus" class="capture-note" role="status" aria-live="polite">Brush: off</div>
+        <div class="capture-note">
+          Light paint only &mdash; changes how satellites glow, not where they are.
         </div>
       </section>
 

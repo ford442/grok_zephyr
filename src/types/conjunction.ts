@@ -4,10 +4,10 @@
  * This is a congestion *visualization*, not SSA. See docs/CONJUNCTIONS.md for
  * what the numbers do and do not mean.
  *
- * Sizing is driven by the Pascal 128 MB storage cap: at a 1M fleet the existing
- * satellite buffers already reach it exactly (see calculateSatelliteBufferBudget),
- * so these buffers are allocated only when the feature is switched on, and only
- * when they fit in what is left.
+ * Sizing is driven by the Pascal 128 MB storage cap: the satellite buffers take
+ * ~84 MB at 1M (~116 MB with cinematic trail history; see
+ * calculateSatelliteBufferBudget), so these buffers are allocated only when the
+ * feature is switched on, and only when they fit in what is left.
  */
 
 import { MAX_SAFE_BUFFER_SIZE } from '@/core/buffer/bufferTypes.js';
@@ -73,8 +73,9 @@ export function conjunctionBufferBytes(scanCount: number): number {
 
 /**
  * Whether the pass fits alongside `satelliteBufferBytes` already allocated.
- * At a 1M fleet the answer is no on a 128 MB-capped adapter — the caller is
- * expected to say so rather than allocate and trip assertBufferBudget.
+ * `satelliteBufferBytes` should be the allocated ledger (getMemoryUsage); when
+ * it does not fit the caller reports the real free bytes rather than allocate
+ * and trip assertBufferBudget.
  */
 export function conjunctionsFitBudget(
   satelliteBufferBytes: number,

@@ -197,7 +197,7 @@ export class EarthAtmosphereRenderer {
         cullMode: 'front',
       },
       depthStencil: {
-        format: 'depth24plus',
+        format: this.context.getDepthFormat(),
         depthWriteEnabled: false,
         depthCompare: 'less-equal',
       },

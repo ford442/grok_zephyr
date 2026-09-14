@@ -71,6 +71,7 @@ export interface Pipelines {
   conjunctionPairs: GPUComputePipeline;
   conjunctionDraw: GPURenderPipeline;
   conjunctionDensity: GPURenderPipeline;
+  brushPaint: GPUComputePipeline;
   satelliteCullSats: GPUComputePipeline;
   satelliteCullBeams: GPUComputePipeline;
   satelliteCullFinalize: GPUComputePipeline;

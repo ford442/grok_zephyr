@@ -120,6 +120,16 @@ async function applyMergedCatalog(
     const propagator = rt.buffers.getTlePropagator();
     if (propagator) {
       await propagator.initWasm();
+      const rejected = propagator.rejectedCount();
+      if (rejected > 0) {
+        console.warn(
+          `[GrokZephyr] SGP4 catalog rejected ${rejected} TLE(s) (parse or Vallado init error) — skipped`,
+        );
+        rt.dataSourceLabel = `${rt.dataSourceLabel} · ${rejected} TLE rejected`;
+        rt.ui.setDataSource(rt.dataSourceLabel);
+      } else {
+        console.log('[GrokZephyr] SGP4 catalog: 0 TLEs rejected');
+      }
       const bench = await runSgp4Benchmark(propagator, Date.now());
       rt.ui.updateSgp4Benchmark(bench, propagator.getBackend());
     }

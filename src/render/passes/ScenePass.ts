@@ -5,6 +5,7 @@
 import type { SatelliteCullBuffers } from '../SatelliteCullBuffers.js';
 import { SceneRenderBundle, type SceneBundleVariant } from '../SceneRenderBundle.js';
 import type { FrameContext } from './types.js';
+import { passTimestampWrites } from './passTimestamps.js';
 
 const sceneBundle = new SceneRenderBundle();
 
@@ -26,6 +27,7 @@ export function encodeScenePass(
   const variant: SceneBundleVariant = moonView ? 'moon' : 'standard';
 
   const pass = encoder.beginRenderPass({
+    timestampWrites: passTimestampWrites(),
     colorAttachments: [
       {
         view: renderTargets.hdrView,

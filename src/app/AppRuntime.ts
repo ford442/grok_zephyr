@@ -34,6 +34,7 @@ import type { TLEData } from '@/types/index.js';
 import type { GroundStationPanel } from '@/ui/GroundStationPanel.js';
 import type { GroundStationGuides } from '@/render/GroundStationGuides.js';
 import type { XrSessionManager } from '@/xr/XrSessionManager.js';
+import type { BrushController } from '@/app/BrushController.js';
 
 /**
  * Shared runtime dependencies and mutable application state accessed by
@@ -75,6 +76,8 @@ export interface AppRuntime {
   groundStationPanel: GroundStationPanel | null;
   groundStationGuides: GroundStationGuides;
   xrSession: XrSessionManager | null;
+  /** Light Brush — pointer / XR ray paint on the fleet (WebGPU only). */
+  readonly brush: BrushController;
 
   earthVertexBuffer: GPUBuffer | null;
   earthIndexBuffer: GPUBuffer | null;

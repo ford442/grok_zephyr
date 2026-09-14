@@ -57,21 +57,21 @@ feature no system binds would violate the used-only policy in
 
 ## Buffer budget — the binding constraint
 
-`calculateSatelliteBufferBudget` at a 1M fleet already reaches **128.00 MB**,
-which is the Pascal safe cap exactly. (`BufferAllocator.ts` still describes this
-as "~118 MB"; that comment is stale.)
+`calculateSatelliteBufferBudget` is the single ledger (uniforms included) used by
+allocation, `assertBufferBudget`, `getMemoryUsage` and this pass. Smile's output
+is packed rgba8 (4 B/sat) and the 32 MB trail history is allocated only at the
+cinematic tier, so a 1M fleet no longer fills the Pascal cap.
 
 | Fleet | Satellite buffers | Free | Conjunction pass |
 | --- | --- | --- | --- |
-| 16,384 | 7.9 MB | 120.1 MB | 1.2 MB |
-| 262,144 | 36.5 MB | 91.5 MB | 9.1 MB |
-| 524,288 | 67.0 MB | 61.0 MB | 9.1 MB |
-| 1,048,576 | 128.0 MB | **0.0 MB** | **refused** |
+| 262,144 | ~26 MB | ~102 MB | 9.1 MB |
+| 1,048,576 (high) | ~84 MB | ~44 MB | 9.1 MB — fits |
+| 1,048,576 (cinematic) | ~116 MB | ~12 MB | 9.1 MB — fits |
 
-So the buffers are allocated **on first enable, never at boot**, and the feature
-declines with a reason in the HUD when they do not fit rather than tripping
-`assertBufferBudget`. At a 1M fleet the honest answer is "use a smaller
-`?sats=`", and that is what the status line says.
+The buffers are still allocated **on first enable, never at boot**, measured
+against the buffers actually allocated. If they do not fit (for example
+`doubleBuffer` ping-pong plus cinematic trails at 1M, which already exceeds the
+cap), the feature declines and the HUD reports the real free bytes.
 
 Above 131,072 satellites the hash table saturates, so the scan covers a prefix
 of the fleet and the HUD reports `scanned 131,072/1,048,576`. A strided sample
@@ -118,8 +118,8 @@ same cells the pair test uses.
 | File | Role |
 | --- | --- |
 | `src/physics/conjunctionHash.ts` | CPU reference — hash authority, brute-force-checked |
-| `src/shaders/compute/conjunction.ts` | `clear_bins` / `bin_sats` / `find_pairs` |
-| `src/shaders/render/conjunction.ts` | Amber→red pair markers, pulsed |
+| `src/shaders/compute/conjunction.wgsl` | `clear_bins` / `bin_sats` / `find_pairs` |
+| `src/shaders/render/conjunction.wgsl` | Amber→red pair markers, pulsed |
 | `src/shaders/render/conjunctionDensity.ts` | Viridis occupancy overlay |
 | `src/render/ConjunctionBuffers.ts` | Lazy allocation + budget guard + readback |
 | `src/render/passes/ConjunctionPass.ts` | Pass encoders |

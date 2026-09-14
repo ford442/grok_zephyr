@@ -19,7 +19,8 @@ import type { ChipCatalogId } from '@/data/ConstellationGroups.js';
 import type { TLEData } from '@/types/index.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 import { SatelliteCatalog } from '@/data/SatelliteCatalog.js';
-import { pickAndSelectAtScreen } from '@/app/SatelliteSelection.js';
+import { pickAndSelectAtScreen, pickSatelliteAtScreen } from '@/app/SatelliteSelection.js';
+import { BrushController } from '@/app/BrushController.js';
 import { SimulationState } from '@/app/SimulationState.js';
 import { ViewModeState } from '@/app/ViewModeCoordinator.js';
 import {
@@ -105,6 +106,7 @@ export class App implements AppRuntime {
   groundStationPanel: GroundStationPanel | null = null;
   readonly groundStationGuides: GroundStationGuides;
   xrSession: XrSessionManager | null = null;
+  readonly brush: BrushController;
 
   earthVertexBuffer: GPUBuffer | null = null;
   earthIndexBuffer: GPUBuffer | null = null;
@@ -159,6 +161,14 @@ export class App implements AppRuntime {
     this.profiler = new PerformanceProfiler();
     this.audio = new AudioEngine();
     this.patternNameDisplay = document.getElementById('patternName');
+    this.brush = new BrushController({
+      pickSatellite: (x, y) => pickSatelliteAtScreen(this, x, y),
+      satellitePosition: (i) =>
+        this.buffers?.calculateSatellitePosition(i, this.simulation.clock.simTime) ?? null,
+      satelliteVelocity: (i) =>
+        this.buffers?.calculateSatelliteVelocity(i, this.simulation.clock.simTime) ?? null,
+      onStrokeStart: () => this.audio.playBrushStroke(),
+    });
     setupCallbacks(this);
     this.groundStationPanel = new GroundStationPanel(this);
     this.xrSession = new XrSessionManager(this);

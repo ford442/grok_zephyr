@@ -19,7 +19,8 @@ There is **no** precession, nutation, polar motion, or Earth-orientation paramet
 | Source | True frame | What we do |
 | --- | --- | --- |
 | Procedural Walker / Keplerian / J2 | Circular or osculating Keplerian in the render frame | Exact by construction |
-| Vallado SGP4 WASM / satellite.js | **TEME** (True Equator Mean Equinox of date, Vallado) | Copied into the render buffer as if TEME ≡ ECI. Optional `sgp4_teme_to_gcrf` (low-order IAU-76) exists in WASM but is **not** applied on the re-anchor path. |
+| Vallado SGP4 WASM / satellite.js | **TEME** (True Equator Mean Equinox of date, Vallado) | Copied into the render buffer as if TEME ≡ ECI. With `?frame=gcrf` **and** `?sun=astro`, the re-anchor path runs `sgp4_teme_to_gcrf` (low-order IAU-76) before the Keplerian conversion; default stays TEME. |
+| GPU near-earth SGP4 (physics mode 3) | **TEME** | Always TEME — the kernel is not rotated, so under `?frame=gcrf` mode-3 slots and re-anchored slots differ by the TEME→GCRF angle (tens of arcsec). |
 | Keplerian conversion (`eciStateToKeplerian`) | Same mixed Cartesian | Treats the vector as inertial ECI |
 
 **Error bounds (SGP4 TEME used as GCRF/J2000):** typically **tens of arcseconds** (sub-km at LEO in the cross-track sense for short arcs), occasionally approaching **~1 arcminute** for neglected EOP / older TLEs. That is far smaller than the art-directed shell spacing (hundreds of km) and is **not** a substitute for conjunction-grade screening.
@@ -49,7 +50,7 @@ Pass prediction (`PassPredictor.ts`, `elevationDeg`, `isSatelliteVisible`), stat
 
 ## Earth rotation / ground
 
-The Earth surface shader (`src/shaders/render/earth.ts`) and the Ground View horizon shader (`src/shaders/render/ground.ts`) rotate their body-fixed terrain/city-light sampling by a single CPU-computed angle, `uni.earth_rotation_rad`, using the same `rotateZ(+angle)` convention as `eciToEcef`. The angle comes from `earthRotationRad(mode, simTimeSec, utcMs)`:
+The Earth surface shader (`src/shaders/render/earth.wgsl`) and the Ground View horizon shader (`src/shaders/render/ground.ts`) rotate their body-fixed terrain/city-light sampling by a single CPU-computed angle, `uni.earth_rotation_rad`, using the same `rotateZ(+angle)` convention as `eciToEcef`. The angle comes from `earthRotationRad(mode, simTimeSec, utcMs)`:
 
 | Mode | Angle | When |
 | --- | --- | --- |
@@ -71,6 +72,7 @@ If star catalogs land, the sky will still drift against GMST-rotated terrain unl
 ## Toggles
 
 - UI: **SUN** → ART | ASTRO
+- URL: `?frame=gcrf` rotates SGP4 re-anchors TEME→GCRF; ignored unless `?sun=astro`, needs WASM (satellite.js fallback stays TEME), and GCRF chunks run on the main-thread WASM instance rather than the worker
 - URL: `?sun=art` (default) or `?sun=astro`; `?earth=1` forces GMST-true Earth rotation under ART sun (implied by `?sun=astro`)
 - Persistence: `localStorage['zephyr.sunMode']` (Earth-rotation opt-in is not persisted)
 
