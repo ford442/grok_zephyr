@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { KeplerianState } from '@/physics/index.js';
-import { SGP4_GPU_REBASE_SIM_SEC } from '@/physics/sgp4NearEarth.js';
+import { SGP4_GPU_REBASE_SIM_SEC, packSgp4GpuSlot } from '@/physics/sgp4NearEarth.js';
 import { OrbitalDataStore } from './OrbitalDataStore.js';
 import {
   REANCHOR_CHUNK_SIZE,
@@ -85,7 +85,19 @@ describe('Sgp4ReanchorService', () => {
       no: 0.0654, ecco: 0.001, inclo: 0.93, nodeo: 1, argpo: 2, mo: 3, bstar: 1e-4,
       epochJd: 2460666.5,
     };
-    sgp4.propagator = { ...fakePropagator([]), meanElements: (i) => (i === 1 ? null : el) };
+    // Slot 1 is deep space: the packer zeros it and leaves it out of the count.
+    sgp4.propagator = {
+      ...fakePropagator([]),
+      packGpuSgp4Slots: (dest, destSlotBase, baseUnixMs, start, count) => {
+        let valid = 0;
+        for (let i = 0; i < count; i++) {
+          const slot = start + i;
+          packSgp4GpuSlot(dest, destSlotBase + i, slot === 1 ? null : el, baseUnixMs);
+          if (slot !== 1) valid++;
+        }
+        return valid;
+      },
+    };
     sgp4.tleRealCount = 3;
 
     expect(sgp4.tickGpuSgp4(0)).toBe(true);

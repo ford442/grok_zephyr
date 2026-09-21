@@ -23,6 +23,18 @@ There is **no** precession, nutation, polar motion, or Earth-orientation paramet
 | GPU near-earth SGP4 (physics mode 3) | **TEME** | Always TEME — the kernel is not rotated, so under `?frame=gcrf` mode-3 slots and re-anchored slots differ by the TEME→GCRF angle (tens of arcsec). |
 | Keplerian conversion (`eciStateToKeplerian`) | Same mixed Cartesian | Treats the vector as inertial ECI |
 
+## Which propagator a satellite actually gets
+
+Not every TLE runs SGP4 on the GPU. The HUD (`SGP4 Engine` → `propagator`) and the satellite inspector (`Propagator`) name the branch rather than letting all three look alike:
+
+| Label | Records | Between CPU re-anchors |
+| --- | --- | --- |
+| **GPU SGP4 (LEO)** | Vallado `method == 'n'` (period < 225 min) | Mode-3 near-earth SGP4 kernel in WGSL |
+| **CPU SDP4 (deep space)** | Vallado `method == 'd'` — GPS, Galileo, GEO, Molniya | Vallado **SDP4** in WASM anchors the elements; the GPU then coasts them on **J2**, so between re-anchors a GPS slot is a J2 arc off an SDP4 anchor, not SDP4 |
+| **J2 fallback** | No usable SGP4 record (rejected, decayed, past `SGP4_GPU_CAPACITY`) | J2 only |
+
+Re-anchor, pass prediction and the inspector all read the WASM catalog, so deep-space satellites get real SDP4 there. There is **no** SDP4 in WGSL: lunar-solar periodics and resonance are not ported, and this table is why deep-space slots are zeroed in the mode-3 buffer instead of being packed as if they were near-earth.
+
 **Error bounds (SGP4 TEME used as GCRF/J2000):** typically **tens of arcseconds** (sub-km at LEO in the cross-track sense for short arcs), occasionally approaching **~1 arcminute** for neglected EOP / older TLEs. That is far smaller than the art-directed shell spacing (hundreds of km) and is **not** a substitute for conjunction-grade screening.
 
 ## Sun

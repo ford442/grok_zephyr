@@ -4,6 +4,7 @@
 
 import { packTleCatalog, type TleLinePair } from './packTleCatalog.js';
 import { packExtendedFromEciBatch } from './sgp4PackExtended.js';
+import { SGP4_GPU_FLOATS_PER_SLOT } from './sgp4NearEarth.js';
 
 export interface Sgp4WasmModule {
   _malloc(size: number): number;
@@ -18,6 +19,12 @@ export interface Sgp4WasmModule {
     count: number,
   ): number;
   _sgp4_propagate_batch_keplerian?(unixMs: number, out: number, startIndex: number, count: number): number;
+  _sgp4_pack_gpu_elements?(
+    baseUnixMs: number,
+    out: number,
+    startIndex: number,
+    count: number,
+  ): number;
   _sgp4_propagate_epochs?(
     unixMsPtr: number,
     epochCount: number,
@@ -27,6 +34,7 @@ export interface Sgp4WasmModule {
   ): number;
   _sgp4_teme_to_gcrf?(inPtr: number, outPtr: number, unixMs: number, count: number): number;
   _sgp4_catalog_epoch_jd?(index: number): number;
+  _sgp4_catalog_method?(index: number): number;
   _sgp4_catalog_count(): number;
   _sgp4_catalog_rejected_count?(): number;
   _sgp4_clear_catalog(): void;
@@ -313,9 +321,53 @@ export class Sgp4WasmEngine {
     }
   }
 
+  /**
+   * Fill physics mode-3 GPU slots for [startIndex, startIndex + count) into
+   * `out` at `outFloatOffset` (count x SGP4_GPU_FLOATS_PER_SLOT floats).
+   * C++ owns the near-earth screen and the float64 phase advance, so the GPU
+   * buffer never needs a satellite.js satrec. Returns slots with a usable
+   * near-earth record; deep-space and errored slots are zeroed.
+   */
+  packGpuElements(
+    baseUnixMs: number,
+    startIndex: number,
+    count: number,
+    out: Float32Array,
+    outFloatOffset = 0,
+  ): number {
+    const limit = Math.min(count, Math.max(0, this.catalogCount - startIndex));
+    const floats = limit * SGP4_GPU_FLOATS_PER_SLOT;
+    if (limit <= 0 || !this.mod._sgp4_pack_gpu_elements) return 0;
+
+    const ptr = this.mod._malloc(floats * 4);
+    try {
+      const valid = this.mod._sgp4_pack_gpu_elements(baseUnixMs, ptr, startIndex, limit);
+      if (valid < 0) return 0;
+      out.set(this.mod.HEAPF32.subarray(ptr >> 2, (ptr >> 2) + floats), outFloatOffset);
+      return valid;
+    } finally {
+      this.mod._free(ptr);
+    }
+  }
+
+  /** True when the WASM build can pack GPU slots (older artifacts cannot). */
+  canPackGpuElements(): boolean {
+    return this.mod._sgp4_pack_gpu_elements !== undefined;
+  }
+
   catalogEpochJd(index: number): number {
     if (!this.mod._sgp4_catalog_epoch_jd) return 0;
     return this.mod._sgp4_catalog_epoch_jd(index);
+  }
+
+  /**
+   * Vallado's propagator branch for a catalog entry: 'n' runs near-earth SGP4
+   * (and gets a GPU slot), 'd' runs SDP4 on the CPU only. '' = unknown.
+   */
+  catalogMethod(index: number): 'n' | 'd' | '' {
+    if (!this.mod._sgp4_catalog_method) return '';
+    const code = this.mod._sgp4_catalog_method(index);
+    return code === 110 ? 'n' : code === 100 ? 'd' : '';
   }
 
   clear(): void {

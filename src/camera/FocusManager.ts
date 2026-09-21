@@ -9,6 +9,14 @@ import type { SatelliteCatalog } from '@/data/SatelliteCatalog.js';
 import { mat4inv, v3dot, v3len, v3norm, v3scale, v3sub } from '@/utils/math.js';
 import { CONSTANTS } from '@/types/constants.js';
 import { sgp4ErrorLabel } from '@/physics/extendedElements.js';
+import type { Sgp4PropagationClass } from '@/physics/TlePropagator.js';
+
+/** Inspector copy per propagation class — deliberately not an SSA claim. */
+const PROPAGATION_LABELS: Record<Sgp4PropagationClass, string> = {
+  'sgp4-gpu': 'GPU SGP4 (LEO)',
+  'sdp4-cpu': 'CPU SDP4 (deep space)',
+  j2: 'J2 fallback',
+};
 import { getActiveFleetSize } from '@/core/FleetScale.js';
 
 export type FocusSelection = {
@@ -41,7 +49,11 @@ export interface FocusBufferSource {
   getOrbitalElementData(): Float32Array;
   calculateSatellitePosition(index: number, time: number): Vec3;
   calculateSatelliteVelocity(index: number, time: number): Vec3;
-  getSgp4Status?(index: number): { error: number | null; epochJd: number };
+  getSgp4Status?(index: number): {
+    error: number | null;
+    epochJd: number;
+    propagation?: Sgp4PropagationClass | null;
+  };
 }
 
 export class FocusManager {
@@ -368,12 +380,21 @@ export class FocusManager {
                     : status.epochJd > 0
                       ? `SGP4 ok · epoch ${status.epochJd.toFixed(5)} JD`
                       : '';
-                return sgp4Text
-                  ? `<div class="inspector-row">
+                const propagationRow =
+                  status.error === null && status.propagation
+                    ? `<div class="inspector-row">
+          <span class="inspector-label">Propagator</span>
+          <span class="inspector-value">${PROPAGATION_LABELS[status.propagation]}</span>
+        </div>`
+                    : '';
+                return (
+                  (sgp4Text
+                    ? `<div class="inspector-row">
           <span class="inspector-label">SGP4</span>
           <span class="inspector-value">${status.error !== null ? '⚠ ' : ''}${sgp4Text}</span>
         </div>`
-                  : '';
+                    : '') + propagationRow
+                );
               })()
             : ''
         }

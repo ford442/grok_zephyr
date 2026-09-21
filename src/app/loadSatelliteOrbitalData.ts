@@ -132,9 +132,11 @@ async function applyMergedCatalog(
       }
       const bench = await runSgp4Benchmark(propagator, Date.now());
       rt.ui.updateSgp4Benchmark(bench, propagator.getBackend());
+      rt.ui.updateSgp4Propagators(propagator.propagationClassCounts?.() ?? null);
     }
   } else {
     rt.ui.updateSgp4Benchmark(null, 'js');
+    rt.ui.updateSgp4Propagators(null);
   }
 
   rt.loadedTles = merged.tles;

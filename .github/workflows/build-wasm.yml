@@ -28,6 +28,21 @@ jobs:
       - name: Build SGP4 WASM
         run: npm run build:wasm
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Catches C++/TypeScript drift: the GPU mean elements C++ packs must
+      # still match src/physics/sgp4NearEarth.ts (the WGSL mirror), and the
+      # near-earth SIMD kernel must still agree with the satellite.js oracle.
+      - name: Check freshly built WASM against the TypeScript reference
+        run: npx vitest run src/physics/sgp4CatalogAuthority.test.ts src/physics/sgp4NearEarth.test.ts src/physics/Sgp4WasmEngine.test.ts
+
       - name: Upload WASM artifacts
         uses: actions/upload-artifact@v4
         with:

@@ -9,6 +9,7 @@ import type { AnimationPattern } from '@/types/animation.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
 import type { PresentationMode } from '@/core/HdrPresentation.js';
 import type { Sgp4BenchmarkResult } from '@/physics/Sgp4Benchmark.js';
+import type { Sgp4PropagationClassCounts } from '@/physics/TlePropagator.js';
 import type { ChipCatalogId } from '@/data/ConstellationGroups.js';
 import type { TLECatalogMeta } from '@/data/TLESource.js';
 import type { SunLightingMode } from '@/physics/sun.js';
@@ -427,6 +428,12 @@ export class UIManager {
   updateSgp4Benchmark(result: Sgp4BenchmarkResult | null, backend: 'wasm' | 'js'): void {
     if (this.dashboard) {
       this.dashboard.updateSgp4Benchmark(result, backend);
+    }
+  }
+
+  updateSgp4Propagators(counts: Sgp4PropagationClassCounts | null): void {
+    if (this.dashboard) {
+      this.dashboard.updateSgp4Propagators(counts);
     }
   }
 

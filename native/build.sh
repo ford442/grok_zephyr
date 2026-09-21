@@ -3,6 +3,10 @@
 #   native/build.sh          # release → public/sgp4.{js,wasm}
 #   native/build.sh release
 #   native/build.sh debug    # assertions + DWARF → native/out/debug/ (does not touch public/)
+#
+# Every build also writes native/compile_commands.json so clangd can resolve
+# the wrapper headers without a second build system. This stays the single
+# compile command: there is no CMake.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -10,16 +14,30 @@ NATIVE="$ROOT/native"
 PROFILE="${1:-release}"
 WASM_MAX_BYTES="${WASM_MAX_BYTES:-81920}"
 
-EXPORTS='["_sgp4_load_catalog","_sgp4_propagate_batch","_sgp4_propagate_batch_ex","_sgp4_propagate_batch_keplerian","_sgp4_propagate_epochs","_sgp4_teme_to_gcrf","_sgp4_catalog_epoch_jd","_sgp4_catalog_count","_sgp4_catalog_rejected_count","_sgp4_clear_catalog","_malloc","_free"]'
+EXPORTS='["_sgp4_load_catalog","_sgp4_propagate_batch","_sgp4_propagate_batch_ex","_sgp4_propagate_batch_keplerian","_sgp4_pack_gpu_elements","_sgp4_propagate_epochs","_sgp4_teme_to_gcrf","_sgp4_catalog_epoch_jd","_sgp4_catalog_method","_sgp4_catalog_count","_sgp4_catalog_rejected_count","_sgp4_clear_catalog","_malloc","_free"]'
 RUNTIME='["ccall","cwrap","HEAPF32","HEAPF64","HEAPU8","HEAP32"]'
-COMMON=(
-  -std=c++17
-  -fno-exceptions
-  -fno-rtti
+SOURCES=(
   "$NATIVE/vallado/sgp4unit.cpp"
   "$NATIVE/vallado/sgp4io.cpp"
   "$NATIVE/vallado/sgp4ext.cpp"
   "$NATIVE/wasm/sgp4_wasm.cpp"
+)
+# Flags clangd needs to parse a translation unit (the -s link options do not
+# affect parsing, so compile_commands.json carries only these).
+TU_FLAGS=(
+  -std=c++17
+  -fno-exceptions
+  -fno-rtti
+  -msimd128
+  -I "$NATIVE/vallado"
+  -I "$NATIVE/wasm"
+  -DSGP4_ENABLE_TEME_GCRF=1
+)
+COMMON=(
+  -std=c++17
+  -fno-exceptions
+  -fno-rtti
+  "${SOURCES[@]}"
   -I "$NATIVE/vallado"
   -I "$NATIVE/wasm"
   -DSGP4_ENABLE_TEME_GCRF=1
@@ -44,6 +62,28 @@ if ! command -v em++ >/dev/null 2>&1; then
 fi
 
 echo "em++ $(em++ --version | head -n1)"
+
+# clangd compilation database — same flags as the build above, no CMake.
+write_compile_commands() {
+  local out="$NATIVE/compile_commands.json"
+  local first=1
+  {
+    echo "["
+    for src in "${SOURCES[@]}"; do
+      [[ $first -eq 1 ]] || echo ","
+      first=0
+      printf '  {\n    "directory": "%s",\n    "file": "%s",\n    "arguments": [' "$NATIVE" "$src"
+      printf '"em++"'
+      for flag in "${TU_FLAGS[@]}"; do printf ', "%s"' "$flag"; done
+      printf ', "-c", "%s"]\n  }' "$src"
+    done
+    echo ""
+    echo "]"
+  } > "$out"
+  echo "Wrote $out"
+}
+
+write_compile_commands
 
 if [[ "$PROFILE" == "debug" ]]; then
   OUT_DIR="$NATIVE/out/debug"

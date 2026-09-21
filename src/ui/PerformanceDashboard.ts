@@ -9,6 +9,7 @@ import type { PerformanceStats } from '@/types/index.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
 import type { PresentationMode } from '@/core/HdrPresentation.js';
 import type { Sgp4BenchmarkResult } from '@/physics/Sgp4Benchmark.js';
+import type { Sgp4PropagationClassCounts } from '@/physics/TlePropagator.js';
 import { QUALITY_PRESETS } from '@/core/QualityPresets.js';
 import { formatPresentationModeLabel } from '@/core/HdrPresentation.js';
 import type { PerformanceProfiler, DetailedTimings } from '@/utils/PerformanceProfiler.js';
@@ -39,6 +40,7 @@ interface DashboardElements {
   sgp4Backend: HTMLElement;
   sgp4Benchmark: HTMLElement;
   sgp4Reanchor: HTMLElement;
+  sgp4Classes: HTMLElement;
   gpuCaps: HTMLElement;
 }
 
@@ -149,6 +151,7 @@ export class PerformanceDashboard {
               <div class="perf-preset-label" id="perf-sgp4-backend">satellite.js</div>
               <div class="perf-preset-headroom" id="perf-sgp4-bench">--</div>
               <div class="perf-preset-headroom" id="perf-sgp4-reanchor">re-anchor: --</div>
+              <div class="perf-preset-headroom" id="perf-sgp4-classes">propagator: --</div>
             </div>
           </div>
         </div>
@@ -176,6 +179,7 @@ export class PerformanceDashboard {
       sgp4Backend: container.querySelector('#perf-sgp4-backend') as HTMLElement,
       sgp4Benchmark: container.querySelector('#perf-sgp4-bench') as HTMLElement,
       sgp4Reanchor: container.querySelector('#perf-sgp4-reanchor') as HTMLElement,
+      sgp4Classes: container.querySelector('#perf-sgp4-classes') as HTMLElement,
       gpuCaps: container.querySelector('#perf-gpu-caps') as HTMLElement,
     };
 
@@ -409,6 +413,26 @@ export class PerformanceDashboard {
     const meetsTarget = result.activeBackend === 'wasm' && result.speedup >= 5;
     this.elements.sgp4Benchmark.textContent = speedupText;
     this.elements.sgp4Benchmark.style.color = meetsTarget ? '#00ff88' : '#ffff00';
+  }
+
+  /**
+   * Which propagator each TLE actually gets. Near-earth records run the GPU
+   * mode-3 SGP4 kernel; deep space (GPS/GEO) is Vallado SDP4 on the CPU and
+   * only coasts on J2 between re-anchors; the rest is J2 alone. None of this
+   * is operational SSA — see docs/FRAMES.md.
+   */
+  updateSgp4Propagators(counts: Sgp4PropagationClassCounts | null): void {
+    if (!this.elements?.sgp4Classes) return;
+    if (!counts || counts.sgp4Gpu + counts.sdp4Cpu + counts.j2 === 0) {
+      this.elements.sgp4Classes.textContent = 'propagator: --';
+      this.elements.sgp4Classes.style.color = '#888888';
+      return;
+    }
+    const parts = [`GPU SGP4 (LEO) ${counts.sgp4Gpu.toLocaleString()}`];
+    if (counts.sdp4Cpu > 0) parts.push(`CPU SDP4 (deep space) ${counts.sdp4Cpu.toLocaleString()}`);
+    if (counts.j2 > 0) parts.push(`J2 fallback ${counts.j2.toLocaleString()}`);
+    this.elements.sgp4Classes.textContent = parts.join(' · ');
+    this.elements.sgp4Classes.style.color = counts.j2 > 0 ? '#ffaa00' : '#c8c8c8';
   }
 
   updateSgp4Reanchor(mainThreadMs: number): void {

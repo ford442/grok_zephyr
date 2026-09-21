@@ -3,6 +3,7 @@ import type { AnimationPattern } from '@/types/animation.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
 import type { PresentationMode } from '@/core/HdrPresentation.js';
 import type { Sgp4BenchmarkResult } from '@/physics/Sgp4Benchmark.js';
+import type { Sgp4PropagationClassCounts } from '@/physics/TlePropagator.js';
 
 export type ExposureMode = 'auto' | 'manual';
 export type TonemapMode = 0 | 1 | 2 | 3;
@@ -120,5 +121,6 @@ export interface IDashboard {
   updateGpuCapabilities(line: string): void;
   updateSgp4Benchmark(result: Sgp4BenchmarkResult | null, backend: 'wasm' | 'js'): void;
   updateSgp4Reanchor(mainThreadMs: number): void;
+  updateSgp4Propagators(counts: Sgp4PropagationClassCounts | null): void;
   destroy(): void;
 }
