@@ -3,8 +3,9 @@
  *
  * Runtime WGSL is authored as `.wgsl` under compute/, render/, and animations/
  * and loaded by the Vite wgslPlugin (`#import` + generated uniform structs from
- * the TS schemas). Remaining TS template-string shaders are allowlisted in
- * shaderSources.test.ts.
+ * the TS schemas). The TS modules beside each `.wgsl` are thin re-exports; only
+ * schema-generated structs are still emitted from TypeScript, and
+ * shaderSources.test.ts fails CI on any new template-string shader.
  */
 
 import { UNIFORM_STRUCT } from './uniforms.js';

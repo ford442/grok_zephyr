@@ -12,26 +12,12 @@ import { buildBloomDownsample } from './render/postProcess/bloomDownsample.js';
  * not listed here must come from a module that imports a `.wgsl` file, so a
  * new template-string shader fails CI until it is migrated or listed with a
  * reason. Keep reasons to one line.
+ *
+ * Only schema-generated leaves belong here: everything a human edits is a
+ * `.wgsl` file that pulls the generated structs in via `#import`.
  */
 const TS_TEMPLATE_ALLOWLIST: Record<string, string> = {
   uniformStruct: 'generated from SCENE_UNI_SCHEMA; .wgsl files get it via #import "uniforms.wgsl"',
-  'compute.satelliteCull': 'not yet migrated — cold path, only built with ?cull',
-  'render.satellitesPick': 'not yet migrated — picking pass, rebuilt from satellites layout',
-  'render.ground': 'not yet migrated — Ground View only',
-  'render.skyline': 'not yet migrated — Ground View only',
-  'render.volumetricBeam': 'not yet migrated — cinematic tier only',
-  'render.moonForeground': 'not yet migrated — Moon View only',
-  'render.moonEarthDisk': 'not yet migrated — Moon View only',
-  'render.postProcess.bloomThreshold': 'struct emitted from THRESHOLD_UNI_SCHEMA in TS',
-  'render.postProcess.bloomBlur': 'not yet migrated — small bloom kernel',
-  'render.postProcess.bloomDownsample': 'f16/f32 variants built by buildBloomDownsample()',
-  'render.postProcess.bloomUpsample': 'struct emitted from KAWASE_UNI_SCHEMA in TS',
-  'render.postProcess.dofDownsample': 'not yet migrated — cinematic tier only',
-  'render.postProcess.dofBlur': 'not yet migrated — cinematic tier only',
-  'render.postProcess.dofComposite': 'not yet migrated — cinematic tier only',
-  'render.postProcess.autoExposureHistogram': 'not yet migrated — small compute',
-  'render.postProcess.autoExposureAdapt': 'not yet migrated — small compute',
-  'render.postProcess.motionBlur': 'not yet migrated — cinematic tier only',
 };
 
 /** Barrel modules backing each `SHADERS` namespace. */
@@ -100,10 +86,25 @@ describe('shader source of truth', () => {
       './render/conjunction.wgsl',
       './render/conjunctionDensity.wgsl',
       './render/isl.wgsl',
+      './render/atmosphereClouds.wgsl',
+      './render/ground.wgsl',
+      './render/skyline.wgsl',
+      './render/volumetricBeams.wgsl',
+      './render/moonForeground.wgsl',
+      './render/moonEarthDisk.wgsl',
+      './render/satellitesPick.wgsl',
+      './compute/satelliteCull.wgsl',
     ]) {
       expect(wgsl(rel), rel).toContain('#import "uniforms.wgsl"');
     }
     expect(wgsl('./render/earth.wgsl')).toContain('#import "terrainCommon.wgsl"');
+    expect(wgsl('./render/ground.wgsl')).toContain('#import "terrainCommon.wgsl"');
+    expect(wgsl('./render/ground.wgsl')).toContain('#import "earthMapCommon.wgsl"');
+    expect(wgsl('./render/postProcess/bloomThreshold.wgsl')).toContain(
+      '#import "threshold_uni.wgsl"',
+    );
+    expect(wgsl('./render/postProcess/bloomDownsample.wgsl')).toContain('#import "kawase_uni.wgsl"');
+    expect(wgsl('./render/postProcess/bloomUpsample.wgsl')).toContain('#import "kawase_uni.wgsl"');
     expect(wgsl('./animations/smileV2.wgsl')).toContain('#import "smileV2Compute.wgsl"');
     expect(SHADERS.animations.smileV2).not.toMatch(/^\s*#import/m);
     expect(SHADERS.animations.smileV2).toContain('fn smile_v2_compute');

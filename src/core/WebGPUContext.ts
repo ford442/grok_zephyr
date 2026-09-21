@@ -19,6 +19,7 @@ import {
   missingRequiredFeatures,
   REQUESTED_OPTIONAL_FEATURES,
   snapshotAdapter,
+  type AdapterSnapshot,
   type GpuCapabilityProfile,
   type OptionalGpuFeature,
 } from '@/core/GpuCapabilities.js';
@@ -302,8 +303,11 @@ export class WebGPUContext {
     const quality = this.options.qualityLevel ?? 'high';
     const order = adapterPowerFallbackOrder(this.options.powerPreference ?? 'high-performance');
     const seen = new Set<GPUAdapter>();
-    const gathered: { adapter: GPUAdapter; preference: GPUPowerPreference; snapshot: import('@/core/GpuCapabilities.js').AdapterSnapshot }[] =
-      [];
+    const gathered: {
+      adapter: GPUAdapter;
+      preference: GPUPowerPreference;
+      snapshot: AdapterSnapshot;
+    }[] = [];
 
     for (const preference of order) {
       const adapter = await navigator.gpu.requestAdapter(gpuRequestAdapterOptions(preference));

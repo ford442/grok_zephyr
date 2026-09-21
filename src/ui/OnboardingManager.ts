@@ -12,7 +12,7 @@ export class OnboardingManager {
   private escapeHandler: ((e: KeyboardEvent) => void) | null = null;
   private focusTrap: FocusTrap | null = null;
   private isDismissing = false;
-  private dismissTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private dismissTimeoutId: number | null = null;
 
   /**
    * Check if onboarding has been dismissed by the user

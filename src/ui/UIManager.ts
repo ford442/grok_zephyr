@@ -11,6 +11,7 @@ import type { PresentationMode } from '@/core/HdrPresentation.js';
 import type { Sgp4BenchmarkResult } from '@/physics/Sgp4Benchmark.js';
 import type { ChipCatalogId } from '@/data/ConstellationGroups.js';
 import type { TLECatalogMeta } from '@/data/TLESource.js';
+import type { SunLightingMode } from '@/physics/sun.js';
 import { QUALITY_PRESETS } from '@/core/QualityPresets.js';
 import type { PerformanceProfiler } from '@/utils/PerformanceProfiler.js';
 import type { ImageTuningSettings } from '@/core/ImageTuning.js';
@@ -164,7 +165,7 @@ export class UIManager {
     });
   }
 
-  setActiveSunButton(mode: import('@/physics/sun.js').SunLightingMode): void {
+  setActiveSunButton(mode: SunLightingMode): void {
     this.elements.sunButtons.forEach((btn) => {
       const btnMode = btn?.dataset.sun === 'astro' ? 'astro' : 'art';
       btn?.classList.toggle('active', btnMode === mode);
@@ -471,7 +472,7 @@ export class UIManager {
     this.callbacks.onRealismChange = callback;
   }
 
-  onSunModeChange(callback: (mode: import('@/physics/sun.js').SunLightingMode) => void): void {
+  onSunModeChange(callback: (mode: SunLightingMode) => void): void {
     this.callbacks.onSunModeChange = callback;
   }
 
