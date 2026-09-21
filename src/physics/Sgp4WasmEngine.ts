@@ -92,9 +92,7 @@ export class Sgp4WasmEngine {
           const proc = globalThis as { process?: { versions?: { node?: string } } };
           if (proc.process?.versions?.node) {
             try {
-              // @ts-expect-error Node built-in (Vitest fallback when file:// fetch is unavailable)
               const { readFile } = await import('node:fs/promises');
-              // @ts-expect-error Node built-in
               const { fileURLToPath } = await import('node:url');
               wasmBinary = new Uint8Array(await readFile(fileURLToPath(wasmUrl)));
             } catch {

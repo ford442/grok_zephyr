@@ -1,14 +1,19 @@
 /**
  * Vite plugin: import `.wgsl` as a string with `#import` preprocessing.
  * Virtual includes `uniforms.wgsl` / `uni_struct.wgsl` / `bloom_composite.wgsl`
- * are generated from the TypeScript uniform schemas.
+ * / `threshold_uni.wgsl` / `kawase_uni.wgsl` are generated from the TypeScript
+ * uniform schemas.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import type { Plugin } from 'vite';
 import { emitWgslStruct } from './uniformSchema.js';
 import { SCENE_UNI_SCHEMA } from './schemas/sceneUni.js';
-import { BLOOM_COMPOSITE_UNI_SCHEMA } from './schemas/bloom.js';
+import {
+  BLOOM_COMPOSITE_UNI_SCHEMA,
+  KAWASE_UNI_SCHEMA,
+  THRESHOLD_UNI_SCHEMA,
+} from './schemas/bloom.js';
 
 const IMPORT_RE = /^[ \t]*#import\s+"([^"]+)"[ \t]*$/gm;
 
@@ -21,6 +26,12 @@ function generatedInclude(spec: string): string | null {
   }
   if (spec === 'bloom_composite.wgsl') {
     return emitWgslStruct(BLOOM_COMPOSITE_UNI_SCHEMA);
+  }
+  if (spec === 'threshold_uni.wgsl') {
+    return emitWgslStruct(THRESHOLD_UNI_SCHEMA);
+  }
+  if (spec === 'kawase_uni.wgsl') {
+    return emitWgslStruct(KAWASE_UNI_SCHEMA);
   }
   return null;
 }
