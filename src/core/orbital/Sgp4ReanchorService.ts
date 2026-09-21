@@ -8,13 +8,8 @@ import {
 } from '@/physics/index.js';
 import type { OrbitalDataStore } from './OrbitalDataStore.js';
 import { sgp4GpuBufferBytes } from '@/core/buffer/BufferAllocator.js';
-import {
-  SGP4_GPU_CAPACITY,
-  SGP4_GPU_REBASE_SIM_SEC,
-  packSgp4GpuSlot,
-  writeSgp4GpuHeader,
-  type Sgp4MeanElements,
-} from '@/physics/sgp4NearEarth.js';
+import { SGP4_GPU_CAPACITY, SGP4_GPU_REBASE_SIM_SEC, writeSgp4GpuHeader } from '@/physics/sgp4NearEarth.js';
+import type { Sgp4PropagationClassCounts } from '@/physics/TlePropagator.js';
 
 /** Re-anchor SGP4 elements every N simulation seconds. */
 export const REANCHOR_INTERVAL_SIM_SEC = 180;
@@ -39,8 +34,20 @@ export interface KeplerianBatchPropagator {
   ): void;
   applyPackedBatch?(dateMs: number, start: number, count: number): Promise<PackedBatchResult>;
   usesSgp4Worker?(): boolean;
-  /** Near-earth SGP4 mean elements for the GPU kernel (null = deep space / invalid). */
-  meanElements?(index: number): Sgp4MeanElements | null;
+  /**
+   * Fill mode-3 GPU records for [start, start + count) at slot `destSlotBase`.
+   * Returns slots with a usable near-earth record (deep space packs as zeros,
+   * which the shader reads as "no SGP4" and coasts on the Keplerian anchor).
+   */
+  packGpuSgp4Slots?(
+    dest: Float32Array,
+    destSlotBase: number,
+    baseUnixMs: number,
+    start: number,
+    count: number,
+  ): number;
+  /** Catalog tally by propagation class, for HUD copy. */
+  propagationClassCounts?(): Sgp4PropagationClassCounts;
   /** TLEs the propagator (or WASM catalog) rejected on load. */
   rejectedCount?(): number;
   setOutputFrame?(frame: 'teme' | 'gcrf'): void;
@@ -63,6 +70,8 @@ export class Sgp4ReanchorService {
   readonly gpuSgp4Data: Float32Array;
   /** Slots with a valid near-earth record in the last pack. */
   gpuSgp4Slots = 0;
+  /** Propagation-class tally from the last pack (HUD copy). */
+  gpuSgp4Classes: Sgp4PropagationClassCounts = { sgp4Gpu: 0, sdp4Cpu: 0, j2: 0 };
   private gpuSgp4Dirty = true;
   private gpuSgp4BaseSimSec = 0;
   private gpuSgp4PackedEpochMs = Number.NaN;
@@ -116,16 +125,17 @@ export class Sgp4ReanchorService {
       SGP4_GPU_CAPACITY,
       (dest.length / 4 - 1) / 3,
     );
-    const slots = this.propagator?.meanElements ? Math.min(this.tleRealCount, capacity) : 0;
+    const slots = this.propagator?.packGpuSgp4Slots ? Math.min(this.tleRealCount, capacity) : 0;
     const baseUnixMs = this.simEpochMs + baseSimSec * 1000;
-    let valid = 0;
-    for (let k = 0; k < slots; k++) {
-      const el = this.propagator!.meanElements!(k);
-      packSgp4GpuSlot(dest, k, el, baseUnixMs);
-      if (el) valid++;
-    }
+    const valid =
+      slots > 0 ? this.propagator!.packGpuSgp4Slots!(dest, 0, baseUnixMs, 0, slots) : 0;
     writeSgp4GpuHeader(dest, baseSimSec, slots);
     this.gpuSgp4Slots = valid;
+    this.gpuSgp4Classes = this.propagator?.propagationClassCounts?.() ?? {
+      sgp4Gpu: valid,
+      sdp4Cpu: 0,
+      j2: Math.max(0, this.tleRealCount - valid),
+    };
     this.gpuSgp4BaseSimSec = baseSimSec;
     this.gpuSgp4PackedEpochMs = this.simEpochMs;
     this.gpuSgp4Dirty = false;

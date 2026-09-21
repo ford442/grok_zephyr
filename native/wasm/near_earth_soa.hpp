@@ -1,7 +1,10 @@
 /**
  * Copies of Vallado near-earth elsetrec fields after twoline2rv.
- * elsetrec remains the propagation authority; this SoA is for SIMD tsince
- * and a future deep-space-free kernel (not used to replace sgp4()).
+ *
+ * These drive `near_earth_kernel.hpp` (the deep-space-free `sgp4()` equivalent)
+ * for `method == 'n'` records and the GPU mean-element packing. Records with
+ * `method == 'd'` still propagate through scalar Vallado `sgp4()` on elsetrec,
+ * which stays the authority for SDP4 and for the accuracy oracle in tests.
  */
 #pragma once
 
@@ -13,6 +16,8 @@ namespace sgp4wasm {
 
 struct NearEarthSoa {
   std::vector<double> epoch_jd;
+  // Mean elements at epoch (post-sgp4init: `no` is un-Kozai'd).
+  std::vector<double> no, ecco, inclo, nodeo, argpo, mo, bstar;
   std::vector<double> aycof, con41, cc1, cc4, cc5, d2, d3, d4;
   std::vector<double> delmo, eta, argpdot, omgcof, sinmao;
   std::vector<double> t2cof, t3cof, t4cof, t5cof;
@@ -22,6 +27,13 @@ struct NearEarthSoa {
 
   void clear() {
     epoch_jd.clear();
+    no.clear();
+    ecco.clear();
+    inclo.clear();
+    nodeo.clear();
+    argpo.clear();
+    mo.clear();
+    bstar.clear();
     aycof.clear();
     con41.clear();
     cc1.clear();
@@ -52,6 +64,13 @@ struct NearEarthSoa {
 
   void resize(size_t n) {
     epoch_jd.resize(n);
+    no.resize(n);
+    ecco.resize(n);
+    inclo.resize(n);
+    nodeo.resize(n);
+    argpo.resize(n);
+    mo.resize(n);
+    bstar.resize(n);
     aycof.resize(n);
     con41.resize(n);
     cc1.resize(n);
@@ -82,6 +101,13 @@ struct NearEarthSoa {
 
   void copyFrom(size_t i, const elsetrec& s) {
     epoch_jd[i] = s.jdsatepoch;
+    no[i] = s.no;
+    ecco[i] = s.ecco;
+    inclo[i] = s.inclo;
+    nodeo[i] = s.nodeo;
+    argpo[i] = s.argpo;
+    mo[i] = s.mo;
+    bstar[i] = s.bstar;
     aycof[i] = s.aycof;
     con41[i] = s.con41;
     cc1[i] = s.cc1;

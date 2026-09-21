@@ -16,6 +16,7 @@ import type { TLEData } from '@/types/index.js';
 import type { OrbitalElements, MergedCatalogSegment } from './OrbitalElements.js';
 import { PHYSICS_MODE, readKeplerianExtended } from '@/physics/index.js';
 import type { TlePropagator } from '@/physics/index.js';
+import type { Sgp4PropagationClass } from '@/physics/TlePropagator.js';
 import type { GroupVisibilityState } from '@/data/ConstellationGroups.js';
 import {
   allocateSatelliteBuffers,
@@ -218,11 +219,22 @@ export class SatelliteGPUBuffer implements SatelliteFrameBuffers {
     return this.sgp4.lastReanchorMainMs;
   }
 
-  getSgp4Status(index: number): { error: number | null; epochJd: number } {
+  getSgp4Status(index: number): {
+    error: number | null;
+    epochJd: number;
+    propagation: Sgp4PropagationClass | null;
+  } {
     const ext = readKeplerianExtended(this.store.extendedElementData, index);
     const error = ext.realismFlag < 0 ? Math.round(-ext.realismFlag) : null;
-    const prop = this.sgp4.propagator as { catalogEpochJd?: (i: number) => number } | null;
-    return { error, epochJd: prop?.catalogEpochJd?.(index) ?? 0 };
+    const prop = this.sgp4.propagator as {
+      catalogEpochJd?: (i: number) => number;
+      propagationClass?: (i: number) => Sgp4PropagationClass;
+    } | null;
+    return {
+      error,
+      epochJd: prop?.catalogEpochJd?.(index) ?? 0,
+      propagation: prop?.propagationClass?.(index) ?? null,
+    };
   }
 
   /** TEME (default) or GCRF re-anchor frame; re-anchors immediately when realism is live. */

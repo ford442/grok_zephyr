@@ -3,6 +3,11 @@
  *
  * Used to anchor osculating Keplerian elements for the GPU path and to
  * periodically re-anchor against SGP4 drift.
+ *
+ * WASM `twoline2rv` is the single catalog parser: `load()` only retains the two
+ * lines, and a satellite.js `SatRec` is materialised lazily — per record, on
+ * first use — so nothing calls `twoline2satrec` when the module initialises.
+ * The fallback (no WASM and no Worker) is the only path that forces a parse.
  */
 
 import { propagate, twoline2satrec, type SatRec } from 'satellite.js';
@@ -12,13 +17,49 @@ import { packTleCatalog } from './packTleCatalog.js';
 import { Sgp4WasmEngine } from './Sgp4WasmEngine.js';
 import { Sgp4WorkerClient, type Sgp4PropagatePacked } from './Sgp4Worker.js';
 import { packExtendedFromEciBatch } from './sgp4PackExtended.js';
-import { sgp4MeanElementsFromSatrec, type Sgp4MeanElements } from './sgp4NearEarth.js';
+import {
+  SGP4_GPU_FLOATS_PER_SLOT,
+  SGP4_GPU_HEADER_FLOATS,
+  isNearEarth,
+  packSgp4GpuSlot,
+  sgp4MeanElementsFromSatrec,
+} from './sgp4NearEarth.js';
 
 export interface TleRecord {
   name: string;
   line1: string;
   line2: string;
-  satrec: SatRec;
+  /** satellite.js record, parsed on first read (fallback / oracle paths only). */
+  readonly satrec: SatRec;
+}
+
+/**
+ * How a catalog entry is actually propagated, so the HUD can say so rather
+ * than implying every TLE gets GPU SGP4 (see docs/FRAMES.md).
+ *  - `sgp4-gpu`  near-earth ('n'): GPU mode-3 kernel between CPU re-anchors
+ *  - `sdp4-cpu`  deep space ('d'): Vallado SDP4 in WASM, GPU coasts on J2
+ *  - `j2`        no usable SGP4 record: shell / Keplerian J2 only
+ */
+export type Sgp4PropagationClass = 'sgp4-gpu' | 'sdp4-cpu' | 'j2';
+
+export interface Sgp4PropagationClassCounts {
+  sgp4Gpu: number;
+  sdp4Cpu: number;
+  j2: number;
+}
+
+/** Retain the TLE lines; parse to a satellite.js satrec only if something asks. */
+function makeRecord(tle: TLEData): TleRecord {
+  let parsed: SatRec | null = null;
+  return {
+    name: tle.name,
+    line1: tle.line1,
+    line2: tle.line2,
+    get satrec(): SatRec {
+      parsed ??= twoline2satrec(tle.line1, tle.line2);
+      return parsed;
+    },
+  };
 }
 
 export type Sgp4Backend = 'wasm' | 'js';
@@ -32,29 +73,14 @@ export class TlePropagator {
   private wasmInitPromise: Promise<boolean> | null = null;
   private wasmInitAttempted = false;
   private batchScratch: Float32Array | null = null;
-  /** TLEs satellite.js could not parse (never reach the WASM catalog). */
-  private parseRejected = 0;
   private outputFrame: Sgp4OutputFrame = 'teme';
 
-  /** Parse and retain TLE records for SGP4 propagation. */
+  /** Retain TLE lines for SGP4 propagation. Parsing happens in WASM (or lazily in JS). */
   load(tles: TLEData[], maxCount = Number.POSITIVE_INFINITY): number {
     this.records = [];
-    this.parseRejected = 0;
     const limit = Math.min(tles.length, maxCount);
     for (let i = 0; i < limit; i++) {
-      const tle = tles[i];
-      try {
-        const satrec = twoline2satrec(tle.line1, tle.line2);
-        this.records.push({
-          name: tle.name,
-          line1: tle.line1,
-          line2: tle.line2,
-          satrec,
-        });
-      } catch (error) {
-        this.parseRejected++;
-        console.warn(`[TlePropagator] Skipping invalid TLE for ${tle.name}:`, error);
-      }
+      this.records.push(makeRecord(tles[i]));
     }
 
     if (this.wasmEngine) {
@@ -67,21 +93,86 @@ export class TlePropagator {
     return this.records.length;
   }
 
-  /** Near-earth SGP4 mean elements for the GPU kernel; null for deep-space or errored records. */
-  meanElements(index: number): Sgp4MeanElements | null {
-    const rec = this.records[index];
-    return rec ? sgp4MeanElementsFromSatrec(rec.satrec) : null;
+  /**
+   * Fill the physics mode-3 GPU records for catalog entries
+   * [start, start + count) into `dest`, writing them at slot `destSlotBase`
+   * onward. Returns the slots carrying a usable near-earth record.
+   *
+   * C++ packs straight out of the WASM catalog into HEAPF32; the satellite.js
+   * packer below is only reached when neither WASM nor the Worker came up.
+   */
+  packGpuSgp4Slots(
+    dest: Float32Array,
+    destSlotBase: number,
+    baseUnixMs: number,
+    start: number,
+    count: number,
+  ): number {
+    const limit = Math.min(count, Math.max(0, this.records.length - start));
+    if (limit <= 0) return 0;
+
+    if (this.wasmEngine?.canPackGpuElements()) {
+      return this.wasmEngine.packGpuElements(
+        baseUnixMs,
+        start,
+        limit,
+        dest,
+        SGP4_GPU_HEADER_FLOATS + destSlotBase * SGP4_GPU_FLOATS_PER_SLOT,
+      );
+    }
+
+    let valid = 0;
+    for (let i = 0; i < limit; i++) {
+      const el = sgp4MeanElementsFromSatrec(this.records[start + i].satrec);
+      packSgp4GpuSlot(dest, destSlotBase + i, el, baseUnixMs);
+      if (el) valid++;
+    }
+    return valid;
+  }
+
+  /** How catalog entry `index` is propagated (GPU SGP4 / CPU SDP4 / J2 only). */
+  propagationClass(index: number): Sgp4PropagationClass {
+    if (index < 0 || index >= this.records.length) return 'j2';
+    if (this.wasmEngine) {
+      const method = this.wasmEngine.catalogMethod(index);
+      if (method === 'n') return 'sgp4-gpu';
+      if (method === 'd') return 'sdp4-cpu';
+      return 'j2';
+    }
+    const satrec = this.records[index].satrec;
+    if (satrec.error) return 'j2';
+    // isNearEarth is the same period < 225 min test that sets satrec.method.
+    return isNearEarth(satrec.no) ? 'sgp4-gpu' : 'sdp4-cpu';
+  }
+
+  /** Catalog-wide propagation-class tally for the HUD. */
+  propagationClassCounts(): Sgp4PropagationClassCounts {
+    const counts: Sgp4PropagationClassCounts = { sgp4Gpu: 0, sdp4Cpu: 0, j2: 0 };
+    for (let i = 0; i < this.records.length; i++) {
+      const cls = this.propagationClass(i);
+      if (cls === 'sgp4-gpu') counts.sgp4Gpu++;
+      else if (cls === 'sdp4-cpu') counts.sdp4Cpu++;
+      else counts.j2++;
+    }
+    return counts;
   }
 
   /**
-   * TLEs rejected on load: satellite.js parse failures plus records Vallado
-   * refused (WASM `sgp4_catalog_rejected_count`, or satrec.error before WASM is up).
+   * TLEs rejected on load. With WASM up this is Vallado's own count
+   * (`sgp4_catalog_rejected_count`); otherwise the satellite.js records that
+   * failed to parse or came back with an error, which forces a lazy parse.
    */
   rejectedCount(): number {
-    if (this.wasmEngine) return this.parseRejected + this.wasmEngine.rejected;
+    if (this.wasmEngine) return this.wasmEngine.rejected;
     let errored = 0;
-    for (const rec of this.records) if (rec.satrec.error) errored++;
-    return this.parseRejected + errored;
+    for (const rec of this.records) {
+      try {
+        if (rec.satrec.error) errored++;
+      } catch {
+        errored++;
+      }
+    }
+    return errored;
   }
 
   setOutputFrame(frame: Sgp4OutputFrame): void {
@@ -248,9 +339,8 @@ export class TlePropagator {
 
     const limit = Math.min(count, Math.max(0, this.records.length - startIndex));
     for (let i = 0; i < limit; i++) {
-      const rec = this.records[startIndex + i];
       const state = this.propagateStateJs(startIndex + i, dateMs);
-      if (!state || rec.satrec.error) {
+      if (!state) {
         continue;
       }
       write(startIndex + i, eciStateToKeplerian(state.position, state.velocity));

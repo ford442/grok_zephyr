@@ -6,9 +6,14 @@
  *   [130..259] line 2 (NUL-padded)
  *
  * Vallado sgp4unit.cpp is not modified. One catalog per module instance.
- * Near-earth fields are copied into SoA after twoline2rv; sgp4() still runs
- * scalar on elsetrec. WASM SIMD is used for tsince, AoS pack, TEME, and
- * Keplerian hypot lanes.
+ * This is the single TLE parser for the app: `twoline2rv` here owns the
+ * catalog, and the GPU mean elements are packed from it too
+ * (`sgp4_pack_gpu_elements`), so the JS side never needs a second parse.
+ *
+ * Near-earth fields are copied into SoA after twoline2rv. Records with
+ * method == 'n' propagate through the SIMD SoA kernel (near_earth_kernel.hpp);
+ * method == 'd' (SDP4) still runs scalar Vallado sgp4() on elsetrec. WASM SIMD
+ * is also used for tsince, AoS pack, TEME, and Keplerian hypot lanes.
  */
 
 #include <cmath>
@@ -18,6 +23,7 @@
 #include "../vallado/sgp4io.h"
 #include "../vallado/sgp4unit.h"
 #include "keplerian.hpp"
+#include "near_earth_kernel.hpp"
 #include "near_earth_soa.hpp"
 #include "simd_pack.hpp"
 #include "teme_gcrf.hpp"
@@ -89,29 +95,85 @@ int clampBatch(int start_index, int count) {
   return count < remaining ? count : remaining;
 }
 
+/** Write one propagated state (or zeros on error) into the output SoA. */
+void storeState(int slot, double rx, double ry, double rz, double vx, double vy, double vz, int err) {
+  const size_t k = static_cast<size_t>(slot);
+  const bool ok = err == 0;
+  g_rx[k] = ok ? static_cast<float>(rx) : 0.0f;
+  g_ry[k] = ok ? static_cast<float>(ry) : 0.0f;
+  g_rz[k] = ok ? static_cast<float>(rz) : 0.0f;
+  g_vx[k] = ok ? static_cast<float>(vx) : 0.0f;
+  g_vy[k] = ok ? static_cast<float>(vy) : 0.0f;
+  g_vz[k] = ok ? static_cast<float>(vz) : 0.0f;
+  g_err_scratch[k] = err;
+}
+
+/** Deep-space (SDP4) record: scalar Vallado sgp4() on elsetrec. */
+void propagateDeepSpace(int catalog_index, int slot, double tsince) {
+  elsetrec& satrec = g_catalog[static_cast<size_t>(catalog_index)];
+  double r[3] = {0.0, 0.0, 0.0};
+  double v[3] = {0.0, 0.0, 0.0};
+  int err = 0;
+  if (!sgp4(g_grav, satrec, tsince, r, v)) {
+    err = satrec.error != 0 ? satrec.error : -1;
+  }
+  storeState(slot, r[0], r[1], r[2], v[0], v[1], v[2], err);
+}
+
+/** One SoA lane of the near-earth kernel (lane 1 is a discarded duplicate). */
+void propagateNearEarthOne(int catalog_index, int slot, double tsince, const sgp4wasm::GravCache& gc) {
+  const size_t a = static_cast<size_t>(catalog_index);
+  sgp4wasm::NearEarthPairOut o;
+  sgp4wasm::sgp4NearEarthPair(g_near, a, a, tsince, tsince, gc, o);
+  storeState(slot, o.rx[0], o.ry[0], o.rz[0], o.vx[0], o.vy[0], o.vz[0], o.err[0]);
+}
+
+void propagateOne(int catalog_index, int slot, double tsince, const sgp4wasm::GravCache& gc) {
+  if (g_near.method[static_cast<size_t>(catalog_index)] == 'd') {
+    propagateDeepSpace(catalog_index, slot, tsince);
+  } else {
+    propagateNearEarthOne(catalog_index, slot, tsince, gc);
+  }
+}
+
+/** Lane `k` of a kernel result into the epochs output (zeros on error). */
+void writeEpochState(float* out, int base, const sgp4wasm::NearEarthPairOut& o, int k) {
+  const bool ok = o.err[k] == 0;
+  out[base + 0] = ok ? static_cast<float>(o.rx[k]) : 0.0f;
+  out[base + 1] = ok ? static_cast<float>(o.ry[k]) : 0.0f;
+  out[base + 2] = ok ? static_cast<float>(o.rz[k]) : 0.0f;
+  out[base + 3] = ok ? static_cast<float>(o.vx[k]) : 0.0f;
+  out[base + 4] = ok ? static_cast<float>(o.vy[k]) : 0.0f;
+  out[base + 5] = ok ? static_cast<float>(o.vz[k]) : 0.0f;
+}
+
 void propagateSlice(int start_index, int limit, double jd) {
   ensureStateSoa(limit);
   sgp4wasm::fillTsinceMinutes(jd, g_near.epoch_jd.data() + start_index, g_tsince.data(), limit);
+  const sgp4wasm::GravCache gc = sgp4wasm::makeGravCache(g_grav);
 
-  for (int i = 0; i < limit; i++) {
-    elsetrec& satrec = g_catalog[static_cast<size_t>(start_index + i)];
-    double r[3] = {0.0, 0.0, 0.0};
-    double v[3] = {0.0, 0.0, 0.0};
-    int err = 0;
-    if (sgp4(g_grav, satrec, g_tsince[static_cast<size_t>(i)], r, v)) {
-      err = 0;
+  int i = 0;
+  for (; i + 2 <= limit; i += 2) {
+    const size_t a = static_cast<size_t>(start_index + i);
+    if (g_near.method[a] == 'n' && g_near.method[a + 1] == 'n') {
+      sgp4wasm::NearEarthPairOut o;
+      sgp4wasm::sgp4NearEarthPair(
+          g_near,
+          a,
+          a + 1,
+          g_tsince[static_cast<size_t>(i)],
+          g_tsince[static_cast<size_t>(i + 1)],
+          gc,
+          o);
+      storeState(i, o.rx[0], o.ry[0], o.rz[0], o.vx[0], o.vy[0], o.vz[0], o.err[0]);
+      storeState(i + 1, o.rx[1], o.ry[1], o.rz[1], o.vx[1], o.vy[1], o.vz[1], o.err[1]);
     } else {
-      r[0] = r[1] = r[2] = 0.0;
-      v[0] = v[1] = v[2] = 0.0;
-      err = satrec.error != 0 ? satrec.error : -1;
+      propagateOne(start_index + i, i, g_tsince[static_cast<size_t>(i)], gc);
+      propagateOne(start_index + i + 1, i + 1, g_tsince[static_cast<size_t>(i + 1)], gc);
     }
-    g_rx[static_cast<size_t>(i)] = static_cast<float>(r[0]);
-    g_ry[static_cast<size_t>(i)] = static_cast<float>(r[1]);
-    g_rz[static_cast<size_t>(i)] = static_cast<float>(r[2]);
-    g_vx[static_cast<size_t>(i)] = static_cast<float>(v[0]);
-    g_vy[static_cast<size_t>(i)] = static_cast<float>(v[1]);
-    g_vz[static_cast<size_t>(i)] = static_cast<float>(v[2]);
-    g_err_scratch[static_cast<size_t>(i)] = err;
+  }
+  for (; i < limit; i++) {
+    propagateOne(start_index + i, i, g_tsince[static_cast<size_t>(i)], gc);
   }
 }
 
@@ -230,6 +292,65 @@ int sgp4_propagate_batch_keplerian(double unix_ms, float* out, int start_index, 
 }
 
 /**
+ * Pack the physics mode-3 GPU records for [start_index, start_index + count).
+ *
+ * Writes count × 12 floats (see src/physics/sgp4NearEarth.ts for the layout the
+ * WGSL kernel reads). Deep-space and errored records get a zeroed slot, which
+ * the shader reads as "no SGP4 record" and falls back to the Keplerian anchor.
+ * The secular phases are advanced to `base_unix_ms` here in double precision;
+ * the GPU only ever multiplies rates by a small delta.
+ *
+ * Returns the number of slots that carry a usable near-earth record.
+ */
+int sgp4_pack_gpu_elements(double base_unix_ms, float* out, int start_index, int count) {
+  if (!out) {
+    return -1;
+  }
+  const int limit = clampBatch(start_index, count);
+  if (limit <= 0) {
+    return -1;
+  }
+
+  const double base_jd = unixMsToJd(base_unix_ms);
+  int valid = 0;
+  for (int i = 0; i < limit; i++) {
+    const size_t a = static_cast<size_t>(start_index + i);
+    float* dst = out + i * sgp4wasm::kGpuSlotFloats;
+    if (g_near.method[a] == 'd' || !(g_near.no[a] > 0.0)) {
+      for (int k = 0; k < sgp4wasm::kGpuSlotFloats; k++) {
+        dst[k] = 0.0f;
+      }
+      continue;
+    }
+
+    const double t0 = (base_jd - g_near.epoch_jd[a]) * sgp4wasm::kMinutesPerDay;
+    dst[0] = static_cast<float>(g_near.no[a]);
+    dst[1] = static_cast<float>(g_near.ecco[a]);
+    dst[2] = static_cast<float>(g_near.inclo[a]);
+    dst[3] = static_cast<float>(g_near.bstar[a]);
+    dst[4] = static_cast<float>(
+        sgp4wasm::wrapTwoPi(g_near.nodeo[a] + g_near.nodedot[a] * t0 + g_near.nodecf[a] * t0 * t0));
+    dst[5] = static_cast<float>(sgp4wasm::wrapTwoPi(g_near.argpo[a] + g_near.argpdot[a] * t0));
+    dst[6] = static_cast<float>(sgp4wasm::wrapTwoPi(g_near.mo[a] + g_near.mdot[a] * t0));
+    dst[7] = static_cast<float>(t0);
+    dst[8] = static_cast<float>(g_near.argpo[a]);
+    dst[9] = static_cast<float>(g_near.mo[a]);
+    dst[10] = 0.0f;
+    dst[11] = 0.0f;
+    valid++;
+  }
+  return valid;
+}
+
+/** Vallado method for catalog index: 'n' (near-earth SGP4), 'd' (SDP4), 0 out of range. */
+int sgp4_catalog_method(int index) {
+  if (index < 0 || index >= static_cast<int>(g_near.method.size())) {
+    return 0;
+  }
+  return g_near.method[static_cast<size_t>(index)];
+}
+
+/**
  * Many epochs × a small satellite slice.
  * unix_ms[epoch_count]; out is sat-major then epoch then 6 state floats:
  *   out[((sat * epoch_count) + epoch) * 6 + k]
@@ -248,32 +369,48 @@ int sgp4_propagate_epochs(
     return -1;
   }
 
+  const sgp4wasm::GravCache gc = sgp4wasm::makeGravCache(g_grav);
   int written = 0;
   for (int s = 0; s < limit; s++) {
-    for (int e = 0; e < epoch_count; e++) {
-      const double jd = unixMsToJd(unix_ms[e]);
-      double tsince = 0.0;
-      sgp4wasm::fillTsinceMinutes(jd, g_near.epoch_jd.data() + start_index + s, &tsince, 1);
-      elsetrec& satrec = g_catalog[static_cast<size_t>(start_index + s)];
-      double r[3] = {0.0, 0.0, 0.0};
-      double v[3] = {0.0, 0.0, 0.0};
-      int err = 0;
-      if (!sgp4(g_grav, satrec, tsince, r, v)) {
-        r[0] = r[1] = r[2] = 0.0;
-        v[0] = v[1] = v[2] = 0.0;
-        err = satrec.error != 0 ? satrec.error : -1;
+    const int index = start_index + s;
+    const size_t a = static_cast<size_t>(index);
+    const double epoch = g_near.epoch_jd[a];
+    const bool near_earth = g_near.method[a] != 'd';
+    int e = 0;
+    // Near-earth pairs two epochs of the same satellite onto the two lanes.
+    for (; near_earth && e + 2 <= epoch_count; e += 2) {
+      sgp4wasm::NearEarthPairOut o;
+      sgp4wasm::sgp4NearEarthPair(
+          g_near,
+          a,
+          a,
+          (unixMsToJd(unix_ms[e]) - epoch) * sgp4wasm::kMinutesPerDay,
+          (unixMsToJd(unix_ms[e + 1]) - epoch) * sgp4wasm::kMinutesPerDay,
+          gc,
+          o);
+      for (int k = 0; k < 2; k++) {
+        writeEpochState(out, (s * epoch_count + e + k) * kStateFloats, o, k);
       }
+      written += 2;
+    }
+    for (; e < epoch_count; e++) {
+      const double tsince = (unixMsToJd(unix_ms[e]) - epoch) * sgp4wasm::kMinutesPerDay;
       const int base = (s * epoch_count + e) * kStateFloats;
-      if (err != 0) {
-        out[base + 0] = out[base + 1] = out[base + 2] = 0.0f;
-        out[base + 3] = out[base + 4] = out[base + 5] = 0.0f;
+      if (near_earth) {
+        sgp4wasm::NearEarthPairOut o;
+        sgp4wasm::sgp4NearEarthPair(g_near, a, a, tsince, tsince, gc, o);
+        writeEpochState(out, base, o, 0);
       } else {
-        out[base + 0] = static_cast<float>(r[0]);
-        out[base + 1] = static_cast<float>(r[1]);
-        out[base + 2] = static_cast<float>(r[2]);
-        out[base + 3] = static_cast<float>(v[0]);
-        out[base + 4] = static_cast<float>(v[1]);
-        out[base + 5] = static_cast<float>(v[2]);
+        elsetrec& satrec = g_catalog[a];
+        double r[3] = {0.0, 0.0, 0.0};
+        double v[3] = {0.0, 0.0, 0.0};
+        const bool ok = sgp4(g_grav, satrec, tsince, r, v);
+        out[base + 0] = ok ? static_cast<float>(r[0]) : 0.0f;
+        out[base + 1] = ok ? static_cast<float>(r[1]) : 0.0f;
+        out[base + 2] = ok ? static_cast<float>(r[2]) : 0.0f;
+        out[base + 3] = ok ? static_cast<float>(v[0]) : 0.0f;
+        out[base + 4] = ok ? static_cast<float>(v[1]) : 0.0f;
+        out[base + 5] = ok ? static_cast<float>(v[2]) : 0.0f;
       }
       written++;
     }
