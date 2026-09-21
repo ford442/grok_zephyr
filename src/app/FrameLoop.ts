@@ -1,7 +1,6 @@
 import { resolveBackgroundMode, setBackgroundMode } from '@/core/background.js';
 import { getActiveFleetSize } from '@/core/FleetScale.js';
 import { formatConjunctionStatus } from '@/app/ConjunctionController.js';
-import type { CameraState } from '@/camera/CameraController.js';
 import { skylineEmissiveScale } from '@/core/ViewTuningProfile.js';
 import { v3dot, v3norm, smoothstep } from '@/utils/math.js';
 import { getBackgroundModeIndex } from '@/core/background.js';
@@ -27,6 +26,12 @@ import { tickGrowth } from '@/growth/GrowthController.js';
 import type { SatelliteFrameBuffers } from '@/core/buffer/bufferTypes.js';
 import { OffscreenCapture, isOffscreenCaptureEnabled } from '@/capture/OffscreenCapture.js';
 import { stationGpuState } from '@/ground/GroundStation.js';
+import {
+  dispatchGpuTrailWork,
+  isGpuTrailDriven,
+  recordTrailSamplesForCamera,
+  updateTrailGeometryCpu,
+} from '@/app/frameLoop/trails.js';
 
 function frameBuffers(rt: AppRuntime): SatelliteFrameBuffers | null {
   return rt.buffers;
@@ -40,59 +45,6 @@ export class FrameLoopState {
   benchCullLastSwitch = 0;
   benchCullViewIndex = 0;
   offscreenCapture: OffscreenCapture | null = null;
-}
-
-export function recordTrailSamplesForCamera(
-  rt: AppRuntime,
-  time: number,
-  cameraState: CameraState,
-): void {
-  const buffers = frameBuffers(rt);
-  if (!rt.trailRenderer || !buffers || !rt.trailRenderer.isEnabled()) return;
-
-  const orbitalData = buffers.getOrbitalElementData();
-  const sampleCount = rt.trailRenderer.getSamplingBudget();
-  if (sampleCount <= 0) return;
-  const sampleStride = Math.max(1, Math.floor(getActiveFleetSize() / sampleCount));
-  const phase = rt.trailSamplePhase % sampleStride;
-  rt.trailSamplePhase++;
-
-  const position = new Float32Array(3);
-  const cameraForward = new Float32Array([
-    cameraState.target[0] - cameraState.position[0],
-    cameraState.target[1] - cameraState.position[1],
-    cameraState.target[2] - cameraState.position[2],
-  ]);
-  const forwardLen = Math.hypot(cameraForward[0], cameraForward[1], cameraForward[2]) || 1.0;
-  cameraForward[0] /= forwardLen;
-  cameraForward[1] /= forwardLen;
-  cameraForward[2] /= forwardLen;
-  const cameraPos = new Float32Array(cameraState.position);
-  const maxDistance =
-    rt.camera.getViewMode() === 'moon'
-      ? 240000
-      : rt.camera.getViewMode() === 'god'
-        ? 140000
-        : 90000;
-  const visibilityDotThreshold = rt.camera.getViewMode() === 'god' ? -0.35 : -0.2;
-
-  for (let idx = phase; idx < getActiveFleetSize(); idx += sampleStride) {
-    const satPos = buffers.calculateSatellitePosition(idx, time);
-    const dx = satPos[0] - cameraPos[0];
-    const dy = satPos[1] - cameraPos[1];
-    const dz = satPos[2] - cameraPos[2];
-    const dist = Math.hypot(dx, dy, dz);
-    if (dist > maxDistance) continue;
-    const invDist = dist > 1e-3 ? 1.0 / dist : 0.0;
-    const facing =
-      (dx * cameraForward[0] + dy * cameraForward[1] + dz * cameraForward[2]) * invDist;
-    if (facing < visibilityDotThreshold) continue;
-    position[0] = satPos[0];
-    position[1] = satPos[1];
-    position[2] = satPos[2];
-    const shellIndex = (orbitalData[idx * 4 + 3] >> 8) & 0xff;
-    rt.trailRenderer.recordPosition(idx, position, time, shellIndex);
-  }
 }
 
 export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => void {
@@ -185,7 +137,10 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
     applyHorizonViewEffects(rt, cameraState, viewProjection, sunPos, height);
     applyGodViewEffects(rt, cameraState);
     applyFleetViewEffects(rt, simTime);
-    recordTrailSamplesForCamera(rt, simTime, cameraState);
+    const gpuTrails = isGpuTrailDriven(rt);
+    if (!gpuTrails) {
+      recordTrailSamplesForCamera(rt, simTime, cameraState);
+    }
 
     if (rt.focusManager) {
       rt.focusManager.setCameraPosition(cameraState.position);
@@ -194,17 +149,8 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
     }
     rt.groundStationPanel?.tick();
 
-    if (rt.trailRenderer) {
-      const forward = new Float32Array([
-        cameraState.target[0] - cameraState.position[0],
-        cameraState.target[1] - cameraState.position[1],
-        cameraState.target[2] - cameraState.position[2],
-      ]);
-      const fLen = Math.hypot(forward[0], forward[1], forward[2]) || 1.0;
-      forward[0] /= fLen;
-      forward[1] /= fLen;
-      forward[2] /= fLen;
-      rt.trailRenderer.updateGeometry(simTime, new Float32Array(cameraState.position), forward);
+    if (rt.trailRenderer && !gpuTrails) {
+      updateTrailGeometryCpu(rt, simTime, cameraState);
     }
     writeUniforms(rt, time, deltaTime, cameraState, viewDesc);
     simBuffers?.tickSgp4Reanchor(simTime);
@@ -224,6 +170,8 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
     rt.profiler.beginGPUTimestamp('orbital');
     rt.pipeline.encodeComputePass(encoder);
     rt.profiler.endGPUTimestamp('orbital');
+
+    dispatchGpuTrailWork(rt, encoder);
 
     rt.profiler.beginGPUTimestamp('beam');
     rt.pipeline.encodeBeamComputePass(encoder);
@@ -306,10 +254,18 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
       rt.ui.setMoonScaleAnnotation(false);
     }
 
+    // A timestamp scope can't nest, so 'scene' closes here and reopens after
+    // volumetrics gets its own — skyline below still lands back in 'scene'.
+    rt.profiler.endGPUTimestamp('scene');
+
     if (rt.volumetricBeamRenderer) {
+      rt.profiler.beginGPUTimestamp('volumetrics');
       rt.volumetricBeamRenderer.encodeRaymarchPass(encoder);
       rt.volumetricBeamRenderer.encodeCompositePass(encoder, rt.pipeline.getHDRView());
+      rt.profiler.endGPUTimestamp('volumetrics');
     }
+
+    rt.profiler.beginGPUTimestamp('scene');
 
     if (rt.camera.getViewMode() === 'skyline' && rt.context) {
       rt.skyline.setObserver(cameraState.position);

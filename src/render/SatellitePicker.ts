@@ -6,6 +6,7 @@ import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
 import { SHADERS } from '@/shaders/index.js';
 import { getActiveFleetSize } from '@/core/FleetScale.js';
+import { passTimestampWrites } from '@/render/passes/passTimestamps.js';
 
 const PICK_SIZE = 16;
 const NO_HIT = 0xffffffff;
@@ -130,7 +131,10 @@ export class SatellitePicker {
     });
 
     const encoder = device.createCommandEncoder({ label: 'satellite-pick' });
+    // Its own encoder/submit cycle, outside the frame loop's profiler scopes —
+    // this is always undefined today, ready for a dedicated pick-timing scope.
     const pass = encoder.beginRenderPass({
+      timestampWrites: passTimestampWrites(),
       colorAttachments: [
         {
           view: this.pickTexture.createView(),

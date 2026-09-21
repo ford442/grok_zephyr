@@ -38,10 +38,32 @@ export interface DetailedTimings {
   postProcess: number;
   /** Close-approach bin + pair compute. 0 when the feature is off. */
   conjunction: number;
+  /** Smile V2 animation compute. 0 while unused this frame. */
+  smile: number;
+  /** Volumetric beam ray-march + composite. 0 when the renderer is off. */
+  volumetrics: number;
+  /** GPU trail history ring write + ribbon expansion (cinematic only). */
+  trails: number;
+  /**
+   * Earth atmosphere clouds. Always 0 today — EarthAtmosphereRenderer.encode()
+   * has no caller in the current frame loop; the bucket exists so it lights up
+   * the moment that pass is wired back in without another profiler change.
+   */
+  atmosphere: number;
 }
 
 export type GPUTimestampPass =
-  'orbital' | 'beam' | 'cull' | 'scene' | 'bloom' | 'post' | 'conjunction';
+  | 'orbital'
+  | 'beam'
+  | 'cull'
+  | 'scene'
+  | 'bloom'
+  | 'post'
+  | 'conjunction'
+  | 'smile'
+  | 'volumetrics'
+  | 'trails'
+  | 'atmosphere';
 
 /** Passes timed per frame; extra passes in a frame simply go unmeasured. */
 const MAX_TIMED_PASSES = 64;
@@ -94,6 +116,10 @@ export class PerformanceProfiler {
   private bloomTimeHistory: MetricHistory;
   private postProcessTimeHistory: MetricHistory;
   private conjunctionTimeHistory: MetricHistory;
+  private smileTimeHistory: MetricHistory;
+  private volumetricsTimeHistory: MetricHistory;
+  private trailsTimeHistory: MetricHistory;
+  private atmosphereTimeHistory: MetricHistory;
 
   // Stats
   private visibleSatellites = 0;
@@ -118,6 +144,10 @@ export class PerformanceProfiler {
     this.bloomTimeHistory = this.createHistory(this.options.historySize);
     this.postProcessTimeHistory = this.createHistory(this.options.historySize);
     this.conjunctionTimeHistory = this.createHistory(this.options.historySize);
+    this.smileTimeHistory = this.createHistory(this.options.historySize);
+    this.volumetricsTimeHistory = this.createHistory(this.options.historySize);
+    this.trailsTimeHistory = this.createHistory(this.options.historySize);
+    this.atmosphereTimeHistory = this.createHistory(this.options.historySize);
   }
 
   /**
@@ -309,6 +339,10 @@ export class PerformanceProfiler {
       bloom: this.getAverage(this.bloomTimeHistory),
       postProcess: this.getAverage(this.postProcessTimeHistory),
       conjunction: this.getAverage(this.conjunctionTimeHistory),
+      smile: this.getAverage(this.smileTimeHistory),
+      volumetrics: this.getAverage(this.volumetricsTimeHistory),
+      trails: this.getAverage(this.trailsTimeHistory),
+      atmosphere: this.getAverage(this.atmosphereTimeHistory),
     };
   }
 
@@ -403,6 +437,10 @@ export class PerformanceProfiler {
       bloom: 0,
       post: 0,
       conjunction: 0,
+      smile: 0,
+      volumetrics: 0,
+      trails: 0,
+      atmosphere: 0,
     };
     owners.forEach((pass, i) => {
       const delta = data[i * 2 + 1] - data[i * 2];
@@ -423,8 +461,13 @@ export class PerformanceProfiler {
     record(this.bloomTimeHistory, totals.bloom);
     record(this.postProcessTimeHistory, totals.post);
     // Zero on any frame the close-approach pass was skipped, which is what
-    // makes "off costs nothing" measurable rather than asserted.
+    // makes "off costs nothing" measurable rather than asserted. Same idea
+    // for smile/volumetrics/trails/atmosphere below.
     record(this.conjunctionTimeHistory, totals.conjunction);
+    record(this.smileTimeHistory, totals.smile);
+    record(this.volumetricsTimeHistory, totals.volumetrics);
+    record(this.trailsTimeHistory, totals.trails);
+    record(this.atmosphereTimeHistory, totals.atmosphere);
     record(this.renderTimeHistory, totals.scene + totals.bloom + totals.post);
   }
 
@@ -496,6 +539,10 @@ export class PerformanceProfiler {
     this.bloomTimeHistory = this.createHistory(this.options.historySize);
     this.postProcessTimeHistory = this.createHistory(this.options.historySize);
     this.conjunctionTimeHistory = this.createHistory(this.options.historySize);
+    this.smileTimeHistory = this.createHistory(this.options.historySize);
+    this.volumetricsTimeHistory = this.createHistory(this.options.historySize);
+    this.trailsTimeHistory = this.createHistory(this.options.historySize);
+    this.atmosphereTimeHistory = this.createHistory(this.options.historySize);
     this.visibleSatellites = 0;
   }
 

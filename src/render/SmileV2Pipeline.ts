@@ -9,6 +9,7 @@ import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import type { SatelliteBufferSet } from '@/core/SatelliteGPUBuffer.js';
 import { getActiveFleetSize, fleetPipelineConstants } from '@/core/FleetScale.js';
 import { SHADERS } from '@/shaders/index.js';
+import { passTimestampWrites } from '@/render/passes/passTimestamps.js';
 
 /** Smile V2 animation phases */
 export enum SmileV2Phase {
@@ -268,6 +269,7 @@ export class SmileV2Pipeline {
 
     const pass = encoder.beginComputePass({
       label: 'SmileV2ComputePass',
+      timestampWrites: passTimestampWrites(),
     });
 
     pass.setPipeline(this.pipeline);

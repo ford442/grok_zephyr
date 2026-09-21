@@ -41,6 +41,7 @@ export interface PipelineBindGroups {
   islCompute: GPUBindGroup;
   islFiber: GPUBindGroup;
   satelliteCull: GPUBindGroup;
+  trailExpand: GPUBindGroup;
   stars: GPUBindGroup;
   earth: GPUBindGroup;
   earthMaps: GPUBindGroup;
@@ -75,6 +76,8 @@ export interface Pipelines {
   satelliteCullSats: GPUComputePipeline;
   satelliteCullBeams: GPUComputePipeline;
   satelliteCullFinalize: GPUComputePipeline;
+  trailExpand: GPUComputePipeline;
+  trailExpandFinalize: GPUComputePipeline;
   autoExposureHistogram: GPUComputePipeline;
   autoExposureAdapt: GPUComputePipeline;
   stars: GPURenderPipeline;

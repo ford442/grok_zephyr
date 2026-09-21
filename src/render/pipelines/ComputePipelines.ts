@@ -18,6 +18,8 @@ export async function createComputePipelines({ context, layouts, modules }: Pipe
     satelliteCullSats,
     satelliteCullBeams,
     satelliteCullFinalize,
+    trailExpand,
+    trailExpandFinalize,
     autoExposureHistogram,
     autoExposureAdapt] = await Promise.all([
     context.createComputePipelineAsync({
@@ -119,6 +121,16 @@ export async function createComputePipelines({ context, layouts, modules }: Pipe
       compute: { module: modules.satelliteCull, entryPoint: 'finalize_indirect', constants: fleet },
     }),
     context.createComputePipelineAsync({
+      label: 'trail-expand',
+      layout: layouts.trailExpandLayout,
+      compute: { module: modules.trailExpand, entryPoint: 'expand_trails' },
+    }),
+    context.createComputePipelineAsync({
+      label: 'trail-expand-finalize',
+      layout: layouts.trailExpandLayout,
+      compute: { module: modules.trailExpand, entryPoint: 'finalize_trail_indirect' },
+    }),
+    context.createComputePipelineAsync({
       label: 'auto-exposure-histogram',
       layout: layouts.device.createPipelineLayout({ bindGroupLayouts: [layouts.autoExposureHistogramLayout] }),
       compute: { module: modules.autoExposureHistogram, entryPoint: 'main' },
@@ -129,5 +141,5 @@ export async function createComputePipelines({ context, layouts, modules }: Pipe
       compute: { module: modules.autoExposureAdapt, entryPoint: 'main' },
     })
   ]);
-  return { compute, beamCompute, islCompute, islFiber, conjunctionClear, conjunctionBin, conjunctionPairs, conjunctionDraw, conjunctionDensity, brushPaint, satelliteCullSats, satelliteCullBeams, satelliteCullFinalize, autoExposureHistogram, autoExposureAdapt };
+  return { compute, beamCompute, islCompute, islFiber, conjunctionClear, conjunctionBin, conjunctionPairs, conjunctionDraw, conjunctionDensity, brushPaint, satelliteCullSats, satelliteCullBeams, satelliteCullFinalize, trailExpand, trailExpandFinalize, autoExposureHistogram, autoExposureAdapt };
 }

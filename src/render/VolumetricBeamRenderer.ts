@@ -18,6 +18,7 @@
 import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import { SHADERS } from '@/shaders/index.js';
 import { RENDER } from '@/types/constants.js';
+import { passTimestampWrites } from './passes/passTimestamps.js';
 
 /** Configuration exposed through the Cinematic quality preset. */
 export interface VolumetricBeamConfig {
@@ -196,6 +197,7 @@ export class VolumetricBeamRenderer {
 
     const pass = encoder.beginRenderPass({
       label: 'Volumetric Beam Ray-March',
+      timestampWrites: passTimestampWrites(),
       colorAttachments: [
         {
           view: this.volumetricView,
@@ -221,6 +223,7 @@ export class VolumetricBeamRenderer {
 
     const pass = encoder.beginRenderPass({
       label: 'Volumetric Beam Composite',
+      timestampWrites: passTimestampWrites(),
       colorAttachments: [
         {
           view: hdrView,

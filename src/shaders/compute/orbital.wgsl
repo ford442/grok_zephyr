@@ -13,6 +13,13 @@ struct GrowthUni { era_day: u32, enabled: u32, pad0: u32, pad1: u32 }
 // 3 vec4 per slot. A 1-slot zero buffer when no catalog is loaded.
 @group(0) @binding(7) var<storage, read> sgp4_elem : array<vec4f>;
 
+// GPU trail history (cinematic only): a fixed, evenly strided subset of the
+// fleet — see TRAIL_MAX_TRACKED_SATS in src/core/buffer/bufferTypes.ts. Ring
+// entry .w holds the shell index, or -1 while unwritten/inactive.
+#import "trailUni.wgsl"
+@group(0) @binding(8) var<storage, read_write> trail_history : array<vec4f>;
+@group(0) @binding(9) var<uniform> trailUni : TrailUni;
+
 override num_satellites: u32 = 1048576u;
 
 const REALISM_FLAG_BIT : u32 = 20u;
@@ -252,14 +259,34 @@ fn decodeColorIndex(shellData: f32) -> f32 {
   return f32(u32(shellData) & 255u);
 }
 
+// -1 when satellite `i` isn't one of the tracked trail slots.
+fn trailSlotFor(i: u32) -> i32 {
+  if (trailUni.enabled == 0u) { return -1; }
+  let stride = max(trailUni.stride, 1u);
+  if (i % stride != 0u) { return -1; }
+  let slot = i / stride;
+  if (slot >= trailUni.tracked_count) { return -1; }
+  return i32(slot);
+}
+
+fn writeTrailHistory(slot: i32, entry: vec4f) {
+  if (slot < 0) { return; }
+  let head = trailUni.write_index % trailUni.history_frames;
+  let base = u32(slot) * trailUni.history_frames + head;
+  trail_history[base] = entry;
+}
+
 @compute @workgroup_size(64,1,1)
 fn main(@builtin(global_invocation_id) gid : vec3u) {
   let i = gid.x;
   if (i >= num_satellites) { return; }
 
+  let trailSlot = trailSlotFor(i);
+
   var launchDay = active_from[i >> 1u];
   launchDay = select(launchDay & 0xFFFFu, launchDay >> 16u, (i & 1u) != 0u);
   if (growth.enabled != 0u && launchDay > growth.era_day) {
+    writeTrailHistory(trailSlot, vec4f(0.0, 0.0, 0.0, -1.0));
     sat_pos[i] = vec4f(0.0);
     return;
   }
@@ -315,4 +342,9 @@ fn main(@builtin(global_invocation_id) gid : vec3u) {
     }
   }
   sat_pos[i] = vec4f(pos, f32(packed));
+
+  // Matches the CPU decode in cpuPropagation.ts / TrailRenderer's caller:
+  // (orbitalData[idx*4+3] >> 8) & 0xff.
+  let shellIdxU = (u32(e.w) >> 8u) & 0xffu;
+  writeTrailHistory(trailSlot, vec4f(pos, f32(shellIdxU % 3u)));
 }

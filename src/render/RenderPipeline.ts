@@ -54,6 +54,7 @@ import {
   encodeScenePass,
   encodeSkylinePass,
   encodeTrailPass,
+  encodeTrailExpandPass,
   invalidateGroundSceneRenderBundle,
   invalidateSceneRenderBundle,
   type FrameContext,
@@ -507,6 +508,11 @@ export class RenderPipeline {
     } | null,
   ): void {
     this.withFrameContext((ctx) => encodeTrailPass(encoder, ctx, trailRenderer));
+  }
+
+  /** Cinematic only: expands the GPU trail-history ring into ribbon geometry. */
+  encodeTrailExpandPass(encoder: GPUCommandEncoder): void {
+    this.withFrameContext((ctx) => encodeTrailExpandPass(encoder, ctx));
   }
 
   encodeConstellationGuidesPass(

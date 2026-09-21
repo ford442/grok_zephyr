@@ -25,7 +25,9 @@ import {
   destroySatelliteBuffers,
   logBufferBudget,
   memoryUsageBytes,
+  TRAIL_UNI_WRITE_INDEX_OFFSET,
 } from './buffer/BufferAllocator.js';
+import { TRAIL_HISTORY_FRAMES } from './buffer/bufferTypes.js';
 import {
   StagingBuffer,
   uploadDynamicSatelliteData,
@@ -68,6 +70,7 @@ export class SatelliteGPUBuffer implements SatelliteFrameBuffers {
   private activeFromDays: Uint32Array = new Uint32Array(0);
   private growthEnabled = false;
   private growthEraDay = 0xffffffff;
+  private trailWriteIndex = 0;
   private readonly sizes: {
     numSatellites: number;
     position: number;
@@ -388,6 +391,17 @@ export class SatelliteGPUBuffer implements SatelliteFrameBuffers {
 
   calculateSatelliteVelocity(index: number, time: number): [number, number, number] {
     return this.store.orbital.calculateVelocity(index, time);
+  }
+
+  /** Advances the GPU trail-history ring's write index; no-op unless trail.enabled. */
+  tickTrailWriteIndex(): void {
+    if (!this.buffers || !this.buffers.trail.enabled) return;
+    this.trailWriteIndex = (this.trailWriteIndex + 1) % TRAIL_HISTORY_FRAMES;
+    this.context.writeBuffer(
+      this.buffers.trail.params,
+      new Uint32Array([this.trailWriteIndex]),
+      TRAIL_UNI_WRITE_INDEX_OFFSET,
+    );
   }
 
   async readbackPositions(): Promise<Float32Array | null> {
