@@ -23,12 +23,8 @@ import { pickAndSelectAtScreen, pickSatelliteAtScreen } from '@/app/SatelliteSel
 import { BrushController } from '@/app/BrushController.js';
 import { SimulationState } from '@/app/SimulationState.js';
 import { ViewModeState } from '@/app/ViewModeCoordinator.js';
-import {
-  FrameLoopState,
-  recordTrailSamplesForCamera,
-  startWebGPULoop,
-  stopLoop,
-} from '@/app/FrameLoop.js';
+import { FrameLoopState, startWebGPULoop, stopLoop } from '@/app/FrameLoop.js';
+import { recordTrailSamplesForCamera } from '@/app/frameLoop/trails.js';
 import {
   setupCallbacks,
   registerUserActivity,

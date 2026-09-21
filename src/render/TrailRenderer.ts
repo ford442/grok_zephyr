@@ -30,9 +30,22 @@ const MAX_SEGMENTS_RENDERED = 16;
 const TRAIL_TTL_SECONDS = 12.0;
 const MAX_DISTANCE_KM = 120000.0;
 
+/** GPU-computed vertex/index/indirect-draw buffers (cinematic quality only). */
+export interface TrailGpuDrawBuffers {
+  vertexBuffer: GPUBuffer;
+  indexBuffer: GPUBuffer;
+  indirectBuffer: GPUBuffer;
+}
+
 export class TrailRenderer {
   private context: WebGPUContext;
   private config: TrailConfig;
+
+  // When set, trailExpand.wgsl has already built ribbon geometry into these
+  // buffers every frame — recordPosition/updateGeometry become no-ops and
+  // encodeRenderPass draws from them via drawIndexedIndirect instead of the
+  // CPU-staged vertex/index buffers below.
+  private gpu: TrailGpuDrawBuffers | null = null;
 
   // Satellite index -> slot mapping for history storage
   private slotForSatellite: Map<number, number> = new Map();
@@ -109,6 +122,21 @@ export class TrailRenderer {
   }
 
   /**
+   * Wires in GPU-computed ribbon buffers (trailExpand.wgsl output). Once set,
+   * this renderer never samples or builds ribbon geometry on the CPU again —
+   * call with `null` only makes sense if the GPU buffers themselves go away
+   * (they don't; cinematic trail capacity is fixed for the buffer set's life).
+   */
+  setGpuBuffers(buffers: TrailGpuDrawBuffers | null): void {
+    this.gpu = buffers;
+  }
+
+  /** True once GPU-computed trail history/ribbon buffers are wired in. */
+  isGpuDriven(): boolean {
+    return this.gpu !== null;
+  }
+
+  /**
    * Recommended sampling budget for the app-side sampler loop.
    */
   getSamplingBudget(): number {
@@ -125,7 +153,7 @@ export class TrailRenderer {
     timestamp: number,
     shellIndex: number,
   ): void {
-    if (!this.config.enabled) return;
+    if (!this.config.enabled || this.gpu) return;
     if (
       !this.ringPositions ||
       !this.ringTimes ||
@@ -167,6 +195,7 @@ export class TrailRenderer {
     cameraPosition: Float32Array,
     cameraForward: Float32Array,
   ): void {
+    if (this.gpu) return; // trailExpand.wgsl already built this frame's ribbons
     if (
       !this.config.enabled ||
       !this.ringPositions ||
@@ -375,14 +404,22 @@ export class TrailRenderer {
   }
 
   encodeRenderPass(pass: GPURenderPassEncoder, uniformBuffer: GPUBuffer): void {
-    if (
-      !this.config.enabled ||
-      this.vertexCount === 0 ||
-      this.indexCount === 0 ||
-      !this.pipeline ||
-      !this.vertexBuffer ||
-      !this.indexBuffer
-    ) {
+    if (!this.config.enabled || !this.pipeline) return;
+
+    if (this.gpu) {
+      const bindGroup = this.context.getDevice().createBindGroup({
+        layout: this.pipeline.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: { buffer: uniformBuffer } }],
+      });
+      pass.setPipeline(this.pipeline);
+      pass.setBindGroup(0, bindGroup);
+      pass.setVertexBuffer(0, this.gpu.vertexBuffer);
+      pass.setIndexBuffer(this.gpu.indexBuffer, 'uint32');
+      pass.drawIndexedIndirect(this.gpu.indirectBuffer, 0);
+      return;
+    }
+
+    if (this.vertexCount === 0 || this.indexCount === 0 || !this.vertexBuffer || !this.indexBuffer) {
       return;
     }
     const bindGroup = this.context.getDevice().createBindGroup({
@@ -429,6 +466,7 @@ export class TrailRenderer {
         this.pipeline = pipeline;
       });
     }
+    if (this.gpu) return; // GPU mode needs only the pipeline, not CPU staging
     if (
       !this.ringPositions ||
       !this.ringTimes ||

@@ -70,6 +70,22 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
         { binding: 5, resource: { buffer: buffers.activeFrom } },
         { binding: 6, resource: { buffer: buffers.growthParams } },
         { binding: 7, resource: { buffer: buffers.sgp4Elements } },
+        { binding: 8, resource: { buffer: buffers.trail.history } },
+        { binding: 9, resource: { buffer: buffers.trail.params } },
+      ],
+    }),
+
+    trailExpand: device.createBindGroup({
+      layout: pipelines.trailExpand.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: buffers.uniforms } },
+        { binding: 1, resource: { buffer: buffers.trail.history } },
+        { binding: 2, resource: { buffer: buffers.orbitalElements } },
+        { binding: 3, resource: { buffer: buffers.trail.params } },
+        { binding: 4, resource: { buffer: buffers.trail.counters } },
+        { binding: 5, resource: { buffer: buffers.trail.vertices } },
+        { binding: 6, resource: { buffer: buffers.trail.indices } },
+        { binding: 7, resource: { buffer: buffers.trail.indirect } },
       ],
     }),
 

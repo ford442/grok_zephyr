@@ -5,10 +5,16 @@ import { ISL_PARAM_BYTES, MAX_ISL_LINKS } from '@/types/isl.js';
 import {
   MAX_BEAMS,
   MAX_SAFE_BUFFER_SIZE,
+  TRAIL_HISTORY_FRAMES,
+  TRAIL_MAX_RENDERED,
+  TRAIL_MAX_SEGMENTS,
+  TRAIL_MAX_TRACKED_SATS,
+  TRAIL_VERTEX_STRIDE_FLOATS,
   WARNING_BUFFER_THRESHOLD,
   isBufferPair,
   type SatelliteBufferConfig,
   type SatelliteBufferSet,
+  type TrailGpuBuffers,
 } from './bufferTypes.js';
 import {
   SGP4_GPU_CAPACITY,
@@ -28,8 +34,40 @@ export type SatelliteBudgetOptions = Pick<SatelliteBufferConfig, 'doubleBuffer' 
 
 /** Bytes per satellite in the packed rgba8 animation scratch (Smile V2 sat_output). */
 export const ANIM_SCRATCH_BYTES_PER_SAT = 4;
-/** Trail history frames × vec4f, allocated only when `trailHistory` is on. */
-export const TRAIL_HISTORY_FRAMES = 2;
+
+/** Trail history ring: TRAIL_MAX_TRACKED_SATS × TRAIL_HISTORY_FRAMES × vec4f. */
+function trailHistoryBytes(): number {
+  return TRAIL_MAX_TRACKED_SATS * TRAIL_HISTORY_FRAMES * 16;
+}
+
+/** Ribbon vertex/index buffers sized for the compacted, culled draw. */
+function trailVertexBytes(): number {
+  return TRAIL_MAX_RENDERED * TRAIL_MAX_SEGMENTS * 2 * TRAIL_VERTEX_STRIDE_FLOATS * 4;
+}
+function trailIndexBytes(): number {
+  return TRAIL_MAX_RENDERED * TRAIL_MAX_SEGMENTS * 6 * 4;
+}
+
+/** TrailUni params (48 B) + DrawIndexedIndirect (32 B) + atomics (16 B). */
+const TRAIL_PARAMS_BYTES = 48;
+const TRAIL_INDIRECT_BYTES = 32;
+const TRAIL_COUNTERS_BYTES = 16;
+
+/**
+ * Total trail budget: fixed-size regardless of fleet size (a bounded, evenly
+ * strided subset of satellites is tracked — see bufferTypes.ts). Off, this is
+ * still the tiny placeholder allocation the orbital compute bind group needs.
+ */
+function trailBudgetBytes(enabled: boolean): number {
+  return (
+    (enabled ? trailHistoryBytes() : 16) +
+    TRAIL_PARAMS_BYTES +
+    (enabled ? trailVertexBytes() : TRAIL_VERTEX_STRIDE_FLOATS * 4) +
+    (enabled ? trailIndexBytes() : 24) +
+    TRAIL_INDIRECT_BYTES +
+    TRAIL_COUNTERS_BYTES
+  );
+}
 
 /**
  * Single source of truth for satellite GPU memory. Allocation, the boot-time
@@ -43,16 +81,17 @@ export const TRAIL_HISTORY_FRAMES = 2;
  * - Colors:      4 MB (rgba8unorm packed u32)
  * - AnimScratch: 4 MB (Smile V2 sat_output, rgba8unorm packed u32)
  * - Beams:       2 MB (64k × 32 bytes)
- * - Trails:     32 MB (2 frames × vec4f) — cinematic only (`trailHistory`)
+ * - Trails:    ~12 MB fixed (16,384 tracked sats × 16 history frames, plus
+ *              ribbon vertex/index output for 8,192 rendered trails) —
+ *              cinematic only (`trailHistory`); a bounded strided subset,
+ *              not per-satellite, so it does not scale with fleet size.
  * - Group IDs:   4 MB
  * - ISL links:   4 MB (128k × 32 bytes)
  * - ActiveFrom:  2 MB (packed u16, ceil(n/2) × 4 bytes)
  * - SGP4 GPU:  <1 MB (near-earth mean elements, ≤16,384 TLE slots × 48 bytes)
  * - Uniforms:   <1 KB
- * Total: ~84 MB default, ~116 MB with trail history.
- *
- * doubleBuffer + trailHistory at 1M is 132 MB and exceeds the cap; ping-pong
- * positions are incompatible with a full cinematic fleet.
+ * Total: ~84 MB default, ~97 MB with trail history, ~113 MB with trail
+ * history + doubleBuffer (both now fit the 1M-satellite Pascal cap).
  */
 export function calculateSatelliteBufferBudget(
   numSats: number,
@@ -68,7 +107,7 @@ export function calculateSatelliteBufferBudget(
     colors: numSats * 4,
     animScratch: numSats * ANIM_SCRATCH_BYTES_PER_SAT,
     beams: MAX_BEAMS * 32,
-    trails: options.trailHistory ? numSats * 16 * TRAIL_HISTORY_FRAMES : 0,
+    trails: trailBudgetBytes(options.trailHistory),
     groupIds: numSats * 4,
     isl: MAX_ISL_LINKS * 32,
     activeFrom: Math.ceil(numSats / 2) * 4,
@@ -103,7 +142,7 @@ export function logBufferBudget(numSats: number, total: number, breakdown: Recor
   console.log(`  Colors:     ${mb(breakdown.colors)} MB (${numSats} × 4 bytes)`);
   console.log(`  AnimScratch: ${mb(breakdown.animScratch)} MB (${numSats} × ${ANIM_SCRATCH_BYTES_PER_SAT} bytes, rgba8)`);
   console.log(`  Beams:      ${mb(breakdown.beams)} MB (${MAX_BEAMS} × 32 bytes)`);
-  console.log(`  Trails:     ${mb(breakdown.trails)} MB ${breakdown.trails ? `(${numSats} × 16 × ${TRAIL_HISTORY_FRAMES} frames)` : '(off — cinematic only)'}`);
+  console.log(`  Trails:     ${mb(breakdown.trails)} MB ${breakdown.trails > 1024 ? `(${TRAIL_MAX_TRACKED_SATS} tracked × ${TRAIL_HISTORY_FRAMES} frames + ribbon output)` : '(off — cinematic only)'}`);
   console.log(`  Group IDs:  ${mb(breakdown.groupIds)} MB`);
   console.log(`  ISL links:  ${mb(breakdown.isl)} MB (${MAX_ISL_LINKS} × 32 bytes)`);
   console.log(`  ActiveFrom: ${mb(breakdown.activeFrom)} MB (${Math.ceil(numSats / 2)} × 4 bytes, packed u16)`);
@@ -129,6 +168,68 @@ export function assertBufferBudget(totalBytes: number): void {
     );
   }
   console.log(`[Buffer Safety] Total allocated: ${(totalBytes / 1024 / 1024).toFixed(2)} MB — OK ✓`);
+}
+
+/** Byte offsets into the 48-byte TrailUni uniform (must match trailExpand.wgsl / orbital.wgsl). */
+export const TRAIL_UNI_WRITE_INDEX_OFFSET = 12;
+
+function allocateTrailBuffers(
+  context: WebGPUContext,
+  enabled: boolean,
+  numSats: number,
+): TrailGpuBuffers {
+  const trackedCap = TRAIL_MAX_TRACKED_SATS;
+  const stride = Math.max(1, Math.ceil(numSats / trackedCap));
+  const trackedCount = enabled ? Math.min(trackedCap, Math.ceil(numSats / stride)) : 0;
+
+  const history = context.createBuffer(
+    enabled ? trailHistoryBytes() : 16,
+    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  );
+  if (enabled) {
+    // Every ring slot starts invalid (w = -1) so trailExpand skips segments
+    // the orbital compute pass hasn't written yet, instead of drawing bogus
+    // ribbons through the zero-initialized default buffer content.
+    const floats = trackedCap * TRAIL_HISTORY_FRAMES * 4;
+    const initData = new Float32Array(floats);
+    for (let i = 3; i < floats; i += 4) initData[i] = -1;
+    context.writeBuffer(history, initData);
+  }
+
+  const params = context.createUniformBuffer(48);
+  const paramsData = new ArrayBuffer(48);
+  const u32 = new Uint32Array(paramsData);
+  const f32 = new Float32Array(paramsData);
+  u32[0] = enabled ? 1 : 0; // enabled
+  u32[1] = stride; // stride
+  u32[2] = TRAIL_HISTORY_FRAMES; // history_frames
+  u32[3] = 0; // write_index
+  u32[4] = trackedCount; // tracked_count
+  u32[5] = TRAIL_MAX_RENDERED * TRAIL_MAX_SEGMENTS * 2; // max_vertices
+  u32[6] = TRAIL_MAX_RENDERED * TRAIL_MAX_SEGMENTS * 6; // max_indices
+  f32[8] = 120000.0; // max_distance_km
+  f32[9] = 8.0; // ribbon_width, matches TrailConfig's cinematic default
+  context.writeBuffer(params, paramsData);
+
+  const vertices = context.createBuffer(
+    enabled ? trailVertexBytes() : TRAIL_VERTEX_STRIDE_FLOATS * 4,
+    GPUBufferUsage.STORAGE | GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+  );
+  const indices = context.createBuffer(
+    enabled ? trailIndexBytes() : 24,
+    GPUBufferUsage.STORAGE | GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+  );
+  const indirect = context.createBuffer(
+    TRAIL_INDIRECT_BYTES,
+    GPUBufferUsage.STORAGE | GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
+  );
+  context.writeBuffer(indirect, new Uint32Array([0, 1, 0, 0, 0]));
+  const counters = context.createBuffer(
+    TRAIL_COUNTERS_BYTES,
+    GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  );
+
+  return { enabled, history, params, vertices, indices, indirect, counters };
 }
 
 export function allocateSatelliteBuffers(
@@ -196,13 +297,7 @@ export function allocateSatelliteBuffers(
   const smileV2Uniforms = context.createUniformBuffer(96);
   context.writeBuffer(smileV2Uniforms, new Float32Array(24));
 
-  // 32 MB at 1M — only the cinematic tier pays for trail history.
-  const trailBuffer = config.trailHistory
-    ? context.createBuffer(
-        numSats * 16 * TRAIL_HISTORY_FRAMES,
-        GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-      )
-    : null;
+  const trail = allocateTrailBuffers(context, config.trailHistory, numSats);
 
   const groupIds = context.createBuffer(
     numSats * 4,
@@ -235,9 +330,9 @@ export function allocateSatelliteBuffers(
     `[SatelliteGPUBuffer] Anim scratch: ${((numSats * ANIM_SCRATCH_BYTES_PER_SAT) / 1024 / 1024).toFixed(2)} MB (Smile V2 output, rgba8)`,
   );
   console.log(
-    trailBuffer
-      ? `[SatelliteGPUBuffer] Trail buffer: ${(trailBuffer.size / 1024 / 1024).toFixed(2)} MB (${TRAIL_HISTORY_FRAMES} frames)`
-      : '[SatelliteGPUBuffer] Trail buffer: not allocated (trail history is cinematic-only)',
+    trail.enabled
+      ? `[SatelliteGPUBuffer] Trail buffers: ${((trail.history.size + trail.vertices.size + trail.indices.size) / 1024 / 1024).toFixed(2)} MB (${TRAIL_MAX_TRACKED_SATS} tracked × ${TRAIL_HISTORY_FRAMES} frames)`
+      : '[SatelliteGPUBuffer] Trail buffers: placeholder (trail history is cinematic-only)',
   );
   console.log(
     `[SatelliteGPUBuffer] Group IDs buffer: ${((numSats * 4) / 1024 / 1024).toFixed(2)} MB`,
@@ -262,7 +357,7 @@ export function allocateSatelliteBuffers(
     colors,
     animScratch,
     smileV2Uniforms,
-    trailBuffer,
+    trail,
     groupIds,
     groupParams,
     islLinks,
@@ -286,7 +381,12 @@ export function destroySatelliteBuffers(buffers: SatelliteBufferSet): void {
   buffers.colors.destroy();
   buffers.animScratch.destroy();
   buffers.smileV2Uniforms.destroy();
-  buffers.trailBuffer?.destroy();
+  buffers.trail.history.destroy();
+  buffers.trail.params.destroy();
+  buffers.trail.vertices.destroy();
+  buffers.trail.indices.destroy();
+  buffers.trail.indirect.destroy();
+  buffers.trail.counters.destroy();
   buffers.groupIds.destroy();
   buffers.groupParams.destroy();
   buffers.islLinks.destroy();

@@ -34,6 +34,7 @@ export interface PipelineLayoutBundle {
   conjunctionDrawLayout: GPUPipelineLayout;
   conjunctionDensityLayout: GPUPipelineLayout;
   brushComputeLayout: GPUPipelineLayout;
+  trailExpandLayout: GPUPipelineLayout;
 }
 
 export interface PipelineBuildArgs {
@@ -57,6 +58,31 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
           { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
           // Physics mode 3 near-earth SGP4 elements (orbital.wgsl sgp4_elem).
           { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+          // GPU trail history ring (cinematic only) + its params uniform.
+          { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 9, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+        ],
+      }),
+    ],
+  });
+
+  // Trail ribbon expansion (cinematic only): reads the history ring orbital.wgsl
+  // wrote, culls by distance/frustum, and compacts camera-facing ribbon quads
+  // into vertex/index storage buffers behind an atomic counter + indirect draw
+  // args — same pattern as satelliteCull.wgsl.
+  const trailExpandLayout = device.createPipelineLayout({
+    bindGroupLayouts: [
+      device.createBindGroupLayout({
+        label: 'trail-expand',
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+          { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+          { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+          { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+          { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
         ],
       }),
     ],
@@ -486,5 +512,6 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
     conjunctionDrawLayout,
     conjunctionDensityLayout,
     brushComputeLayout,
+    trailExpandLayout,
   };
 }

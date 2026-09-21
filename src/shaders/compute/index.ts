@@ -8,3 +8,4 @@ export { SATELLITE_CULL_CS as satelliteCull } from './satelliteCull.js';
 export { ISL_COMPUTE as isl } from './isl.js';
 export { CONJUNCTION_CS as conjunction } from './conjunction.js';
 export { BRUSH_CS as brush } from './brush.js';
+export { trailExpand } from './trailExpand.js';

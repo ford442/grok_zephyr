@@ -14,6 +14,7 @@ export { encodeCullPass } from './CullPass.js';
 export { encodeScenePass, invalidateSceneRenderBundle } from './ScenePass.js';
 export { encodeGroundScenePass, invalidateGroundSceneRenderBundle } from './GroundScenePass.js';
 export { encodeTrailPass } from './TrailPass.js';
+export { encodeTrailExpandPass } from './TrailExpandPass.js';
 export { encodeConstellationGuidesPass } from './ConstellationGuidesPass.js';
 export { encodeMoonOverlayPass } from './MoonOverlayPass.js';
 export { encodeSkylinePass } from './SkylinePass.js';

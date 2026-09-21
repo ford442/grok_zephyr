@@ -30,6 +30,7 @@ import {
   type PassType,
   type PostProcessPass,
 } from '@/render/PostProcessPipelineFactory.js';
+import { passTimestampWrites } from '@/render/passes/passTimestamps.js';
 
 /**
  * Post-Process Stack
@@ -526,6 +527,7 @@ export class PostProcessStack {
     });
 
     const pass = encoder.beginRenderPass({
+      timestampWrites: passTimestampWrites(),
       colorAttachments: [
         {
           view: this.taaOutput!.createView(),
@@ -609,6 +611,7 @@ export class PostProcessStack {
     }
 
     const pass = encoder.beginRenderPass({
+      timestampWrites: passTimestampWrites(),
       colorAttachments: [
         {
           view: outputView,
@@ -641,6 +644,7 @@ export class PostProcessStack {
     });
 
     const pass = encoder.beginRenderPass({
+      timestampWrites: passTimestampWrites(),
       colorAttachments: [
         {
           view: outputView,

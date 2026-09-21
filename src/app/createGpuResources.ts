@@ -140,6 +140,13 @@ export async function createGpuResources(
     ribbonWidth: 8.0,
   });
   await reporter.withScope(device, 'trail-renderer', () => rt.trailRenderer!.initialize());
+  if (bufferSet.trail.enabled) {
+    rt.trailRenderer.setGpuBuffers({
+      vertexBuffer: bufferSet.trail.vertices,
+      indexBuffer: bufferSet.trail.indices,
+      indirectBuffer: bufferSet.trail.indirect,
+    });
+  }
 
   rt.constellationGuides = new ConstellationGuides(rt.context);
   rt.moonRingGuide = new MoonRingGuide(rt.context);
