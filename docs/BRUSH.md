@@ -54,16 +54,36 @@ A fast drag is split into up to 8 stamps per frame, spaced about half a radius a
 
 ## Storage
 
-Paint lives in the **packed animation scratch** (`animScratch`, 4 bytes per
-satellite, the slot Smile V2's `sat_output` uses): rgb = colour (red in the low
-byte, `pack4x8unorm` order), a = intensity. The only new GPU allocation is a
-288-byte params uniform, created the first time the brush dispatches. No
-satellite storage buffer is added and the buffer budget ledger is unchanged.
+Paint lives in the **high 16 bits** of the packed animation scratch
+(`animScratch`, one u32 per satellite). Sky Strips (`plans/SKY_STRIPS.md`) own
+the low 16, so a stroke and a strip pattern show at the same time:
 
-While the brush holds the scratch, `RenderPipeline` does not dispatch Smile V2.
-When the brush is disabled mid-fade, one full-decay dispatch zeroes the scratch
-before it is released. The satellite vertex shader reads the scratch at
-`@binding(8)` and mixes the paint in. An all-zero scratch is a no-op.
+| Bits | Owner | Contents |
+|---|---|---|
+| 31..24 | Light Brush | intensity, a8 (linear 1/255 decay) |
+| 23..16 | Light Brush | colour, RGB332 |
+| 15..8 | Sky Strips | intensity, a8 |
+| 7..0 | Sky Strips | colour, RGB332 |
+| all 32 | Smile V2 | whole words; not dispatched while either half is in use |
+
+Each half is `(a8 << 8) | rgb332` and is exactly 0 when its alpha is 0. Every
+writer reads the word and writes back only its own half. The shared layout is
+`src/shaders/compute/animScratchPack.wgsl`, `#import`ed by `brush.wgsl`,
+`skyStrips.wgsl` and `satellites.wgsl`; `src/physics/animScratchPacking.ts` is
+its CPU mirror, and `animScratchPacking.test.ts` pins the two together.
+
+The brush keeps its full 8-bit intensity, so fade timing is unchanged. Its
+colour is quantised to 3-3-2 (8 levels of red and green, 4 of blue, rounded to
+nearest). Primaries, black and white are exact; a picked colour like `#39c8ff`
+draws as about `#49b6ff`.
+
+The only new GPU allocation is a 288-byte params uniform, created the first
+time the brush dispatches; the ledger counts it under `uniforms`. No satellite
+storage buffer is added.
+
+When the brush is disabled mid-fade, one full-decay dispatch zeroes its half.
+The satellite vertex shader reads the scratch at `@binding(8)`, mixes the strips
+half in first and the brush half on top. An all-zero word is a no-op.
 
 ## Decay
 

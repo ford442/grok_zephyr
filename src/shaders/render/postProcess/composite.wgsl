@@ -35,6 +35,10 @@ fn vs(@builtin(vertex_index) vid: u32) -> VSOut {
 @group(0) @binding(5) var<storage, read> exposureState: array<f32, 1>;
 @group(0) @binding(6) var<uniform> tonemapUni: TonemapUni;
 
+// 0 = follow tonemapUni (swapchain); 1 = SDR gamma-encoded (unorm XR layer);
+// 2 = SDR linear (sRGB XR layer — the format encodes, so skip the pow).
+override output_encoding: u32 = 0u;
+
 const GAMMA           : f32 = 2.2;
 const VIGNETTE_STRENGTH: f32 = 0.4;
 const VIGNETTE_INNER  : f32 = 0.5;
@@ -193,7 +197,7 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
   let autoExposure = max(0.01, exposureState[0]);
   let exposure = select(max(0.01, tonemapUni.manualExposure), autoExposure, tonemapUni.autoExposure != 0u);
   let exposed = hdr * exposure;
-  let extended = tonemapUni.extendedOutput != 0u;
+  let extended = tonemapUni.extendedOutput != 0u && output_encoding == 0u;
   let mapped = applySelectedTonemap(exposed, tonemapUni.tonemapMode, extended);
 
   if (extended) {
@@ -205,7 +209,8 @@ fn fs(@location(0) uv: vec2f) -> @location(0) vec4f {
     return vec4f(max(grained, vec3f(0.0)), 1.0);
   }
 
-  let gammaCorrected = pow(max(mapped, vec3f(0.0)), vec3f(1.0 / GAMMA));
+  let encoded = pow(max(mapped, vec3f(0.0)), vec3f(1.0 / GAMMA));
+  let gammaCorrected = select(encoded, max(mapped, vec3f(0.0)), output_encoding == 2u);
 
   // Vignette
   let vignetted = applyVignette(gammaCorrected, uv);

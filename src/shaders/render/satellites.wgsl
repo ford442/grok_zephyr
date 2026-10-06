@@ -1,4 +1,5 @@
 #import "uniforms.wgsl"
+#import "../compute/animScratchPack.wgsl"
 
 @group(0) @binding(1) var<storage, read> sat_pos : array<vec4f>;
 @group(0) @binding(2) var<storage, read> group_ids : array<u32>;
@@ -12,9 +13,9 @@ struct GroupParams {
 }
 @group(0) @binding(7) var<uniform> groups : array<GroupParams, 8>;
 
-// Packed rgba8 animation scratch (animScratch). While the Light Brush owns it,
-// rgb = paint colour and a = intensity; otherwise it is all zero and this is a
-// no-op. See src/physics/brushFalloff.ts.
+// Packed animation scratch (animScratch): Light Brush paint in the high 16
+// bits, Sky Strips in the low 16, each a8 + RGB332 (animScratchPack.wgsl).
+// All zero when neither is on, and this is a no-op.
 @group(0) @binding(8) var<storage, read> anim_scratch : array<u32>;
 const BRUSH_PAINT_BRIGHT_NEAR: f32 = 0.95;
 const BRUSH_PAINT_BRIGHT_FAR: f32 = 0.6;
@@ -558,17 +559,19 @@ fn satellite_vs(
   }
   let paintPacked = anim_scratch[satIdx];
   if (paintPacked != 0u) {
-    let paintA = f32(paintPacked >> 24u) / 255.0;
-    let paintRgb = vec3f(
-      f32(paintPacked & 255u),
-      f32((paintPacked >> 8u) & 255u),
-      f32((paintPacked >> 16u) & 255u),
-    ) / 255.0;
-    // Decay is linear in 8-bit steps; smoothstep gives it a soft tail on screen.
-    let glow = paintA * paintA * (3.0 - 2.0 * paintA);
     let paintBright = mix(BRUSH_PAINT_BRIGHT_NEAR, BRUSH_PAINT_BRIGHT_FAR, smoothstep(20000.0, 80000.0, dist));
-    out.color = mix(out.color, paintRgb, glow);
-    out.bright = max(out.bright, glow * paintBright);
+    // Strips first, brush on top, so a stroke reads over the light show.
+    let shifts = array<u32, 2>(ANIM_SCRATCH_STRIPS_SHIFT, ANIM_SCRATCH_BRUSH_SHIFT);
+    for (var h = 0u; h < 2u; h = h + 1u) {
+      let hw = anim_half(paintPacked, shifts[h]);
+      if (hw != 0u) {
+        let paintA = f32(anim_half_alpha(hw)) / 255.0;
+        // Decay is linear in 8-bit steps; smoothstep gives it a soft tail on screen.
+        let glow = paintA * paintA * (3.0 - 2.0 * paintA);
+        out.color = mix(out.color, rgb_from_rgb332(anim_half_color(hw)), glow);
+        out.bright = max(out.bright, glow * paintBright);
+      }
+    }
   }
   if (isHighlighted > 0.5) {
     out.color = mix(out.color, vec3f(1.0, 0.92, 0.6), 0.78);

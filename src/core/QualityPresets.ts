@@ -318,3 +318,13 @@ export function parseQualityParam(value: string | null): QualityLevel | null {
   const lower = value.toLowerCase() as QualityLevel;
   return lower in QUALITY_PRESETS ? lower : null;
 }
+
+/**
+ * Overlays that cost a full-fleet pass (ISL, close approaches, Light Brush) are
+ * forced off on `low`, and on mobile below `cinematic`. Shared by
+ * applyQualityPreset and bootWebGPU, which needs the same answer before the
+ * device exists to decide whether `?ca=1` will run (conjunctionOptionalFeatures).
+ */
+export function qualityForcesOverlaysOff(level: QualityLevel, isMobile: boolean): boolean {
+  return level === 'low' || (isMobile && level !== 'cinematic');
+}

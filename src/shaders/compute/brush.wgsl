@@ -6,9 +6,10 @@
 //      ring), and
 //   3. max-composes that over what is left.
 //
-// Paint is u32 rgba8 in the same slot Smile V2's `sat_output` uses
-// (animScratch, 4 bytes/sat): rgb = brush colour, a = intensity. Integer bit
-// ops rather than unpack4x8unorm/pack4x8unorm so decay stays exact.
+// Paint lives in the high 16 bits of the packed animation scratch
+// (animScratch, 4 bytes/sat; see animScratchPack.wgsl): a8 intensity over an
+// RGB332 colour. The low hw belongs to Sky Strips and is preserved. Integer
+// bit ops so decay stays exact.
 //
 // This file mirrors src/physics/brushFalloff.ts (brushFalloff, hashU32,
 // sprayHash, stampLevel, composePaint). brushFalloff.test.ts pins the shared
@@ -18,6 +19,8 @@
 // spatial hash. The conjunction hash would need its lazily allocated table,
 // which does not fit next to a 1M fleet, and binning a million satellites
 // costs more than the eight distance tests it would save.
+
+#import "animScratchPack.wgsl"
 
 override num_satellites: u32 = 1048576u;
 
@@ -96,8 +99,9 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   if (i >= num_satellites) { return; }
 
   let packed = paint[i];
+  let hw = anim_half(packed, ANIM_SCRATCH_BRUSH_SHIFT);
   // Untouched and no stroke this frame: one read, no write.
-  if (packed == 0u && params.stamp_count == 0u) { return; }
+  if (hw == 0u && params.stamp_count == 0u) { return; }
 
   let pd = sat_pos[i];
   let p = pd.xyz;
@@ -112,13 +116,13 @@ fn main(@builtin(global_invocation_id) gid: vec3u) {
   }
 
   // composePaint
-  var a = packed >> 24u;
-  var rgb = packed & 0xffffffu;
+  var a = anim_half_alpha(hw);
+  var c = anim_half_color(hw);
   a = select(0u, a - params.decay_steps, a > params.decay_steps);
   let level = stampLevel(weight);
   if (level > a) {
     a = level;
-    rgb = params.color_rgb & 0xffffffu;
+    c = rgb332_from_rgb24(params.color_rgb);
   }
-  paint[i] = select((a << 24u) | rgb, 0u, a == 0u);
+  paint[i] = anim_with_half(packed, ANIM_SCRATCH_BRUSH_SHIFT, anim_half_pack(a, c));
 }

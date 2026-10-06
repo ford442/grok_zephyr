@@ -14,6 +14,7 @@ import { QUALITY_PRESETS } from '@/core/QualityPresets.js';
 import { formatPresentationModeLabel } from '@/core/HdrPresentation.js';
 import type { PerformanceProfiler, DetailedTimings } from '@/utils/PerformanceProfiler.js';
 import { MAX_FPS_HISTORY_LENGTH } from '@/utils/PerformanceProfiler.js';
+import { formatConjunctionCoverage } from '@/types/conjunction.js';
 
 /** Maximum FPS value for sparkline Y-axis scaling (typical high-performance target) */
 const MAX_DISPLAY_FPS = 120;
@@ -32,6 +33,8 @@ interface DashboardElements {
   sceneTime: HTMLElement;
   bloomTime: HTMLElement;
   postTime: HTMLElement;
+  conjunctionRow: HTMLElement;
+  conjunctionCoverage: HTMLElement;
   totalTime: HTMLElement;
   presetLabel: HTMLElement;
   presentationLabel: HTMLElement;
@@ -125,6 +128,10 @@ export class PerformanceDashboard {
                 <span class="perf-label">Post-Process</span>
                 <span class="perf-value" id="perf-post">--</span>
               </div>
+              <div class="perf-timing-row" id="perf-conjunction-row" style="display: none;">
+                <span class="perf-label">Close pairs</span>
+                <span class="perf-value" id="perf-conjunction">--</span>
+              </div>
               <div class="perf-timing-row perf-total">
                 <span class="perf-label">Frame Total</span>
                 <span class="perf-value" id="perf-total">--</span>
@@ -171,6 +178,8 @@ export class PerformanceDashboard {
       sceneTime: container.querySelector('#perf-scene') as HTMLElement,
       bloomTime: container.querySelector('#perf-bloom') as HTMLElement,
       postTime: container.querySelector('#perf-post') as HTMLElement,
+      conjunctionRow: container.querySelector('#perf-conjunction-row') as HTMLElement,
+      conjunctionCoverage: container.querySelector('#perf-conjunction') as HTMLElement,
       totalTime: container.querySelector('#perf-total') as HTMLElement,
       presetLabel: container.querySelector('#perf-preset') as HTMLElement,
       presentationLabel: container.querySelector('#perf-presentation') as HTMLElement,
@@ -252,6 +261,14 @@ export class PerformanceDashboard {
     this.elements.sceneTime.textContent = timings.scene.toFixed(2);
     this.elements.bloomTime.textContent = timings.bloom.toFixed(2);
     this.elements.postTime.textContent = timings.postProcess.toFixed(2);
+
+    // Close-approach scan coverage vs the pass's wall time (?ca=1 only).
+    const coverage = this.profiler.getConjunctionCoverage();
+    this.elements.conjunctionRow.style.display = coverage ? '' : 'none';
+    this.elements.conjunctionCoverage.textContent = formatConjunctionCoverage(
+      coverage,
+      timings.conjunction,
+    );
 
     // Calculate frame total (average of all recorded frame times)
     const frameTime = stats.frameTime;

@@ -159,7 +159,8 @@ grok_zephyr/
         │   └── conjunction.wgsl  # Close-approach spatial hash
         ├── render/
         │   ├── index.ts          # Render shader exports
-        │   ├── stars.wgsl        # Starfield background
+        │   ├── stars.wgsl        # Starfield background (fs) + ?sky=hip background (fs_catalog)
+        │   ├── starsCatalog.wgsl # Hipparcos star impostors (?sky=hip); starsCommon.wgsl shared
         │   ├── earth.wgsl        # Earth sphere (+ optional photometric plates)
         │   ├── terrainCommon.wgsl, earthMapCommon.wgsl  # #import modules, also used by ground.ts
         │   ├── atmosphere.wgsl   # Atmospheric limb glow
@@ -309,13 +310,34 @@ See **`docs/FRAMES.md`**. SGP4 TEME is used as the render ECI by default; `?fram
 
 See **`docs/EARTH_MAPS.md`**. Procedural FBM biomes/ocean/city-lights by default. `?earthmap=low|balanced|high|on` swaps in ETC1S KTX2 plates from `public/earth/` (Blue Marble albedo, VIIRS night lights, MODIS clouds), transcoded to BC7/ASTC/ETC2 at load by `public/basis/`. The tier is resolved in `bootWebGPU` **before** `requestDevice` — `texture-compression-*` cannot be added to a live device — and plates load before the bind groups so the cached scene render bundle needs no invalidation. `?earth=proc` forces procedural; unloaded slots hold a 1x1 placeholder so there is one earth pipeline, not two. Ground View samples the same plates at grazing incidence, distance-blended over the FBM — `src/shaders/render/earthMapCommon.ts` is the shared `@group(1)` block.
 
+## Night sky
+
+See **`docs/SKY.md`**.
+
+- **Default.** Procedural stars and Milky Way (`stars.wgsl` → `fs`), bit-identical to the baselines.
+- **`?sky=hip`.** Draws the 8,874 Hipparcos stars with V ≤ 6.5 (`public/sky/hip_v65.bin`, 139 KB, built by `scripts/build-sky-catalog.mjs`) as instanced impostors (`starsCatalog.wgsl`) over a background (`fs_catalog`) of the Milky Way plus only hash stars fainter than the catalog limit.
+- **`?sky=auto`.** Same as `hip`, but only on high/cinematic.
+- **Loading.** Like the Earth plates: resolved in `bootWebGPU`, loaded before the bind groups, and `@group(1)` is always bound with a placeholder, so the cached bundle is recorded once.
+- **Frame.** ICRS directions are rotated into the render frame by `gcrfToTemeMatrix` (`src/physics/frames.ts`, a TS port of the WASM `teme_gcrf.hpp`), or by identity under `?frame=gcrf&sun=astro`. The rotation lives in a uniform, written by `writeSkyFrameUniform`.
+- **Occlusion.** Stars behind the solid Earth are dropped in the vertex shader. `src/render/SkyCatalog.ts` holds the CPU mirrors the tests pin.
+- **Budget.** The buffer is outside the satellite ledger.
+- **WebGL.** Stays procedural.
+
 ## Close approaches
 
-See **`docs/CONJUNCTIONS.md`**. Off by default (`?ca=1&caKm=5`, `?caDensity=1`). GPU spatial hash: `clear_bins` / `bin_sats` / `find_pairs` in `src/shaders/compute/conjunction.wgsl`, cell size = threshold so the 27-cell neighbourhood is exact. `src/physics/conjunctionHash.ts` is the CPU reference the WGSL mirrors and the tests pin (brute-force cross-checked). Plain `atomicAdd`, no `subgroups`. **Buffers are lazily allocated**: `calculateSatelliteBufferBudget` at 1M already reaches the 128 MB Pascal cap exactly, so the pass declines with a HUD reason above ~524k satellites instead of tripping `assertBufferBudget`. Not SSA — the UI copy never claims operational collision avoidance, and a test asserts that.
+See **`docs/CONJUNCTIONS.md`**. Off by default (`?ca=1&caKm=5`, `?caDensity=1`). GPU spatial hash: `clear_bins` / `count_sats` / scan / `scatter_sats` / `find_pairs` in `src/shaders/compute/conjunction*.wgsl`, cell size = threshold so the 27-cell neighbourhood is exact. `src/physics/conjunctionHash.ts` is the CPU reference the WGSL mirrors and the tests pin (brute-force cross-checked). Counting-sort table (count → prefix sum → scatter), so the scan covers the whole fleet (`scanned 1,048,576/1,048,576`) and nothing is dropped. `subgroups` is requested in `bootWebGPU` **only** when `?ca=1` will run, and only speeds up the prefix sum (`conjunctionScanSubgroups.wgsl`); without it `conjunctionScan.wgsl` gives identical offsets. **Buffers are lazily allocated** (~8.1 MB at 1M, fits cinematic) and the pass declines with a HUD reason when the ledger has no room (e.g. `doubleBuffer` + cinematic at 1M) instead of tripping `assertBufferBudget`. Not SSA — the UI copy never claims operational collision avoidance, and a test asserts that.
 
 ## Light Brush
 
-See **`docs/BRUSH.md`**. Off by default (`?brush=1&brushMode=point|spray|ring&brushKm=400&brushFade=3&brushColor=rrggbb`), forced off on `low`/mobile like ISL, WebGPU only. Paint lives in the packed `animScratch` (rgba8 u32/sat, Smile V2's slot): **no new storage buffer**, only a 288-byte uniform. `src/physics/brushFalloff.ts` is the CPU reference `src/shaders/compute/brush.wgsl` mirrors (tests pin constants and layout). Decay is linear whole 1/255 steps with a carried remainder — exponential decay stalls on 8 bits. Pointer rays are built from view and projection separately, because inverting the Float32 view×projection at near 10 / far 500k km gives garbage. Light only — HUD copy never claims gravity, n-body or SSA, and a test asserts it.
+See **`docs/BRUSH.md`**. Off by default (`?brush=1&brushMode=point|spray|ring&brushKm=400&brushFade=3&brushColor=rrggbb`), forced off on `low`/mobile like ISL, WebGPU only. Paint lives in the **high 16 bits** of the packed `animScratch` (a8 + RGB332; Sky Strips own the low 16, bit table in `docs/BRUSH.md`): **no new storage buffer**, only a 288-byte uniform. `src/physics/brushFalloff.ts` is the CPU reference `src/shaders/compute/brush.wgsl` mirrors (tests pin constants and layout). Decay is linear whole 1/255 steps with a carried remainder — exponential decay stalls on 8 bits. Pointer rays are built from view and projection separately, because inverting the Float32 view×projection at near 10 / far 500k km gives garbage. Light only — HUD copy never claims gravity, n-body or SSA, and a test asserts it.
+
+## Sky Strips
+
+See **`plans/SKY_STRIPS.md`**. Off by default (`?strips=1&stripsMode=wave|chase|beat|sparkle&stripsBpm=120`), forced off on `low`/mobile, WebGPU only (WebGL disables the control). `src/shaders/compute/skyStrips.wgsl` rewrites the **low 16 bits** of `animScratch` every frame and preserves the brush half — **no new storage buffer**, only a 64-byte uniform. `src/physics/skyStrips.ts` is the CPU reference (tests pin constants and layout). WAVE follows argument of latitude, CHASE follows RAAN, BEAT reads `AudioEngine.getBands()` (AnalyserNode bass/presence, `null` → dark while muted), SPARKLE is a hash. Reduced motion holds WAVE/CHASE still and turns BEAT/SPARKLE off. Smile V2 writes whole words and is not dispatched while strips or the brush use the scratch. Light show only — no Morse/communications claims, and a test asserts it.
+
+## WebXR
+
+See **`docs/WEBXR.md`**. ENTER VR presents the **WebGPU** frame graph through `XRGPUBinding` (Stage 3) when the UA has it: `bootWebGPU` requests an `xrCompatible` adapter up front (`?xr=0` opts out), `WebGPUContext.configureForXr` makes one projection layer, and `src/xr/XrGpuFrameLoop.ts` encodes both eyes in one submit by `copyBufferToBuffer`-ing each eye's `Uni` block (from `packSceneUniforms`) into the shared scene uniform buffer — no bind group or render bundle changes. Without the binding, VR needs `?renderer=webgl` (Stage 2, `XRWebGLLayer`). Snap anchors only, no locomotion; DoF / motion blur / TAA are skipped in XR and bloom is clamped to 2 levels.
 
 ## Physics Modes
 

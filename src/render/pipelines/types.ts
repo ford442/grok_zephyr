@@ -43,6 +43,8 @@ export interface PipelineBindGroups {
   satelliteCull: GPUBindGroup;
   trailExpand: GPUBindGroup;
   stars: GPUBindGroup;
+  /** Group 1 of both catalog pipelines (?sky=hip); placeholder under proc. */
+  starCatalog: GPUBindGroup;
   earth: GPUBindGroup;
   earthMaps: GPUBindGroup;
   groundEarthMaps: GPUBindGroup;
@@ -68,11 +70,16 @@ export interface Pipelines {
   islCompute: GPUComputePipeline;
   islFiber: GPURenderPipeline;
   conjunctionClear: GPUComputePipeline;
-  conjunctionBin: GPUComputePipeline;
+  conjunctionCount: GPUComputePipeline;
+  conjunctionScanBlocks: GPUComputePipeline;
+  conjunctionScanSums: GPUComputePipeline;
+  conjunctionScanAdd: GPUComputePipeline;
+  conjunctionScatter: GPUComputePipeline;
   conjunctionPairs: GPUComputePipeline;
   conjunctionDraw: GPURenderPipeline;
   conjunctionDensity: GPURenderPipeline;
   brushPaint: GPUComputePipeline;
+  skyStrips: GPUComputePipeline;
   satelliteCullSats: GPUComputePipeline;
   satelliteCullBeams: GPUComputePipeline;
   satelliteCullFinalize: GPUComputePipeline;
@@ -81,6 +88,8 @@ export interface Pipelines {
   autoExposureHistogram: GPUComputePipeline;
   autoExposureAdapt: GPUComputePipeline;
   stars: GPURenderPipeline;
+  starsCatalogBackground: GPURenderPipeline;
+  starsCatalog: GPURenderPipeline;
   earth: GPURenderPipeline;
   atmosphere: GPURenderPipeline;
   satellites: GPURenderPipeline;

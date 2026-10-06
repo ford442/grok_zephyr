@@ -123,6 +123,8 @@ export class PerformanceProfiler {
 
   // Stats
   private visibleSatellites = 0;
+  /** Close-approach scan coverage from the last readback; null when off. */
+  private conjunctionCoverage: { binned: number; fleet: number } | null = null;
   private gpuMemoryMB = 0;
 
   // Callbacks
@@ -346,6 +348,15 @@ export class PerformanceProfiler {
     };
   }
 
+  /** Close-approach scan coverage for the dashboard; null clears the row. */
+  setConjunctionCoverage(coverage: { binned: number; fleet: number } | null): void {
+    this.conjunctionCoverage = coverage;
+  }
+
+  getConjunctionCoverage(): { binned: number; fleet: number } | null {
+    return this.conjunctionCoverage;
+  }
+
   /**
    * Get FPS history for sparkline visualization
    */
@@ -544,6 +555,7 @@ export class PerformanceProfiler {
     this.trailsTimeHistory = this.createHistory(this.options.historySize);
     this.atmosphereTimeHistory = this.createHistory(this.options.historySize);
     this.visibleSatellites = 0;
+    this.conjunctionCoverage = null;
   }
 
   /**

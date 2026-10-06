@@ -7,12 +7,14 @@ import {
   formatGpuCapabilityLine,
   gpuRequestAdapterOptions,
   missingRequiredFeatures,
+  OPTIONAL_FEATURE_CATALOG,
   REQUESTED_OPTIONAL_FEATURES,
   selectDepthFormat,
   selectOptionalFeatures,
   type AdapterSnapshot,
 } from './GpuCapabilities.js';
 import { EARTH_MAP_OPTIONAL_FEATURES } from '@/render/EarthMaps.js';
+import { CONJUNCTION_OPTIONAL_FEATURES } from '@/types/conjunction.js';
 
 function snapshot(partial: {
   features?: string[];
@@ -70,11 +72,7 @@ describe('GpuCapabilities', () => {
 
   it('does not treat deferred optional features as requested even when the adapter has them', () => {
     expect(DEFERRED_OPTIONAL_FEATURES).toEqual(
-      expect.arrayContaining([
-        'float32-filterable',
-        'bgra8unorm-storage',
-        'subgroups',
-      ]),
+      expect.arrayContaining(['float32-filterable', 'bgra8unorm-storage']),
     );
     const { enabled, missing } = selectOptionalFeatures(
       snapshot({
@@ -91,12 +89,45 @@ describe('GpuCapabilities', () => {
     expect(missing).toEqual([]);
   });
 
+  it('leaves subgroups unrequested until ?ca=1 asks for it', () => {
+    // In the catalog (the close-approach scan binds it) but not the default set;
+    // bootWebGPU appends CONJUNCTION_OPTIONAL_FEATURES only when the pass runs.
+    expect(OPTIONAL_FEATURE_CATALOG.map((row) => row.name)).toContain('subgroups');
+    expect(REQUESTED_OPTIONAL_FEATURES).not.toContain('subgroups');
+    expect(DEFERRED_OPTIONAL_FEATURES).not.toContain('subgroups');
+    const adapter = snapshot({ features: ['timestamp-query', 'shader-f16', 'subgroups'] });
+    expect(selectOptionalFeatures(adapter).enabled).toEqual(['timestamp-query', 'shader-f16']);
+    expect(
+      selectOptionalFeatures(adapter, [
+        ...REQUESTED_OPTIONAL_FEATURES,
+        ...CONJUNCTION_OPTIONAL_FEATURES,
+      ]).enabled,
+    ).toEqual(['timestamp-query', 'shader-f16', 'subgroups']);
+    // Without the feature on the adapter, nothing fails — the workgroup scan runs.
+    const without = snapshot({ features: ['timestamp-query', 'shader-f16'] });
+    expect(
+      selectOptionalFeatures(without, [
+        ...REQUESTED_OPTIONAL_FEATURES,
+        ...CONJUNCTION_OPTIONAL_FEATURES,
+      ]).missing,
+    ).toEqual(['subgroups']);
+  });
+
   it('requests a core feature level adapter', () => {
     expect(gpuRequestAdapterOptions('high-performance')).toEqual({
       powerPreference: 'high-performance',
       featureLevel: 'core',
     });
     expect(gpuRequestAdapterOptions('low-power').featureLevel).toBe('core');
+  });
+
+  it('adds xrCompatible only when requested', () => {
+    expect(gpuRequestAdapterOptions('high-performance')).not.toHaveProperty('xrCompatible');
+    expect(gpuRequestAdapterOptions('high-performance', true)).toEqual({
+      powerPreference: 'high-performance',
+      featureLevel: 'core',
+      xrCompatible: true,
+    });
   });
 
   it('reports missing required features instead of dropping them', () => {

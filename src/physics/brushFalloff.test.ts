@@ -28,6 +28,7 @@ import {
   stampLevel,
   type BrushStamp,
 } from './brushFalloff.js';
+import { rgb332FromRgb24 } from './animScratchPacking.js';
 import { BRUSH_PARAMS_BYTE_SIZE, packBrushParams } from '@/shaders/uniformLayouts.js';
 import { calculateSatelliteBufferBudget } from '@/core/buffer/BufferAllocator.js';
 import { mat4frustum, mat4lookAt, mat4mul, mat4persp } from '@/utils/math.js';
@@ -154,8 +155,26 @@ describe('compose', () => {
 
   it('keeps an older colour where it is still brighter than the new stamp', () => {
     const old = packPaint(red, 200);
-    expect(paintRgb(composePaint(old, 10, 100, blue))).toBe(red);
-    expect(paintRgb(composePaint(old, 10, 250, blue))).toBe(blue);
+    expect(paintRgb(composePaint(old, 10, 100, blue))).toBe(rgb332FromRgb24(red));
+    expect(paintRgb(composePaint(old, 10, 250, blue))).toBe(rgb332FromRgb24(blue));
+  });
+
+  it('lives in the high half and leaves the Sky Strips half alone', () => {
+    const strips = 0xbeef;
+    const lit = composePaint(strips, 0, 200, blue);
+    expect(lit & 0xffff).toBe(strips);
+    expect(paintAlpha(lit)).toBe(200);
+    // Decays to a bare strips word, not to 0.
+    expect(composePaint(lit, 255, 0, blue)).toBe(strips);
+    // No paint and no stamp: the word is untouched.
+    expect(composePaint(strips, 7, 0, blue)).toBe(strips);
+  });
+
+  it('still decays to exactly 0 with strips off', () => {
+    const clock = new PaintDecayClock();
+    let word = composePaint(0, 0, 255, blue);
+    for (let f = 0; f < 600 && word !== 0; f++) word = composePaint(word, clock.advance(1 / 60, 3), 0, blue);
+    expect(word).toBe(0);
   });
 
   it('returns exactly 0 once faded, so the scratch reads as unpainted', () => {
@@ -384,6 +403,11 @@ describe('GPU mirror', () => {
   it('reads paint from the packed animation scratch in the satellite shader', () => {
     expect(SAT_WGSL).toContain('@group(0) @binding(8) var<storage, read> anim_scratch : array<u32>;');
     expect(WGSL).toContain('var<storage, read_write> paint : array<u32>;');
+  });
+
+  it('composes through the shared animScratchPack include', () => {
+    expect(WGSL).toContain('#import "animScratchPack.wgsl"');
+    expect(WGSL).toContain('anim_with_half(packed, ANIM_SCRATCH_BRUSH_SHIFT');
   });
 
   it('adds no satellite storage buffer to the ledger', () => {

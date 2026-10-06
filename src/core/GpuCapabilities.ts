@@ -35,6 +35,11 @@ export const OPTIONAL_FEATURE_CATALOG = [
     effect: 'ASTC 4x4 Earth plates (mobile / Apple GPUs)',
     fallback: 'ETC2, then uncompressed rgba8',
   },
+  {
+    name: 'subgroups' as const,
+    effect: 'Subgroup prefix sum in the close-approach hash (`?ca=1` only)',
+    fallback: 'Workgroup-memory scan — same full-fleet result',
+  },
 ] as const;
 
 export type OptionalGpuFeature = (typeof OPTIONAL_FEATURE_CATALOG)[number]['name'];
@@ -47,7 +52,9 @@ export type OptionalGpuFeature = (typeof OPTIONAL_FEATURE_CATALOG)[number]['name
  * only when `?earthmap=` selects a textured Earth, and are appended to this list
  * by bootWebGPU before the device is created. Requesting them unconditionally
  * would cost nothing on desktop but would still be a request for a feature no
- * system binds — the same rule DEFERRED_OPTIONAL_FEATURES documents.
+ * system binds — the same rule DEFERRED_OPTIONAL_FEATURES documents. `subgroups`
+ * follows the same pattern: bootWebGPU appends it only when `?ca=1` will run
+ * (CONJUNCTION_OPTIONAL_FEATURES).
  */
 export const REQUESTED_OPTIONAL_FEATURES: readonly OptionalGpuFeature[] = [
   'timestamp-query',
@@ -63,7 +70,6 @@ export const REQUESTED_OPTIONAL_FEATURES: readonly OptionalGpuFeature[] = [
 export const DEFERRED_OPTIONAL_FEATURES = [
   'float32-filterable',
   'bgra8unorm-storage',
-  'subgroups',
 ] as const;
 
 export type DeferredGpuFeature = (typeof DEFERRED_OPTIONAL_FEATURES)[number];
@@ -127,8 +133,12 @@ export function snapshotAdapterLimits(limits: GPUSupportedLimits): AdapterLimitS
 /** Adapter options that request a core-defaulting adapter (not compatibility mode). */
 export function gpuRequestAdapterOptions(
   powerPreference: GPUPowerPreference,
+  xrCompatible = false,
 ): GPURequestAdapterOptions {
-  return { powerPreference, featureLevel: 'core' };
+  // `xrCompatible` picks the adapter that can feed an XRGPUBinding (WebXR Stage 3).
+  return xrCompatible
+    ? { powerPreference, featureLevel: 'core', xrCompatible: true }
+    : { powerPreference, featureLevel: 'core' };
 }
 
 /** Names in `required` that the adapter does not support. Required means required. */
@@ -272,6 +282,8 @@ function shortFeatureName(name: OptionalGpuFeature): string {
       return 'etc2';
     case 'texture-compression-astc':
       return 'astc';
+    case 'subgroups':
+      return 'sg';
     default:
       return name;
   }

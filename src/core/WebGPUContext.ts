@@ -96,6 +96,15 @@ export interface WebGPUContextOptions {
   qualityLevel?: QualityLevel;
   /** Location search string for `?sats=` (defaults to window.location.search). */
   search?: string;
+  /** Request an XR-compatible adapter so an `XRGPUBinding` can wrap the device (WebXR Stage 3). */
+  xrCompatible?: boolean;
+}
+
+/** Projection layer + binding returned by {@link WebGPUContext.configureForXr}. */
+export interface XrGpuPresentation {
+  binding: XRGPUBinding;
+  layer: XRProjectionLayer;
+  colorFormat: GPUTextureFormat;
 }
 
 /**
@@ -119,6 +128,7 @@ export class WebGPUContext {
   private readonly errorReporter: WebGPUErrorReporter;
   private fleetScale: FleetScale | null = null;
   private capabilityProfile: GpuCapabilityProfile | null = null;
+  private xrCompatibleAdapter = false;
   private readonly shaderModules = new Map<string, GPUShaderModule>();
   private pendingShaderChecks: Promise<void>[] = [];
   private shaderCompilationWait: Promise<void> | null = null;
@@ -287,6 +297,42 @@ export class WebGPUContext {
     return this.capabilityProfile;
   }
 
+  /** True when the device came from an `xrCompatible` adapter request. */
+  isXrCompatible(): boolean {
+    return this.xrCompatibleAdapter && this.device !== null;
+  }
+
+  /**
+   * Present to an immersive session through `XRGPUBinding` + one projection layer.
+   * The canvas swapchain is left configured but unused; it is never the XR layer.
+   * Undo with {@link restoreCanvasPresentation}.
+   */
+  async configureForXr(session: XRSession): Promise<XrGpuPresentation> {
+    const Binding = (globalThis as { XRGPUBinding?: typeof XRGPUBinding }).XRGPUBinding;
+    if (!Binding) {
+      throw new WebGPUError('XRGPUBinding is not available in this browser.');
+    }
+    if (!this.isXrCompatible()) {
+      throw new WebGPUError('WebGPU device was not created from an xrCompatible adapter.');
+    }
+    const binding = new Binding(session, this.getDevice());
+    const colorFormat = binding.getPreferredColorFormat();
+    // No layer depth: the frame graph renders into its own depth target and only
+    // the composited colour reaches the headset.
+    const layer = binding.createProjectionLayer({
+      colorFormat,
+      textureUsage: GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    await session.updateRenderState({ layers: [layer] });
+    return { binding, layer, colorFormat };
+  }
+
+  /** Re-assert the canvas swapchain configuration after an XR session ends. */
+  async restoreCanvasPresentation(): Promise<void> {
+    if (!this.device || !this.context) return;
+    await this.configureCanvasContext();
+  }
+
   getDepthFormat(): GPUTextureFormat {
     return this.capabilityProfile?.depthFormat ?? RENDER.DEPTH_FORMAT;
   }
@@ -307,14 +353,29 @@ export class WebGPUContext {
       adapter: GPUAdapter;
       preference: GPUPowerPreference;
       snapshot: AdapterSnapshot;
+      xrCompatible: boolean;
     }[] = [];
 
+    const wantXr = this.options.xrCompatible === true;
     for (const preference of order) {
-      const adapter = await navigator.gpu.requestAdapter(gpuRequestAdapterOptions(preference));
+      let xrCompatible = wantXr;
+      let adapter = await navigator.gpu.requestAdapter(
+        gpuRequestAdapterOptions(preference, xrCompatible),
+      );
+      if (!adapter && xrCompatible) {
+        // No XR-capable adapter: boot normally; Enter VR stays disabled on WebGPU.
+        xrCompatible = false;
+        adapter = await navigator.gpu.requestAdapter(gpuRequestAdapterOptions(preference));
+      }
       if (!adapter || seen.has(adapter)) continue;
       seen.add(adapter);
       const info = await readAdapterInfo(adapter);
-      gathered.push({ adapter, preference, snapshot: snapshotAdapter(adapter, info) });
+      gathered.push({
+        adapter,
+        preference,
+        snapshot: snapshotAdapter(adapter, info),
+        xrCompatible,
+      });
     }
 
     if (gathered.length === 0) {
@@ -332,12 +393,14 @@ export class WebGPUContext {
       );
     }
 
-    const adapter = gathered.find(
+    const match = gathered.find(
       (c) => c.preference === chosen.preference && c.snapshot === chosen.snapshot,
-    )?.adapter;
+    );
+    const adapter = match?.adapter;
     if (!adapter) {
       throw new WebGPUError('Failed to match the selected WebGPU adapter.');
     }
+    this.xrCompatibleAdapter = match.xrCompatible;
     return { adapter, profile: chosen.profile };
   }
 

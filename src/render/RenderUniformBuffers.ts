@@ -328,7 +328,7 @@ export class RenderUniformBuffers {
     thresholdKm: number;
     scanCount: number;
     bucketMask: number;
-    bucketCapacity: number;
+    blockCount: number;
     maxPairs: number;
     time: number;
   }): void {
@@ -343,7 +343,7 @@ export class RenderUniformBuffers {
           params.thresholdKm,
           params.scanCount,
           params.bucketMask,
-          params.bucketCapacity,
+          params.blockCount,
           params.maxPairs,
           params.time,
         ),

@@ -12,13 +12,16 @@ export interface PipelineShaderModules {
   islCompute: GPUShaderModule;
   islFiber: GPUShaderModule;
   conjunctionCompute: GPUShaderModule;
+  conjunctionScan: GPUShaderModule;
   conjunctionDraw: GPUShaderModule;
   conjunctionDensity: GPUShaderModule;
   brushCompute: GPUShaderModule;
   trailExpand: GPUShaderModule;
+  stripsCompute: GPUShaderModule;
   autoExposureHistogram: GPUShaderModule;
   autoExposureAdapt: GPUShaderModule;
   stars: GPUShaderModule;
+  starsCatalog: GPUShaderModule;
   earth: GPUShaderModule;
   atmosphere: GPUShaderModule;
   satellites: GPUShaderModule;
@@ -43,6 +46,12 @@ export interface PipelineShaderModules {
 export function createPipelineModules(context: WebGPUContext): PipelineShaderModules {
   const shader = (code: string, label: string): GPUShaderModule =>
     context.createShaderModule(code, label);
+  // `enable subgroups` fails to compile on a device created without the
+  // feature, so the subgroup scan is only ever built when the device has it.
+  // Both variants produce the same offsets (docs/CONJUNCTIONS.md).
+  const conjunctionScan = context.getDevice().features.has('subgroups')
+    ? shader(SHADERS.compute.conjunctionScanSubgroups, 'conjunction-scan-subgroups')
+    : shader(SHADERS.compute.conjunctionScan, 'conjunction-scan');
 
   return {
     satelliteCull: shader(SHADERS.compute.satelliteCull, 'satellite-cull'),
@@ -51,10 +60,12 @@ export function createPipelineModules(context: WebGPUContext): PipelineShaderMod
     islCompute: shader(SHADERS.compute.isl, 'isl-compute'),
     islFiber: shader(SHADERS.render.isl, 'isl-fiber'),
     conjunctionCompute: shader(SHADERS.compute.conjunction, 'conjunction-compute'),
+    conjunctionScan,
     conjunctionDraw: shader(SHADERS.render.conjunction, 'conjunction-draw'),
     conjunctionDensity: shader(SHADERS.render.conjunctionDensity, 'conjunction-density'),
     brushCompute: shader(SHADERS.compute.brush, 'brush-compute'),
     trailExpand: shader(SHADERS.compute.trailExpand, 'trail-expand'),
+    stripsCompute: shader(SHADERS.compute.skyStrips, 'sky-strips-compute'),
     autoExposureHistogram: shader(
       SHADERS.render.postProcess.autoExposureHistogram,
       'auto-exposure-histogram',
@@ -64,6 +75,7 @@ export function createPipelineModules(context: WebGPUContext): PipelineShaderMod
       'auto-exposure-adapt',
     ),
     stars: shader(SHADERS.render.stars, 'stars'),
+    starsCatalog: shader(SHADERS.render.starsCatalog, 'stars-catalog'),
     earth: shader(SHADERS.render.earth, 'earth'),
     atmosphere: shader(SHADERS.render.atmosphere, 'atmosphere'),
     satellites: shader(SHADERS.render.satellites, 'satellites'),

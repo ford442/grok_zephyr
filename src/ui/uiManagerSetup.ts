@@ -37,6 +37,8 @@ export interface UIManagerSetupCallbacks {
   onBrushRadiusChange: ((km: number) => void) | null;
   onBrushFadeChange: ((seconds: number) => void) | null;
   onBrushColorChange: ((css: string) => void) | null;
+  onStripsToggle: ((enabled: boolean) => void) | null;
+  onStripsModeChange: ((mode: 'wave' | 'chase' | 'beat' | 'sparkle') => void) | null;
   onTrailLengthChange: ((mode: 'short' | 'medium' | 'long') => void) | null;
   onExposureModeChange: ((mode: ExposureMode) => void) | null;
   onManualExposureChange: ((value: number) => void) | null;
@@ -165,6 +167,10 @@ export function getElements(): UIElements {
     brushFadeValue: document.getElementById('brushFadeValue') ?? undefined,
     brushColorInput: (document.getElementById('brushColor') as HTMLInputElement | null) ?? undefined,
     brushStatus: document.getElementById('brushStatus') ?? undefined,
+    stripsToggleButton:
+      (document.getElementById('stripsToggle') as HTMLButtonElement | null) ?? undefined,
+    stripsModeSelect: (document.getElementById('stripsMode') as HTMLSelectElement | null) ?? undefined,
+    stripsStatus: document.getElementById('stripsStatus') ?? undefined,
     trailsToggleButton:
       (document.getElementById('trailsToggle') as HTMLButtonElement | null) ?? undefined,
     trailsLengthSelect:
@@ -424,6 +430,19 @@ export function setupEventListeners(ctx: UIManagerSetupContext): void {
 
   elements.brushColorInput?.addEventListener('input', () => {
     callbacks.onBrushColorChange?.(elements.brushColorInput?.value ?? '#39c8ff');
+  });
+
+  // Sky Strips: intent only, like the brush; StripsController applies the rules.
+  elements.stripsToggleButton?.addEventListener('click', () => {
+    const next = !(elements.stripsToggleButton?.classList.contains('active') ?? false);
+    callbacks.onStripsToggle?.(next);
+  });
+
+  elements.stripsModeSelect?.addEventListener('change', () => {
+    const value = elements.stripsModeSelect?.value;
+    if (value === 'wave' || value === 'chase' || value === 'beat' || value === 'sparkle') {
+      callbacks.onStripsModeChange?.(value);
+    }
   });
 
   elements.islDensitySlider?.addEventListener('input', () => {

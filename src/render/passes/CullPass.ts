@@ -14,8 +14,7 @@ export function encodeCullPass(
   ctx: FrameContext,
   cullBuffers: SatelliteCullBuffers,
 ): void {
-  const device = ctx.context.getDevice();
-  cullBuffers.resetCounters(device);
+  cullBuffers.resetCounters(encoder);
 
   const pass = encoder.beginComputePass({
     timestampWrites: passTimestampWrites(),

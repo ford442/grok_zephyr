@@ -57,9 +57,20 @@ export class SceneRenderBundle {
       depthStencilFormat,
     });
 
-    bundleEncoder.setPipeline(ctx.pipelines.stars);
-    bundleEncoder.setBindGroup(0, ctx.bindGroups.stars);
-    bundleEncoder.draw(3);
+    if (ctx.skyCatalogCount > 0) {
+      // ?sky=hip: background (Milky Way + faint hash) then catalog points.
+      // The sky mode is fixed at boot, so it never changes a recorded bundle.
+      bundleEncoder.setBindGroup(0, ctx.bindGroups.stars);
+      bundleEncoder.setBindGroup(1, ctx.bindGroups.starCatalog);
+      bundleEncoder.setPipeline(ctx.pipelines.starsCatalogBackground);
+      bundleEncoder.draw(3);
+      bundleEncoder.setPipeline(ctx.pipelines.starsCatalog);
+      bundleEncoder.draw(6, ctx.skyCatalogCount);
+    } else {
+      bundleEncoder.setPipeline(ctx.pipelines.stars);
+      bundleEncoder.setBindGroup(0, ctx.bindGroups.stars);
+      bundleEncoder.draw(3);
+    }
 
     const drawEarth = (): void => {
       bundleEncoder.setPipeline(ctx.pipelines.earth);

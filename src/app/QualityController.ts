@@ -1,5 +1,10 @@
 import { VolumetricBeamRenderer } from '@/render/VolumetricBeamRenderer.js';
-import { QUALITY_PRESETS, saveQualityLevel, type QualityLevel } from '@/core/QualityPresets.js';
+import {
+  QUALITY_PRESETS,
+  qualityForcesOverlaysOff,
+  saveQualityLevel,
+  type QualityLevel,
+} from '@/core/QualityPresets.js';
 import { mergeVolumetricBeamConfig } from '@/core/BeamPatternProfile.js';
 import { getEffectiveTrailConfig } from '@/app/FrameProfilerEstimates.js';
 import { syncTaaToggleUi } from '@/app/GroundObserverUI.js';
@@ -8,6 +13,7 @@ import type { AppRuntime } from '@/app/AppRuntime.js';
 import { applyIslForQuality } from '@/app/IslController.js';
 import { applyConjunctionsForQuality } from '@/app/ConjunctionController.js';
 import { applyBrushForQuality } from '@/app/BrushController.js';
+import { applyStripsForQuality } from '@/app/StripsController.js';
 
 export function applyQualityPreset(rt: AppRuntime, level: QualityLevel): void {
   const preset = QUALITY_PRESETS[level];
@@ -50,10 +56,11 @@ export function applyQualityPreset(rt: AppRuntime, level: QualityLevel): void {
   rt.ui.setActiveQualityButton(level);
   rt.ui.setTrailsEnabled(effectiveTrail.enabled);
   rt.ui.setTrailLengthMode(rt.trailLengthMode);
-  const forceOverlaysOff = level === 'low' || (rt.isMobileDevice && level !== 'cinematic');
+  const forceOverlaysOff = qualityForcesOverlaysOff(level, rt.isMobileDevice);
   applyIslForQuality(rt, forceOverlaysOff);
   applyConjunctionsForQuality(rt, forceOverlaysOff);
   applyBrushForQuality(rt, forceOverlaysOff);
+  applyStripsForQuality(rt, forceOverlaysOff);
   saveQualityLevel(level);
 
   console.log(`🎨 Quality preset: ${preset.label} — ${preset.description}`);

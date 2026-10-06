@@ -7,6 +7,7 @@ export {
   encodeComputePass,
   encodeBeamComputePass,
   encodeBrushComputePass,
+  encodeStripsComputePass,
   encodeIslComputePass,
 } from './ComputePasses.js';
 export { encodeIslPass } from './IslPass.js';
@@ -20,6 +21,6 @@ export { encodeMoonOverlayPass } from './MoonOverlayPass.js';
 export { encodeSkylinePass } from './SkylinePass.js';
 export { encodeBloomPasses } from './BloomPass.js';
 export { encodeAutoExposurePasses } from './AutoExposurePass.js';
-export { encodeCompositePass } from './CompositePass.js';
+export { encodeCompositePass, type CompositeTargetOptions } from './CompositePass.js';
 export { encodeDepthOfFieldPasses } from './DepthOfFieldPass.js';
 export { encodeMotionBlurPass } from './MotionBlurPass.js';

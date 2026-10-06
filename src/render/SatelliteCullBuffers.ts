@@ -16,8 +16,6 @@ export class SatelliteCullBuffers {
   readonly beamDrawIndirect: GPUBuffer;
   readonly visibleCountStaging: GPUBuffer;
 
-  private counterClearData = new Uint32Array(2);
-
   constructor(context: WebGPUContext) {
     const device = context.getDevice();
 
@@ -63,10 +61,13 @@ export class SatelliteCullBuffers {
     device.queue.writeBuffer(this.beamDrawIndirect, 0, beamIndirect);
   }
 
-  resetCounters(device: GPUDevice): void {
-    this.counterClearData[0] = 0;
-    this.counterClearData[1] = 0;
-    device.queue.writeBuffer(this.counters, 0, this.counterClearData);
+  /**
+   * Zero the visible counters inside the encoder, ordered with the cull pass.
+   * A queue write would land once before the whole submit, so a second cull in
+   * the same encoder (one per XR eye) would append to the first eye's list.
+   */
+  resetCounters(encoder: GPUCommandEncoder): void {
+    encoder.clearBuffer(this.counters, 0, 8);
   }
 
   scheduleVisibleCountReadback(encoder: GPUCommandEncoder): void {

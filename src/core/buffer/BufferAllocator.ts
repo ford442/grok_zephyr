@@ -2,6 +2,7 @@ import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import { BUFFER_SIZES } from '@/types/constants.js';
 import { GROUP_PARAMS_UNIFORM_SIZE } from '@/data/ConstellationGroups.js';
 import { ISL_PARAM_BYTES, MAX_ISL_LINKS } from '@/types/isl.js';
+import { BRUSH_PARAMS_BYTE_SIZE, STRIPS_PARAMS_BYTE_SIZE } from '@/shaders/uniformLayouts.js';
 import {
   MAX_BEAMS,
   MAX_SAFE_BUFFER_SIZE,
@@ -121,7 +122,11 @@ export function calculateSatelliteBufferBudget(
       96 +
       16 +
       GROUP_PARAMS_UNIFORM_SIZE +
-      ISL_PARAM_BYTES,
+      ISL_PARAM_BYTES +
+      // Light Brush and Sky Strips params (lazy). Both draw into animScratch,
+      // so neither adds a per-satellite entry.
+      BRUSH_PARAMS_BYTE_SIZE +
+      STRIPS_PARAMS_BYTE_SIZE,
   };
   const total = Object.values(breakdown).reduce((a, b) => a + b, 0);
   return { total, breakdown };

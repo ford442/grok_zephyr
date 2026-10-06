@@ -1,10 +1,11 @@
 // Shell-density heat overlay — one marker per occupied hash cell, coloured by
 // how many satellites share it.
 //
-// Drawn from the same hash table the pair search builds, so it costs one extra
-// draw and no extra compute. Each instance is a bucket; `bin_indices[bucket*cap]`
-// is a representative satellite whose position places the marker, and
-// `bin_counts[bucket]` is the occupancy.
+// Drawn from the same counting-sort table the pair search builds, so it costs
+// one extra draw and no extra compute. Each instance is a bucket; after the
+// scatter `bin_offsets[bucket]` is the end of its slice of `sorted`, so
+// `sorted[end - count]` is a representative satellite whose position places the
+// marker, and `bin_counts[bucket]` is the occupancy.
 //
 // Cells are threshold-sized, so this reads as local crowding rather than
 // whole-shell density — which is the honest thing for it to show, since it is
@@ -13,14 +14,20 @@
 
 @group(0) @binding(1) var<storage, read> sat_pos : array<vec4f>;
 @group(0) @binding(2) var<storage, read> bin_counts : array<u32>;
-@group(0) @binding(3) var<storage, read> bin_indices : array<u32>;
+@group(0) @binding(3) var<storage, read> bin_offsets : array<u32>;
+@group(0) @binding(5) var<storage, read> sorted : array<u32>;
+
+// Occupancy that reads as fully hot. The table has no capacity any more, so
+// this is just the top of the colour ramp — kept at the old bucket size so the
+// overlay looks the same as before for the same crowding.
+const DENSITY_HEAT_FULL : f32 = 8.0;
 
 struct ConjunctionParams {
   enabled         : u32,
   threshold_km    : f32,
   scan_count      : u32,
   bucket_mask     : u32,
-  bucket_capacity : u32,
+  block_count     : u32,
   max_pairs       : u32,
   time            : f32,
   pad0            : u32,
@@ -59,12 +66,10 @@ fn vs(@builtin(vertex_index) vi: u32, @builtin(instance_index) bucket: u32) -> V
     return out;
   }
 
-  let rep = bin_indices[bucket * params.bucket_capacity];
+  let rep = sorted[bin_offsets[bucket] - occupancy];
   let center = sat_pos[rep].xyz;
 
-  // Occupancy is normalised against the bucket capacity: a full bucket is the
-  // most crowding this table can represent, and anything past it was dropped.
-  let heat = clamp(f32(occupancy) / f32(max(params.bucket_capacity, 1u)), 0.0, 1.0);
+  let heat = clamp(f32(occupancy) / DENSITY_HEAT_FULL, 0.0, 1.0);
 
   let quad = vi & 3u;
   let corner = vec2f(

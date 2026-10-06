@@ -51,6 +51,9 @@ export interface UIElements {
   brushFadeValue?: HTMLElement;
   brushColorInput?: HTMLInputElement;
   brushStatus?: HTMLElement;
+  stripsToggleButton?: HTMLButtonElement;
+  stripsModeSelect?: HTMLSelectElement;
+  stripsStatus?: HTMLElement;
   trailsToggleButton?: HTMLButtonElement;
   trailsLengthSelect?: HTMLSelectElement;
   exposureModeSelect?: HTMLSelectElement;

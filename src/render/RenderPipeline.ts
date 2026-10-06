@@ -14,17 +14,19 @@ import { SmileV2Pipeline } from './SmileV2Pipeline.js';
 import { createAtmosphereLUT, type AtmosphereLUTResources } from './AtmosphereLUT.js';
 import { getActiveEarthMapTier } from './EarthMaps.js';
 import { loadEarthTextures, type EarthTextureResources } from './EarthTextures.js';
+import { getActiveSkyMode } from './SkyCatalog.js';
+import { loadSkyCatalog, type SkyCatalogResources } from './SkyCatalogGpu.js';
+import type { Mat3 } from '@/physics/frames.js';
 import { ConjunctionBuffers, type ConjunctionStats } from './ConjunctionBuffers.js';
 import {
   encodeConjunctionComputePass,
   encodeConjunctionDensityPass,
   encodeConjunctionPass,
 } from './passes/ConjunctionPass.js';
-import {
-  CONJUNCTION_BUCKET_CAPACITY,
-  MAX_CONJUNCTION_PAIRS,
-} from '@/types/conjunction.js';
-import { BRUSH_PARAMS_BYTE_SIZE } from '@/shaders/uniformLayouts.js';
+import { MAX_CONJUNCTION_PAIRS } from '@/types/conjunction.js';
+import { BRUSH_PARAMS_BYTE_SIZE, STRIPS_PARAMS_BYTE_SIZE } from '@/shaders/uniformLayouts.js';
+import { SHADERS } from '@/shaders/index.js';
+import type { CompositeTargetOptions } from './passes/index.js';
 import { RenderUniformBuffers } from './RenderUniformBuffers.js';
 import { RenderTargetManager } from './RenderTargets.js';
 import { createPipelines } from './pipelines/PipelineFactory.js';
@@ -40,6 +42,7 @@ import {
   encodeAutoExposurePasses,
   encodeBeamComputePass,
   encodeBrushComputePass,
+  encodeStripsComputePass,
   encodeIslComputePass,
   encodeIslPass,
   encodeBloomPasses,
@@ -85,6 +88,7 @@ export class RenderPipeline {
   private readonly renderTargetManager: RenderTargetManager;
 
   private pipelines: Pipelines | null = null;
+  private readonly compositeFormatPipelines = new Map<GPUTextureFormat, GPURenderPipeline>();
   private bindGroups: PipelineBindGroups | null = null;
   private renderTargets: RenderTargets | null = null;
   private smileV2Pipeline: SmileV2Pipeline | null = null;
@@ -95,6 +99,7 @@ export class RenderPipeline {
   private visibleCountReadbackPending = false;
 
   private earthTextures: EarthTextureResources | null = null;
+  private skyCatalog: SkyCatalogResources | null = null;
 
   private readonly conjunctionBuffers: ConjunctionBuffers;
   private conjunctionComputeBindGroup: GPUBindGroup | null = null;
@@ -102,14 +107,17 @@ export class RenderPipeline {
   private conjunctionDensityBindGroup: GPUBindGroup | null = null;
 
   /**
-   * Light Brush. Paint lives in the packed animation scratch (animScratch), so
-   * the only thing allocated here is a 288-byte params uniform, on first use.
-   * While `brushOwnsAnimScratch` is set, Smile V2 — the scratch's other writer —
-   * is not dispatched.
+   * Light Brush and Sky Strips. Both live in the packed animation scratch
+   * (animScratch) — brush in the high 16 bits, strips in the low 16 — so the
+   * only things allocated here are a 288-byte and a 64-byte params uniform, on
+   * first use. While either half is in use, Smile V2 — which writes whole
+   * words — is not dispatched.
    */
   private brushParamsBuffer: GPUBuffer | null = null;
   private brushBindGroup: GPUBindGroup | null = null;
-  private brushOwnsAnimScratch = false;
+  private stripsParamsBuffer: GPUBuffer | null = null;
+  private stripsBindGroup: GPUBindGroup | null = null;
+  private animScratchInUse = false;
 
   private width = 0;
   private height = 0;
@@ -144,6 +152,7 @@ export class RenderPipeline {
     this.earthTextures = await loadEarthTextures(this.context, getActiveEarthMapTier());
     this.uniforms.earthMapFlags = this.earthTextures.flags;
     this.uniforms.writeEarthMapSettings();
+    this.skyCatalog = await loadSkyCatalog(this.context, getActiveSkyMode());
 
     this.createBindGroups();
 
@@ -198,6 +207,7 @@ export class RenderPipeline {
       !this.renderTargets ||
       !this.atmosphereLUT ||
       !this.earthTextures ||
+      !this.skyCatalog ||
       !this.uniforms.earthMapSettingsBuffer ||
       !this.uniforms.bloomThresholdUniformBuffer ||
       !this.uniforms.bloomCompositeUniformBuffer ||
@@ -229,6 +239,7 @@ export class RenderPipeline {
       cullBuffers: this.cullBuffers,
       earthTextures: this.earthTextures,
       earthMapSettingsBuffer: this.uniforms.earthMapSettingsBuffer,
+      skyCatalog: this.skyCatalog,
     });
   }
 
@@ -269,6 +280,7 @@ export class RenderPipeline {
       bloomCompositeUniformBuffer: this.uniforms.bloomCompositeUniformBuffer,
       tonemapUniformBuffer: this.uniforms.tonemapUniformBuffer,
       groundTerrainEnabled: this.groundTerrainEnabled,
+      skyCatalogCount: this.skyCatalog?.active ? this.skyCatalog.count : 0,
       skylineBindGroup: this.skylineBindGroup,
     };
   }
@@ -276,6 +288,21 @@ export class RenderPipeline {
   private withFrameContext(run: (ctx: FrameContext) => void): void {
     const ctx = this.getFrameContext();
     if (ctx) run(ctx);
+  }
+
+  /** True when `?sky=hip` loaded the Hipparcos catalog (docs/SKY.md). */
+  isSkyCatalogActive(): boolean {
+    return this.skyCatalog?.active ?? false;
+  }
+
+  /** ICRS → render-frame rotation for the catalog; see `skyFrameMatrix`. */
+  writeSkyFrame(frame: Mat3): void {
+    if (this.skyCatalog?.active) this.skyCatalog.writeFrame(frame);
+  }
+
+  /** Current size of the HDR / depth / bloom targets. */
+  getTargetSize(): { width: number; height: number } {
+    return { width: this.width, height: this.height };
   }
 
   resize(width: number, height: number): void {
@@ -337,15 +364,17 @@ export class RenderPipeline {
     const paramsBuffer = this.uniforms.conjunctionParamsBuffer;
     this.conjunctionComputeBindGroup = device.createBindGroup({
       label: 'conjunction-compute',
-      layout: this.pipelines.conjunctionBin.getBindGroupLayout(0),
+      layout: this.pipelines.conjunctionCount.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: this.buffers.uniforms } },
         { binding: 1, resource: { buffer: this.currentPositionBuffer() } },
         { binding: 2, resource: { buffer: set.binCounts } },
-        { binding: 3, resource: { buffer: set.binIndices } },
-        { binding: 4, resource: { buffer: set.pairs } },
-        { binding: 5, resource: { buffer: set.counters } },
-        { binding: 6, resource: { buffer: paramsBuffer } },
+        { binding: 3, resource: { buffer: set.binOffsets } },
+        { binding: 4, resource: { buffer: set.sorted } },
+        { binding: 5, resource: { buffer: set.pairs } },
+        { binding: 6, resource: { buffer: set.counters } },
+        { binding: 7, resource: { buffer: paramsBuffer } },
+        { binding: 8, resource: { buffer: set.blockSums } },
       ],
     });
     this.conjunctionDrawBindGroup = device.createBindGroup({
@@ -365,8 +394,9 @@ export class RenderPipeline {
         { binding: 0, resource: { buffer: this.buffers.uniforms } },
         { binding: 1, resource: { buffer: this.currentPositionBuffer() } },
         { binding: 2, resource: { buffer: set.binCounts } },
-        { binding: 3, resource: { buffer: set.binIndices } },
+        { binding: 3, resource: { buffer: set.binOffsets } },
         { binding: 4, resource: { buffer: paramsBuffer } },
+        { binding: 5, resource: { buffer: set.sorted } },
       ],
     });
     return { ok: true };
@@ -388,7 +418,7 @@ export class RenderPipeline {
       thresholdKm,
       scanCount: set?.scanCount ?? 0,
       bucketMask: set ? set.buckets - 1 : 0,
-      bucketCapacity: CONJUNCTION_BUCKET_CAPACITY,
+      blockCount: set?.blocks ?? 0,
       maxPairs: MAX_CONJUNCTION_PAIRS,
       time,
     });
@@ -428,10 +458,10 @@ export class RenderPipeline {
     this.conjunctionDensityBindGroup = null;
   }
 
-  /** Claim (or release) the animation scratch for brush paint. */
-  setBrushOwnsAnimScratch(owns: boolean): void {
-    this.brushOwnsAnimScratch = owns;
-    if (owns) this.smileV2Pipeline?.disable();
+  /** Report which halves of the animation scratch are in use this frame. */
+  setAnimScratchUsers(users: { brush: boolean; strips: boolean }): void {
+    this.animScratchInUse = users.brush || users.strips;
+    if (this.animScratchInUse) this.smileV2Pipeline?.disable();
   }
 
   /**
@@ -466,12 +496,44 @@ export class RenderPipeline {
     this.withFrameContext((ctx) => encodeBrushComputePass(encoder, ctx, bindGroup));
   }
 
+  /**
+   * Upload this frame's packed StripsParams and dispatch the strips pass. Only
+   * called while strips are on, or once more to clear their half.
+   */
+  encodeStripsPass(encoder: GPUCommandEncoder, packedParams: ArrayBuffer): void {
+    if (!this.pipelines) return;
+    const device = this.context.getDevice();
+    if (!this.stripsParamsBuffer) {
+      this.stripsParamsBuffer = device.createBuffer({
+        label: 'Sky Strips Params Uniform',
+        size: STRIPS_PARAMS_BYTE_SIZE,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      });
+      this.stripsBindGroup = null;
+    }
+    if (!this.stripsBindGroup) {
+      this.stripsBindGroup = device.createBindGroup({
+        label: 'sky-strips',
+        layout: this.pipelines.skyStrips.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.stripsParamsBuffer } },
+          { binding: 1, resource: { buffer: this.currentPositionBuffer() } },
+          { binding: 2, resource: { buffer: this.buffers.orbitalElements } },
+          { binding: 3, resource: { buffer: this.buffers.animScratch } },
+        ],
+      });
+    }
+    device.queue.writeBuffer(this.stripsParamsBuffer, 0, packedParams);
+    const bindGroup = this.stripsBindGroup;
+    this.withFrameContext((ctx) => encodeStripsComputePass(encoder, ctx, bindGroup));
+  }
+
   encodeIslPass(encoder: GPUCommandEncoder): void {
     this.withFrameContext((ctx) => encodeIslPass(encoder, ctx));
   }
 
   encodeSmileV2Pass(encoder: GPUCommandEncoder): void {
-    if (this.brushOwnsAnimScratch) return;
+    if (this.animScratchInUse) return;
     if (!this.smileV2Pipeline || !this.smileV2Pipeline.isActive()) return;
     this.smileV2Pipeline.encodeComputePass(encoder);
   }
@@ -593,10 +655,52 @@ export class RenderPipeline {
     outputWidth?: number,
     outputHeight?: number,
     sceneSourceView?: GPUTextureView,
+    target?: CompositeTargetOptions,
   ): void {
     this.withFrameContext((ctx) =>
-      encodeCompositePass(encoder, ctx, outputView, outputWidth, outputHeight, sceneSourceView),
+      encodeCompositePass(
+        encoder,
+        ctx,
+        outputView,
+        outputWidth,
+        outputHeight,
+        sceneSourceView,
+        target,
+      ),
     );
+  }
+
+  /**
+   * Composite pipeline for a colour format other than the swapchain's (the XR
+   * projection layer). Same module + bind group layout as `composite`, so the
+   * per-frame composite bind group is reused; only the target format and the
+   * `output_encoding` override differ. Cached per format.
+   */
+  async getCompositePipelineForFormat(format: GPUTextureFormat): Promise<GPURenderPipeline> {
+    if (!this.pipelines) throw new Error('RenderPipeline not initialized');
+    const cached = this.compositeFormatPipelines.get(format);
+    if (cached) return cached;
+    const module = this.context.createShaderModule(
+      SHADERS.render.postProcess.composite,
+      'composite',
+    );
+    const device = this.context.getDevice();
+    const pipeline = await this.context.createRenderPipelineAsync({
+      label: `composite-${format}`,
+      layout: device.createPipelineLayout({
+        bindGroupLayouts: [this.pipelines.composite.getBindGroupLayout(0)],
+      }),
+      vertex: { module, entryPoint: 'vs' },
+      fragment: {
+        module,
+        entryPoint: 'fs',
+        targets: [{ format }],
+        constants: { output_encoding: format.endsWith('-srgb') ? 2 : 1 },
+      },
+      primitive: { topology: 'triangle-list' },
+    });
+    this.compositeFormatPipelines.set(format, pipeline);
+    return pipeline;
   }
 
   getCompositeIntermediateView(): GPUTextureView {
@@ -729,6 +833,7 @@ export class RenderPipeline {
   }
 
   destroy(): void {
+    this.compositeFormatPipelines.clear();
     this.renderTargetManager.destroy();
     this.renderTargets = null;
     this.pipelines = null;
@@ -738,10 +843,15 @@ export class RenderPipeline {
     this.atmosphereLUT?.texture.destroy();
     this.earthTextures?.destroy();
     this.earthTextures = null;
+    this.skyCatalog?.destroy();
+    this.skyCatalog = null;
     this.releaseConjunctions();
     this.brushParamsBuffer?.destroy();
     this.brushParamsBuffer = null;
     this.brushBindGroup = null;
+    this.stripsParamsBuffer?.destroy();
+    this.stripsParamsBuffer = null;
+    this.stripsBindGroup = null;
     this.atmosphereLUT = null;
 
     if (this.smileV2Pipeline) {

@@ -31,6 +31,7 @@ import {
   setBrushRadiusKm,
   parseBrushMode,
 } from '@/app/BrushController.js';
+import { parseStripsMode, setStripsEnabled, setStripsMode } from '@/app/StripsController.js';
 import {
   applyConstellationSelection,
   toggleConstellationGroup,
@@ -202,6 +203,13 @@ export function setupCallbacks(rt: AppRuntime): void {
   });
   rt.ui.onBrushColorChange((css) => {
     setBrushColor(rt, css);
+  });
+  rt.ui.onStripsToggle((enabled) => {
+    setStripsEnabled(rt, enabled);
+  });
+  rt.ui.onStripsModeChange((name) => {
+    const mode = parseStripsMode(name);
+    if (mode !== null) setStripsMode(rt, mode);
   });
   bindGrowthTransport(rt);
 

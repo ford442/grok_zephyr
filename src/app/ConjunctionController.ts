@@ -12,7 +12,9 @@
 import type { AppRuntime } from '@/app/AppRuntime.js';
 import { getActiveFleetSize } from '@/core/FleetScale.js';
 import { calculateSatelliteBufferBudget } from '@/core/buffer/BufferAllocator.js';
+import { qualityForcesOverlaysOff, type QualityLevel } from '@/core/QualityPresets.js';
 import {
+  CONJUNCTION_OPTIONAL_FEATURES,
   DEFAULT_CONJUNCTION_THRESHOLD_KM,
   MAX_CONJUNCTION_THRESHOLD_KM,
   MIN_CONJUNCTION_THRESHOLD_KM,
@@ -50,6 +52,24 @@ export function parseConjunctionParams(search: string): ConjunctionUrlState {
   }
 
   return { enabled, thresholdKm, density };
+}
+
+/**
+ * Optional device features to request for the close-approach pass. Device
+ * features are frozen at requestDevice, so bootWebGPU decides from the URL
+ * before the device exists — and asks for `subgroups` only when `?ca=1` will
+ * actually run (not forced off by quality), never unconditionally. A user who
+ * turns the pass on later, or an adapter without the feature, gets the
+ * workgroup-memory scan and the same result.
+ */
+export function conjunctionOptionalFeatures(
+  search: string,
+  quality: QualityLevel,
+  isMobile: boolean,
+): GPUFeatureName[] {
+  if (parseConjunctionParams(search).enabled !== true) return [];
+  if (qualityForcesOverlaysOff(quality, isMobile)) return [];
+  return [...CONJUNCTION_OPTIONAL_FEATURES];
 }
 
 export function clampThreshold(km: number): number {
@@ -133,14 +153,13 @@ export function applyConjunctionBuffers(rt: AppRuntime): void {
 }
 
 /**
- * HUD line. Says how much of the fleet was actually scanned whenever that is
- * less than all of it, and flags a saturated hash table, so a small number is
- * never mistaken for a quiet sky.
+ * HUD line. Always says how much of the fleet the scan covered — all of it,
+ * since the counting-sort hash has no capacity to saturate — so the count is
+ * never read without its denominator.
  */
 export function formatConjunctionStatus(state: {
   enabled: boolean;
   pairCount: number;
-  overflow: number;
   truncated: boolean;
   fleetSize: number;
   unavailableReason: string | null;
@@ -150,12 +169,7 @@ export function formatConjunctionStatus(state: {
 
   const scanned = conjunctionScanLimit(state.fleetSize);
   const parts = [`Close pairs: ${state.truncated ? '≥' : ''}${state.pairCount.toLocaleString()}`];
-  if (scanned < state.fleetSize) {
-    parts.push(`scanned ${scanned.toLocaleString()}/${state.fleetSize.toLocaleString()}`);
-  }
-  if (state.overflow > 0) {
-    parts.push(`${state.overflow.toLocaleString()} dropped (dense cells)`);
-  }
+  parts.push(`scanned ${scanned.toLocaleString()}/${state.fleetSize.toLocaleString()}`);
   parts.push(CONJUNCTION_APPROXIMATE_LABEL);
   return parts.join(' · ');
 }

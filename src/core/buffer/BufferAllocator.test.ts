@@ -8,6 +8,7 @@ import {
   TRAIL_VERTEX_STRIDE_FLOATS,
 } from './bufferTypes.js';
 import { calculateSatelliteBufferBudget, memoryUsageBytes } from './BufferAllocator.js';
+import { BRUSH_PARAMS_BYTE_SIZE, STRIPS_PARAMS_BYTE_SIZE } from '@/shaders/uniformLayouts.js';
 
 const N = 1_048_576;
 const MB = 1024 * 1024;
@@ -44,6 +45,13 @@ describe('calculateSatelliteBufferBudget', () => {
     expect(breakdown.trails).toBe(TRAIL_BYTES_OFF);
     expect(breakdown.activeFrom).toBe(Math.ceil(N / 2) * 4);
     expect(Math.floor(total / MB)).toBe(84);
+  });
+
+  it('counts the brush and strips params uniforms and gives them no per-satellite entry', () => {
+    const { breakdown } = calculateSatelliteBufferBudget(N);
+    expect(breakdown.uniforms).toBeGreaterThanOrEqual(BRUSH_PARAMS_BYTE_SIZE + STRIPS_PARAMS_BYTE_SIZE);
+    expect(Object.keys(breakdown).some((k) => /brush|paint|strip/i.test(k))).toBe(false);
+    expect(breakdown.animScratch).toBe(N * 4);
   });
 
   it('fits cinematic trail history at 1M with a fixed, fleet-size-independent budget', () => {

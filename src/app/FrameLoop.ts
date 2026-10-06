@@ -1,6 +1,8 @@
 import { resolveBackgroundMode, setBackgroundMode } from '@/core/background.js';
 import { getActiveFleetSize } from '@/core/FleetScale.js';
 import { formatConjunctionStatus } from '@/app/ConjunctionController.js';
+import type { CameraState } from '@/camera/CameraController.js';
+import type { ViewMode } from '@/types/index.js';
 import { skylineEmissiveScale } from '@/core/ViewTuningProfile.js';
 import { v3dot, v3norm, smoothstep } from '@/utils/math.js';
 import { getBackgroundModeIndex } from '@/core/background.js';
@@ -22,6 +24,8 @@ import {
 } from '@/app/UniformWriter.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 import { writeIslParams } from '@/app/IslController.js';
+import { syncStrips } from '@/app/StripsController.js';
+import { StripsMode } from '@/physics/skyStrips.js';
 import { tickGrowth } from '@/growth/GrowthController.js';
 import type { SatelliteFrameBuffers } from '@/core/buffer/bufferTypes.js';
 import { OffscreenCapture, isOffscreenCaptureEnabled } from '@/capture/OffscreenCapture.js';
@@ -45,6 +49,161 @@ export class FrameLoopState {
   benchCullLastSwitch = 0;
   benchCullViewIndex = 0;
   offscreenCapture: OffscreenCapture | null = null;
+}
+
+/**
+ * View-independent compute: orbital propagation, beams, ISL topology and close
+ * approaches. Encoded once per frame — the XR path runs it once for both eyes.
+ */
+export function encodeViewIndependentCompute(
+  rt: AppRuntime,
+  encoder: GPUCommandEncoder,
+  time: number,
+  viewMode: ViewMode,
+): { conjunctionsActive: boolean } {
+  const pipeline = rt.pipeline;
+  if (!pipeline) return { conjunctionsActive: false };
+
+  rt.profiler.beginGPUTimestamp('orbital');
+  pipeline.encodeComputePass(encoder);
+  rt.profiler.endGPUTimestamp('orbital');
+
+  // History ring was just written by the orbital pass. Expand ribbons before
+  // the trail draw. CPU sampling stays a no-op while this path is live.
+  dispatchGpuTrailWork(rt, encoder);
+
+  rt.profiler.beginGPUTimestamp('beam');
+  pipeline.encodeBeamComputePass(encoder);
+  rt.profiler.endGPUTimestamp('beam');
+
+  if (rt.simulation.islEnabled && viewMode !== 'ground') {
+    writeIslParams(rt);
+    pipeline.encodeIslComputePass(encoder);
+  }
+
+  // Close approaches: no dispatches, no readback and no bound buffers unless
+  // the feature is on. Skipped in ground view for the same reason ISL is —
+  // the markers are orbital-scale and meaningless from the surface.
+  const conjunctionsActive = rt.simulation.conjunctionsEnabled && viewMode !== 'ground';
+  if (conjunctionsActive) {
+    pipeline.writeConjunctionParams(true, rt.simulation.conjunctionThresholdKm, time);
+    rt.profiler.beginGPUTimestamp('conjunction');
+    pipeline.encodeConjunctionComputePass(encoder);
+    rt.profiler.endGPUTimestamp('conjunction');
+  }
+  return { conjunctionsActive };
+}
+
+export interface ViewDependentSceneOptions {
+  cameraState: CameraState;
+  simTime: number;
+  conjunctionsActive: boolean;
+  /** Scene variant to draw. XR always passes 'horizon-720' (no ground/skyline/moon). */
+  viewMode: ViewMode;
+}
+
+/**
+ * View-dependent work for the view whose `Uni` block is current: frustum cull,
+ * scene, ISL / conjunction draws, trails, overlays and volumetric beams into the
+ * HDR target. XR encodes this once per eye after copying that eye's block in.
+ */
+export function encodeViewDependentScene(
+  rt: AppRuntime,
+  encoder: GPUCommandEncoder,
+  opts: ViewDependentSceneOptions,
+): void {
+  const pipeline = rt.pipeline;
+  if (!pipeline || !rt.earthVertexBuffer || !rt.earthIndexBuffer) return;
+  const { cameraState, simTime, conjunctionsActive, viewMode } = opts;
+
+  if (pipeline.isGpuCullingEnabled()) {
+    rt.profiler.beginGPUTimestamp('cull');
+    pipeline.encodeCullPass(encoder);
+    rt.profiler.endGPUTimestamp('cull');
+  }
+
+  rt.profiler.beginGPUTimestamp('scene');
+  if (viewMode === 'ground') {
+    const hz = rt.groundObserver.getHorizonSettings();
+    pipeline.setGroundViewParams(hz.oceanBias, hz.urbanGlow, hz.overlayFade, hz.hazeBoost);
+    pipeline.encodeGroundScenePass(encoder);
+  } else {
+    pipeline.encodeScenePass(
+      encoder,
+      rt.earthVertexBuffer,
+      rt.earthIndexBuffer,
+      rt.earthIndexCount,
+      viewMode === 'moon',
+    );
+    if (rt.simulation.islEnabled) {
+      pipeline.encodeIslPass(encoder);
+    }
+    if (conjunctionsActive) {
+      if (rt.simulation.conjunctionDensityEnabled) {
+        pipeline.encodeConjunctionDensityPass(encoder);
+      }
+      pipeline.encodeConjunctionPass(encoder);
+    }
+  }
+
+  if (rt.trailRenderer) {
+    pipeline.encodeTrailPass(encoder, rt.trailRenderer);
+  }
+
+  if (viewMode === 'god' && rt.constellationGuides?.isEnabled()) {
+    pipeline.encodeConstellationGuidesPass(encoder, rt.constellationGuides);
+  }
+
+  if (viewMode === 'moon') {
+    rt.moonRingGuide?.setSubtleRing(true);
+    pipeline.encodeMoonOverlayPass(encoder, rt.moonRingGuide);
+    rt.ui.setMoonScaleAnnotation(rt.moonScaleHudEnabled);
+  } else {
+    rt.ui.setMoonScaleAnnotation(false);
+  }
+
+  // A timestamp scope can't nest, so 'scene' closes here and reopens after
+  // volumetrics gets its own — skyline below still lands back in 'scene'.
+  rt.profiler.endGPUTimestamp('scene');
+
+  if (rt.volumetricBeamRenderer) {
+    rt.profiler.beginGPUTimestamp('volumetrics');
+    rt.volumetricBeamRenderer.encodeRaymarchPass(encoder);
+    rt.volumetricBeamRenderer.encodeCompositePass(encoder, pipeline.getHDRView());
+    rt.profiler.endGPUTimestamp('volumetrics');
+  }
+
+  rt.profiler.beginGPUTimestamp('scene');
+
+  if (viewMode === 'skyline' && rt.context) {
+    rt.skyline.setObserver(cameraState.position);
+    const { width: canvasW, height: canvasH } = rt.context.getCanvasSize();
+    const cityViewProj = rt.skyline.computeCityViewProj(
+      cameraState.position,
+      cameraState.target,
+      cameraState.up,
+      canvasW / canvasH,
+      cameraState.fov,
+    );
+    const sunPosSky = sunPositionForRuntime(rt);
+    const sunDir = v3norm(sunPosSky);
+    const up = v3norm(cameraState.position);
+    let nightFactor = smoothstep(0.1, -0.1, v3dot(up, sunDir));
+    nightFactor = Math.max(nightFactor, 0.94);
+    rt.skyline.updateUniform(
+      rt.context.getDevice(),
+      cityViewProj,
+      cameraState.position,
+      sunDir,
+      nightFactor,
+      simTime,
+      skylineEmissiveScale(rt.view.imageTuning.coreBoost),
+      rt.simulation.skylineDisplayMode,
+    );
+    pipeline.encodeSkylinePass(encoder, rt.skyline.buildingCount);
+  }
+
+  rt.profiler.endGPUTimestamp('scene');
 }
 
 export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => void {
@@ -167,36 +326,23 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
 
     const encoder = rt.context.createCommandEncoder('frame');
 
-    rt.profiler.beginGPUTimestamp('orbital');
-    rt.pipeline.encodeComputePass(encoder);
-    rt.profiler.endGPUTimestamp('orbital');
+    const viewMode = rt.camera.getViewMode();
+    const { conjunctionsActive } = encodeViewIndependentCompute(rt, encoder, time, viewMode);
 
-    dispatchGpuTrailWork(rt, encoder);
-
-    rt.profiler.beginGPUTimestamp('beam');
-    rt.pipeline.encodeBeamComputePass(encoder);
-    rt.profiler.endGPUTimestamp('beam');
-
-    if (rt.simulation.islEnabled && rt.camera.getViewMode() !== 'ground') {
-      writeIslParams(rt);
-      rt.pipeline.encodeIslComputePass(encoder);
-    }
-
-    // Close approaches: no dispatches, no readback and no bound buffers unless
-    // the feature is on. Skipped in ground view for the same reason ISL is —
-    // the markers are orbital-scale and meaningless from the surface.
-    const conjunctionsActive =
-      rt.simulation.conjunctionsEnabled && rt.camera.getViewMode() !== 'ground';
-    if (conjunctionsActive) {
-      rt.pipeline.writeConjunctionParams(true, rt.simulation.conjunctionThresholdKm, time);
-      rt.profiler.beginGPUTimestamp('conjunction');
-      rt.pipeline.encodeConjunctionComputePass(encoder);
-      rt.profiler.endGPUTimestamp('conjunction');
+    // Sky Strips (low half of the scratch) then Light Brush (high half). Each
+    // pass preserves the other's bits, so both show at once.
+    rt.pipeline.setAnimScratchUsers({ brush: rt.brush.ownsScratch(), strips: rt.strips.usesScratch() });
+    if (rt.strips.usesScratch()) {
+      const strips = rt.strips;
+      const bands = strips.enabled && strips.mode === StripsMode.BEAT ? rt.audio.getBands() : null;
+      if (strips.enabled) syncStrips(rt, bands !== null);
+      // Null when idle; one CLEAR dispatch right after it stops drawing.
+      const stripsParams = strips.tick(deltaTime, { bands, reducedMotion: calmMotion });
+      if (stripsParams) rt.pipeline.encodeStripsPass(encoder, stripsParams);
     }
 
     // Light Brush: builds stamps against this frame's camera and dispatches only
     // while a stroke is live or paint is still fading.
-    rt.pipeline.setBrushOwnsAnimScratch(rt.brush.ownsScratch());
     const brushParams = rt.brush.tick(deltaTime, {
       cameraPosition: cameraState.position,
       cameraUp: cameraState.up,
@@ -208,94 +354,12 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
       rt.pipeline.encodeBrushPass(encoder, brushParams);
     }
 
-    if (rt.pipeline.isGpuCullingEnabled()) {
-      rt.profiler.beginGPUTimestamp('cull');
-      rt.pipeline.encodeCullPass(encoder);
-      rt.profiler.endGPUTimestamp('cull');
-    }
-
-    rt.profiler.beginGPUTimestamp('scene');
-    if (rt.camera.getViewMode() === 'ground') {
-      const hz = rt.groundObserver.getHorizonSettings();
-      rt.pipeline.setGroundViewParams(hz.oceanBias, hz.urbanGlow, hz.overlayFade, hz.hazeBoost);
-      rt.pipeline.encodeGroundScenePass(encoder);
-    } else {
-      rt.pipeline.encodeScenePass(
-        encoder,
-        rt.earthVertexBuffer,
-        rt.earthIndexBuffer,
-        rt.earthIndexCount,
-        rt.camera.getViewMode() === 'moon',
-      );
-      if (rt.simulation.islEnabled) {
-        rt.pipeline.encodeIslPass(encoder);
-      }
-      if (conjunctionsActive) {
-        if (rt.simulation.conjunctionDensityEnabled) {
-          rt.pipeline.encodeConjunctionDensityPass(encoder);
-        }
-        rt.pipeline.encodeConjunctionPass(encoder);
-      }
-    }
-
-    if (rt.trailRenderer) {
-      rt.pipeline.encodeTrailPass(encoder, rt.trailRenderer);
-    }
-
-    if (rt.camera.getViewMode() === 'god' && rt.constellationGuides?.isEnabled()) {
-      rt.pipeline.encodeConstellationGuidesPass(encoder, rt.constellationGuides);
-    }
-
-    if (rt.camera.getViewMode() === 'moon') {
-      rt.moonRingGuide?.setSubtleRing(true);
-      rt.pipeline.encodeMoonOverlayPass(encoder, rt.moonRingGuide);
-      rt.ui.setMoonScaleAnnotation(rt.moonScaleHudEnabled);
-    } else {
-      rt.ui.setMoonScaleAnnotation(false);
-    }
-
-    // A timestamp scope can't nest, so 'scene' closes here and reopens after
-    // volumetrics gets its own — skyline below still lands back in 'scene'.
-    rt.profiler.endGPUTimestamp('scene');
-
-    if (rt.volumetricBeamRenderer) {
-      rt.profiler.beginGPUTimestamp('volumetrics');
-      rt.volumetricBeamRenderer.encodeRaymarchPass(encoder);
-      rt.volumetricBeamRenderer.encodeCompositePass(encoder, rt.pipeline.getHDRView());
-      rt.profiler.endGPUTimestamp('volumetrics');
-    }
-
-    rt.profiler.beginGPUTimestamp('scene');
-
-    if (rt.camera.getViewMode() === 'skyline' && rt.context) {
-      rt.skyline.setObserver(cameraState.position);
-      const { width: canvasW, height: canvasH } = rt.context.getCanvasSize();
-      const cityViewProj = rt.skyline.computeCityViewProj(
-        cameraState.position,
-        cameraState.target,
-        cameraState.up,
-        canvasW / canvasH,
-        cameraState.fov,
-      );
-      const sunPosSky = sunPositionForRuntime(rt);
-      const sunDir = v3norm(sunPosSky);
-      const up = v3norm(cameraState.position);
-      let nightFactor = smoothstep(0.1, -0.1, v3dot(up, sunDir));
-      nightFactor = Math.max(nightFactor, 0.94);
-      rt.skyline.updateUniform(
-        rt.context.getDevice(),
-        cityViewProj,
-        cameraState.position,
-        sunDir,
-        nightFactor,
-        simTime,
-        skylineEmissiveScale(rt.view.imageTuning.coreBoost),
-        rt.simulation.skylineDisplayMode,
-      );
-      rt.pipeline.encodeSkylinePass(encoder, rt.skyline.buildingCount);
-    }
-
-    rt.profiler.endGPUTimestamp('scene');
+    encodeViewDependentScene(rt, encoder, {
+      cameraState,
+      simTime,
+      conjunctionsActive,
+      viewMode,
+    });
 
     rt.profiler.beginGPUTimestamp('post');
     const sceneSourceView = rt.pipeline.encodeDepthOfFieldPasses(encoder);
@@ -357,23 +421,24 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
     if (conjunctionsActive) {
       void rt.pipeline.consumeConjunctionStats().then((stats) => {
         if (!stats) return;
+        const fleetSize = getActiveFleetSize();
+        rt.profiler.setConjunctionCoverage({ binned: stats.binned, fleet: fleetSize });
         rt.ui.setConjunctionStatus(
           formatConjunctionStatus({
             enabled: true,
             pairCount: stats.pairCount,
-            overflow: stats.overflow,
             truncated: stats.truncated,
-            fleetSize: getActiveFleetSize(),
+            fleetSize,
             unavailableReason: rt.simulation.conjunctionUnavailableReason,
           }),
         );
       });
     } else {
+      rt.profiler.setConjunctionCoverage(null);
       rt.ui.setConjunctionStatus(
         formatConjunctionStatus({
           enabled: false,
           pairCount: 0,
-          overflow: 0,
           truncated: false,
           fleetSize: getActiveFleetSize(),
           unavailableReason: rt.simulation.conjunctionUnavailableReason,

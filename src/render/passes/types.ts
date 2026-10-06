@@ -40,5 +40,7 @@ export interface FrameContext {
   bloomCompositeUniformBuffer: GPUBuffer;
   tonemapUniformBuffer: GPUBuffer;
   groundTerrainEnabled: boolean;
+  /** Catalog stars to draw (`?sky=hip`), 0 for the procedural sky. Fixed at boot, so not part of the bundle key. */
+  skyCatalogCount: number;
   skylineBindGroup: GPUBindGroup | null;
 }

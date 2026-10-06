@@ -23,6 +23,7 @@ export interface PipelineLayoutBundle {
   skylineLayout: GPUBindGroupLayout;
   motionBlurLayout: GPUBindGroupLayout;
   earthMapLayout: GPUBindGroupLayout;
+  starCatalogLayout: GPUBindGroupLayout;
   earthVertexLayout: GPUVertexBufferLayout;
   additiveBlend: GPUBlendState;
   beamComputeLayout: GPUPipelineLayout;
@@ -35,6 +36,7 @@ export interface PipelineLayoutBundle {
   conjunctionDensityLayout: GPUPipelineLayout;
   brushComputeLayout: GPUPipelineLayout;
   trailExpandLayout: GPUPipelineLayout;
+  stripsComputeLayout: GPUPipelineLayout;
 }
 
 export interface PipelineBuildArgs {
@@ -113,6 +115,20 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
       { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
       { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
       { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+    ],
+  });
+
+  // Hipparcos catalog (?sky=hip): packed star records + SkyCatalogSettings.
+  // Always bound (one-star placeholder under ?sky=proc), like the earth plates.
+  const starCatalogLayout = device.createBindGroupLayout({
+    label: 'star-catalog',
+    entries: [
+      { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+      {
+        binding: 1,
+        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+        buffer: { type: 'uniform' },
+      },
     ],
   });
 
@@ -398,7 +414,9 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
           { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
           { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
           { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
-          { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+          { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+          { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+          { binding: 8, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
         ],
       }),
     ],
@@ -443,6 +461,7 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
             visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
             buffer: { type: 'uniform' },
           },
+          { binding: 5, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         ],
       }),
     ],
@@ -457,6 +476,22 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
           { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
           { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
           { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        ],
+      }),
+    ],
+  });
+
+  // Sky Strips: params + positions + orbital elements in, packed animation
+  // scratch read-write (low half only; see animScratchPack.wgsl).
+  const stripsComputeLayout = device.createPipelineLayout({
+    bindGroupLayouts: [
+      device.createBindGroupLayout({
+        label: 'sky-strips-compute',
+        entries: [
+          { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+          { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+          { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+          { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
         ],
       }),
     ],
@@ -501,6 +536,7 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
     skylineLayout,
     motionBlurLayout,
     earthMapLayout,
+    starCatalogLayout,
     earthVertexLayout,
     additiveBlend,
     beamComputeLayout,
@@ -513,5 +549,6 @@ export function createPipelineLayouts(context: WebGPUContext): PipelineLayoutBun
     conjunctionDensityLayout,
     brushComputeLayout,
     trailExpandLayout,
+    stripsComputeLayout,
   };
 }

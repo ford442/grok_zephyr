@@ -6,8 +6,9 @@
  * WGSL and must stay in step, which is what `brushFalloff.test.ts` pins (the
  * shader constants are checked against the ones exported here).
  *
- * Paint lives in the packed rgba8 animation scratch (one u32 per satellite,
- * the same slot Smile V2 writes): rgb = brush colour, a = intensity. Nothing in
+ * Paint lives in the high 16 bits of the packed animation scratch (one u32 per
+ * satellite; see animScratchPacking.ts): a8 intensity over an RGB332 colour.
+ * The low half belongs to Sky Strips and every function here preserves it. Nothing in
  * here is gravity, orbit perturbation or tracking — it changes how brightly a
  * satellite is drawn and nothing else.
  *
@@ -17,6 +18,16 @@
  * rates that happens almost immediately. `PaintDecayClock` guarantees a full
  * stroke is gone in exactly `fadeSeconds`, independent of frame rate.
  */
+
+import {
+  ANIM_SCRATCH_BRUSH_SHIFT,
+  animHalf,
+  animHalfAlpha,
+  animHalfColor,
+  animHalfPack,
+  animWithHalf,
+  rgb332FromRgb24,
+} from './animScratchPacking.js';
 
 export type Vec3Tuple = readonly [number, number, number];
 
@@ -160,16 +171,18 @@ export function stampWeight(
   return w;
 }
 
+/** Brush half only: rgb24 is quantised to RGB332, the strips half is 0. */
 export function packPaint(rgb: number, alpha: number): number {
-  return (((alpha & 0xff) << 24) | (rgb & 0xffffff)) >>> 0;
+  return animWithHalf(0, ANIM_SCRATCH_BRUSH_SHIFT, animHalfPack(alpha, rgb332FromRgb24(rgb)));
 }
 
 export function paintAlpha(packed: number): number {
-  return packed >>> 24;
+  return animHalfAlpha(animHalf(packed, ANIM_SCRATCH_BRUSH_SHIFT));
 }
 
+/** The brush colour as RGB332. */
 export function paintRgb(packed: number): number {
-  return packed & 0xffffff;
+  return animHalfColor(animHalf(packed, ANIM_SCRATCH_BRUSH_SHIFT));
 }
 
 /**
@@ -178,7 +191,8 @@ export function paintRgb(packed: number): number {
  * a patch lit at full instead of saturating its neighbours. The stamp's colour
  * wins only where it is brighter than what is left, so repainting in a new
  * colour replaces the old one while an older fading stroke keeps its own. A
- * fully faded satellite is exactly 0 so the scratch reads as "no paint".
+ * fully faded satellite's brush half is exactly 0 so it reads as "no paint";
+ * the strips half (low 16 bits) passes through untouched.
  */
 export function composePaint(
   packed: number,
@@ -187,13 +201,13 @@ export function composePaint(
   brushRgb: number,
 ): number {
   let a = paintAlpha(packed);
-  let rgb = paintRgb(packed);
+  let c = paintRgb(packed);
   a = a > decaySteps ? a - decaySteps : 0;
   if (level > a) {
     a = level;
-    rgb = brushRgb & 0xffffff;
+    c = rgb332FromRgb24(brushRgb);
   }
-  return a === 0 ? 0 : packPaint(rgb, a);
+  return animWithHalf(packed, ANIM_SCRATCH_BRUSH_SHIFT, animHalfPack(a, c));
 }
 
 /**

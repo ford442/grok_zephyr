@@ -5,6 +5,7 @@ import { TLELoader } from '@/data/TLELoader.js';
 import { TlePropagator } from './TlePropagator.js';
 import { Sgp4WasmEngine } from './Sgp4WasmEngine.js';
 import { eciStateToKeplerian } from './keplerianFromState.js';
+import { mat3MulVec, temeToGcrfMatrix, unixMsToJulianDate } from './frames.js';
 
 const SAMPLE_TLE = `STARLINK-1007
 1 44713U 19074A   24356.50000000  .00001256  00000-0  11371-3 0  9991
@@ -107,6 +108,27 @@ describe('Sgp4WasmEngine', () => {
     );
     expect(angle).toBeGreaterThan(0);
     expect(angle).toBeLessThan(0.01);
+  });
+
+  it('matches the TS temeToGcrfMatrix port (star catalog frame)', () => {
+    if (!engine) return;
+    const dateMs = Date.UTC(2026, 9, 5, 0, 0, 0);
+    const m = temeToGcrfMatrix(unixMsToJulianDate(dateMs));
+    const r = 7000;
+    const basis: Array<[number, number, number]> = [
+      [r, 0, 0],
+      [0, r, 0],
+      [0, 0, r],
+    ];
+    const state = new Float32Array(18);
+    basis.forEach((v, i) => state.set(v, i * 6));
+    const gcrf = engine.temeToGcrf(state, dateMs);
+    basis.forEach((v, i) => {
+      const ts = mat3MulVec(m, v);
+      const err = Math.hypot(gcrf[i * 6] - ts[0], gcrf[i * 6 + 1] - ts[1], gcrf[i * 6 + 2] - ts[2]);
+      // f32 state at 7000 km resolves ~0.5 mm; 1e-2 km is ~0.3 arcsec.
+      expect(err).toBeLessThan(1e-2);
+    });
   });
 
   it('agrees with satellite.js within 1e-3 km over a 24h window', () => {

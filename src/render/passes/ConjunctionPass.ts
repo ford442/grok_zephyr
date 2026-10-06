@@ -1,5 +1,5 @@
 /**
- * Close-approach passes — hash bin + pair search, then the warning overlay.
+ * Close-approach passes — counting-sort hash + pair search, then the warning overlay.
  *
  * Nothing here is encoded when the feature is off: FrameLoop skips the calls
  * entirely, so a disabled feature costs zero dispatches and zero bound
@@ -25,17 +25,30 @@ export function encodeConjunctionComputePass(
   });
   pass.setBindGroup(0, bindGroup);
 
-  // Clear covers the bucket table; the counters are reset by invocation 0.
+  // Every dispatch below reads what the previous one wrote. Separate
+  // dispatches in one pass are ordered, so no explicit barrier is needed.
+  const satGroups = Math.ceil(set.scanCount / WORKGROUP_SIZE);
+
+  // Clear covers the bucket counts; the counters are reset by invocation 0.
   pass.setPipeline(ctx.pipelines.conjunctionClear);
   pass.dispatchWorkgroups(Math.ceil(set.buckets / WORKGROUP_SIZE));
 
-  // Binning must complete before the neighbour walk reads the table. Separate
-  // dispatches in one pass are ordered, so no explicit barrier is needed.
-  pass.setPipeline(ctx.pipelines.conjunctionBin);
-  pass.dispatchWorkgroups(Math.ceil(set.scanCount / WORKGROUP_SIZE));
+  pass.setPipeline(ctx.pipelines.conjunctionCount);
+  pass.dispatchWorkgroups(satGroups);
+
+  // Exclusive prefix sum of the counts → per-bucket offsets into `sorted`.
+  pass.setPipeline(ctx.pipelines.conjunctionScanBlocks);
+  pass.dispatchWorkgroups(set.blocks);
+  pass.setPipeline(ctx.pipelines.conjunctionScanSums);
+  pass.dispatchWorkgroups(1);
+  pass.setPipeline(ctx.pipelines.conjunctionScanAdd);
+  pass.dispatchWorkgroups(set.blocks);
+
+  pass.setPipeline(ctx.pipelines.conjunctionScatter);
+  pass.dispatchWorkgroups(satGroups);
 
   pass.setPipeline(ctx.pipelines.conjunctionPairs);
-  pass.dispatchWorkgroups(Math.ceil(set.scanCount / WORKGROUP_SIZE));
+  pass.dispatchWorkgroups(satGroups);
 
   pass.end();
 }

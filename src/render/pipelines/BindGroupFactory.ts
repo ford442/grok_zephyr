@@ -8,6 +8,7 @@ import type { PipelineBindGroups, Pipelines, RenderTargets } from './types.js';
 
 import type { SatelliteCullBuffers } from '../SatelliteCullBuffers.js';
 import type { EarthTextureResources } from '../EarthTextures.js';
+import type { SkyCatalogResources } from '../SkyCatalogGpu.js';
 
 export interface BindGroupResources {
   context: WebGPUContext;
@@ -27,6 +28,7 @@ export interface BindGroupResources {
   cullBuffers: SatelliteCullBuffers;
   earthTextures: EarthTextureResources;
   earthMapSettingsBuffer: GPUBuffer;
+  skyCatalog: SkyCatalogResources;
 }
 
 export function createStaticBindGroups(resources: BindGroupResources): PipelineBindGroups {
@@ -48,6 +50,7 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
     cullBuffers,
     earthTextures,
     earthMapSettingsBuffer,
+    skyCatalog,
   } = resources;
 
   const device = context.getDevice();
@@ -142,6 +145,14 @@ export function createStaticBindGroups(resources: BindGroupResources): PipelineB
         { binding: 1, resource: atmosphereLUTView },
         { binding: 2, resource: linearSampler },
         { binding: 3, resource: { buffer: atmosphereSettingsBuffer } },
+      ],
+    }),
+
+    starCatalog: device.createBindGroup({
+      layout: pipelines.starsCatalog.getBindGroupLayout(1),
+      entries: [
+        { binding: 0, resource: { buffer: skyCatalog.starBuffer } },
+        { binding: 1, resource: { buffer: skyCatalog.settingsBuffer } },
       ],
     }),
 

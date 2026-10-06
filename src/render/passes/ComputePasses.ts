@@ -42,6 +42,23 @@ export function encodeBrushComputePass(
   pass.end();
 }
 
+/** Sky Strips: one dispatch over the fleet, writing the low half of the animation scratch. */
+export function encodeStripsComputePass(
+  encoder: GPUCommandEncoder,
+  ctx: FrameContext,
+  bindGroup: GPUBindGroup,
+): void {
+  const pass = encoder.beginComputePass({
+    timestampWrites: passTimestampWrites(),
+    label: 'sky-strips',
+  });
+  pass.setPipeline(ctx.pipelines.skyStrips);
+  pass.setBindGroup(0, bindGroup);
+  // skyStrips.wgsl is @workgroup_size(256), like brush.wgsl.
+  pass.dispatchWorkgroups(Math.ceil(getActiveFleetSize() / 256));
+  pass.end();
+}
+
 export function encodeIslComputePass(encoder: GPUCommandEncoder, ctx: FrameContext): void {
   const pass = encoder.beginComputePass({
     timestampWrites: passTimestampWrites(),

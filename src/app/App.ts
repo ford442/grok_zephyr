@@ -21,6 +21,7 @@ import type { AppRuntime } from '@/app/AppRuntime.js';
 import { SatelliteCatalog } from '@/data/SatelliteCatalog.js';
 import { pickAndSelectAtScreen, pickSatelliteAtScreen } from '@/app/SatelliteSelection.js';
 import { BrushController } from '@/app/BrushController.js';
+import { StripsController } from '@/app/StripsController.js';
 import { SimulationState } from '@/app/SimulationState.js';
 import { ViewModeState } from '@/app/ViewModeCoordinator.js';
 import { FrameLoopState, startWebGPULoop, stopLoop } from '@/app/FrameLoop.js';
@@ -103,6 +104,7 @@ export class App implements AppRuntime {
   readonly groundStationGuides: GroundStationGuides;
   xrSession: XrSessionManager | null = null;
   readonly brush: BrushController;
+  readonly strips = new StripsController();
 
   earthVertexBuffer: GPUBuffer | null = null;
   earthIndexBuffer: GPUBuffer | null = null;
@@ -312,7 +314,10 @@ export class App implements AppRuntime {
     }
   }
 
-  /** Capability-gate the Enter VR button; WebGL is required for Stage 2 XR. */
+  /**
+   * Capability-gate the Enter VR button: WebGPU presents through XRGPUBinding
+   * (Stage 3); without the binding, VR needs the WebGL renderer (Stage 2).
+   */
   private async initXrUi(): Promise<void> {
     const supported = await isImmersiveVrSupported();
     if (!supported) {
@@ -320,15 +325,21 @@ export class App implements AppRuntime {
       return;
     }
     this.ui.setEnterVrVisible(true);
-    if (this.backend !== 'webgl') {
+    const backend = this.xrSession?.presentBackend() ?? null;
+    if (backend === 'webgpu') {
       this.ui.setEnterVrEnabled(
-        false,
-        'VR preview requires WebGL — open with ?renderer=webgl then Enter VR',
+        true,
+        'Enter VR (WebGPU) — look around from 720km; trigger/[ ] cycle anchors',
       );
-    } else {
+    } else if (backend === 'webgl') {
       this.ui.setEnterVrEnabled(
         true,
         'Enter VR — look around from 720km; trigger/[ ] cycle anchors',
+      );
+    } else {
+      this.ui.setEnterVrEnabled(
+        false,
+        'VR on WebGPU needs XRGPUBinding — open with ?renderer=webgl for the WebGL VR preview',
       );
     }
   }

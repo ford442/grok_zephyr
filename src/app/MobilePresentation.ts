@@ -128,6 +128,15 @@ export function handleResize(rt: AppRuntime): void {
   rt.canvas.height = height;
 
   rt.context.resize(width, height);
+  resizeRenderTargets(rt, width, height);
+}
+
+/**
+ * Resize the off-screen frame graph (HDR / depth / bloom / post targets) without
+ * touching the canvas. The XR path sizes them to the eye viewport this way.
+ */
+export function resizeRenderTargets(rt: AppRuntime, width: number, height: number): void {
+  if (!rt.buffers || !rt.pipeline) return;
   rt.pipeline.resize(width, height);
   rt.postProcessStack?.resize(width, height);
   rt.volumetricBeamRenderer?.resize(width, height);

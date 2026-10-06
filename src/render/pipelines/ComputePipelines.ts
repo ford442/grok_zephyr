@@ -10,11 +10,16 @@ export async function createComputePipelines({ context, layouts, modules }: Pipe
     islCompute,
     islFiber,
     conjunctionClear,
-    conjunctionBin,
+    conjunctionCount,
+    conjunctionScanBlocks,
+    conjunctionScanSums,
+    conjunctionScanAdd,
+    conjunctionScatter,
     conjunctionPairs,
     conjunctionDraw,
     conjunctionDensity,
     brushPaint,
+    skyStrips,
     satelliteCullSats,
     satelliteCullBeams,
     satelliteCullFinalize,
@@ -59,9 +64,29 @@ export async function createComputePipelines({ context, layouts, modules }: Pipe
       compute: { module: modules.conjunctionCompute, entryPoint: 'clear_bins' },
     }),
     context.createComputePipelineAsync({
-      label: 'conjunction-bin',
+      label: 'conjunction-count',
       layout: layouts.conjunctionComputeLayout,
-      compute: { module: modules.conjunctionCompute, entryPoint: 'bin_sats' },
+      compute: { module: modules.conjunctionCompute, entryPoint: 'count_sats' },
+    }),
+    context.createComputePipelineAsync({
+      label: 'conjunction-scan-blocks',
+      layout: layouts.conjunctionComputeLayout,
+      compute: { module: modules.conjunctionScan, entryPoint: 'scan_blocks' },
+    }),
+    context.createComputePipelineAsync({
+      label: 'conjunction-scan-sums',
+      layout: layouts.conjunctionComputeLayout,
+      compute: { module: modules.conjunctionScan, entryPoint: 'scan_block_sums' },
+    }),
+    context.createComputePipelineAsync({
+      label: 'conjunction-scan-add',
+      layout: layouts.conjunctionComputeLayout,
+      compute: { module: modules.conjunctionScan, entryPoint: 'add_block_offsets' },
+    }),
+    context.createComputePipelineAsync({
+      label: 'conjunction-scatter',
+      layout: layouts.conjunctionComputeLayout,
+      compute: { module: modules.conjunctionCompute, entryPoint: 'scatter_sats' },
     }),
     context.createComputePipelineAsync({
       label: 'conjunction-pairs',
@@ -106,6 +131,11 @@ export async function createComputePipelines({ context, layouts, modules }: Pipe
       compute: { module: modules.brushCompute, entryPoint: 'main', constants: fleet },
     }),
     context.createComputePipelineAsync({
+      label: 'sky-strips',
+      layout: layouts.stripsComputeLayout,
+      compute: { module: modules.stripsCompute, entryPoint: 'main', constants: fleet },
+    }),
+    context.createComputePipelineAsync({
       label: 'satellite-cull-sats',
       layout: layouts.device.createPipelineLayout({ bindGroupLayouts: [layouts.satelliteCullLayout] }),
       compute: { module: modules.satelliteCull, entryPoint: 'cull_satellites', constants: fleet },
@@ -141,5 +171,5 @@ export async function createComputePipelines({ context, layouts, modules }: Pipe
       compute: { module: modules.autoExposureAdapt, entryPoint: 'main' },
     })
   ]);
-  return { compute, beamCompute, islCompute, islFiber, conjunctionClear, conjunctionBin, conjunctionPairs, conjunctionDraw, conjunctionDensity, brushPaint, satelliteCullSats, satelliteCullBeams, satelliteCullFinalize, trailExpand, trailExpandFinalize, autoExposureHistogram, autoExposureAdapt };
+  return { compute, beamCompute, islCompute, islFiber, conjunctionClear, conjunctionCount, conjunctionScanBlocks, conjunctionScanSums, conjunctionScanAdd, conjunctionScatter, conjunctionPairs, conjunctionDraw, conjunctionDensity, brushPaint, skyStrips, satelliteCullSats, satelliteCullBeams, satelliteCullFinalize, trailExpand, trailExpandFinalize, autoExposureHistogram, autoExposureAdapt };
 }

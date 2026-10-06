@@ -15,6 +15,8 @@ import type { AppRuntime } from '@/app/AppRuntime.js';
 import { stationGpuState } from '@/ground/GroundStation.js';
 import { artSunPositionEci, resolveSunPosition } from '@/physics/sun.js';
 import { earthRotationRad, type EarthRotationMode } from '@/physics/frames.js';
+import { skyFrameMatrix } from '@/render/SkyCatalog.js';
+import type { RenderPipeline } from '@/render/RenderPipeline.js';
 
 /**
  * Art-mode sun (XY-plane circle). Kept for visual-baseline compatibility.
@@ -113,13 +115,8 @@ export function resolveViewDescriptor(
   return viewDescriptorFromCameraState(cameraState, width, height);
 }
 
-export function writeUniforms(
-  rt: AppRuntime,
-  time: number,
-  deltaTime: number,
-  camera: CameraState | null = null,
-  view?: ViewDescriptor | null,
-): void {
+/** Ground-station uniform (once per frame, view-independent). */
+export function writeStationUniform(rt: AppRuntime): void {
   const station = stationGpuState(rt.simulation.groundStations.active, rt.simulation.clock.simUtcMs);
   const stationData = new Float32Array([
     station.positionEciKm[0], station.positionEciKm[1], station.positionEciKm[2], station.active ? 1 : 0,
@@ -127,11 +124,45 @@ export function writeUniforms(
   ]);
   const stationBuffer = rt.buffers?.getBuffers().stationUniform;
   if (stationBuffer && rt.context) rt.context.writeBuffer(stationBuffer, stationData);
-  if (!rt.context || !rt.buffers) return;
+}
 
-  const desc = view ?? resolveViewDescriptor(rt, time, camera);
+/** Precession moves stars ~4 arcsec a month; re-derive the frame this often. */
+const SKY_FRAME_REFRESH_MS = 30 * 86400 * 1000;
+let lastSkyFrame: { pipeline: RenderPipeline; key: string } | null = null;
+
+/**
+ * ICRS → render-frame rotation for the `?sky=hip` catalog (docs/SKY.md).
+ * Written only when the sun mode, the GCRF request, or the month changes — and
+ * again after a device-loss rebuild, which hands back a new pipeline.
+ */
+export function writeSkyFrameUniform(rt: AppRuntime): void {
+  const pipeline = rt.pipeline;
+  if (!pipeline?.isSkyCatalogActive()) return;
+  const { sunMode, gcrfRequested, clock } = rt.simulation;
+  const bucket = Math.floor(clock.simUtcMs / SKY_FRAME_REFRESH_MS);
+  const key = `${sunMode}:${gcrfRequested ? 1 : 0}:${bucket}`;
+  if (lastSkyFrame?.pipeline === pipeline && lastSkyFrame.key === key) return;
+  pipeline.writeSkyFrame(skyFrameMatrix({ sunMode, gcrfRequested, utcMs: clock.simUtcMs }));
+  lastSkyFrame = { pipeline, key };
+}
+
+export interface SceneUniformPackOptions {
+  /** Replaces the camera's view mode in `view_flags` bits 0-15 (XR renders as horizon, 0). */
+  viewModeOverride?: number;
+}
+
+/**
+ * Pack the scene `Uni` block (SCENE_UNI_SCHEMA, 272 B) for one view. Pure CPU —
+ * mono writes it straight to the uniform buffer, XR packs one block per eye.
+ */
+export function packSceneUniforms(
+  rt: AppRuntime,
+  time: number,
+  deltaTime: number,
+  desc: ViewDescriptor,
+  opts: SceneUniformPackOptions = {},
+): ArrayBuffer {
   const viewProjection = desc.viewProjection;
-  const inverseViewProjection = mat4inv(viewProjection);
   const { cameraPos, cameraRight: right, cameraUp: up, frustum } = desc;
   const width = desc.screenWidth;
   const height = desc.screenHeight;
@@ -140,7 +171,7 @@ export function writeUniforms(
     cameraPos[0] * cameraPos[0] + cameraPos[1] * cameraPos[1] + cameraPos[2] * cameraPos[2],
   );
 
-  const viewMode = rt.camera.getViewModeIndex();
+  const viewMode = opts.viewModeOverride ?? rt.camera.getViewModeIndex();
   const isGroundView = cameraRadius < CONSTANTS.EARTH_RADIUS_KM + 100.0 ? 1 : 0;
   const physicsMode = rt.simulation.currentPhysicsMode;
   const realismMode =
@@ -158,7 +189,7 @@ export function writeUniforms(
     frustumPacked.set(frustum[p], p * 4);
   }
 
-  const uni = new UniformBufferWriter(SCENE_UNI_SCHEMA)
+  return new UniformBufferWriter(SCENE_UNI_SCHEMA)
     .set('view_proj', viewProjection)
     .set('camera_pos', [cameraPos[0], cameraPos[1], cameraPos[2], 1.0])
     .set('camera_right', [right[0], right[1], right[2], 0.0])
@@ -172,9 +203,31 @@ export function writeUniforms(
     .set('time_scale', rt.simulation.clock.rate)
     .setU32('background_mode', getBackgroundModeIndex())
     .set('sun_position', [sunPos[0], sunPos[1], sunPos[2], 1.0])
-    .set('earth_rotation_rad', earthRotationRadForRuntime(rt));
+    .set('earth_rotation_rad', earthRotationRadForRuntime(rt))
+    .bytes();
+}
 
-  rt.context.writeBuffer(rt.buffers.getBuffers().uniforms, uni.bytes());
+export function writeUniforms(
+  rt: AppRuntime,
+  time: number,
+  deltaTime: number,
+  camera: CameraState | null = null,
+  view?: ViewDescriptor | null,
+): void {
+  writeStationUniform(rt);
+  writeSkyFrameUniform(rt);
+  if (!rt.context || !rt.buffers) return;
+
+  const desc = view ?? resolveViewDescriptor(rt, time, camera);
+  const viewProjection = desc.viewProjection;
+  const inverseViewProjection = mat4inv(viewProjection);
+  const viewMode = rt.camera.getViewModeIndex();
+  const simTime = rt.simulation.clock.simTime;
+
+  rt.context.writeBuffer(
+    rt.buffers.getBuffers().uniforms,
+    packSceneUniforms(rt, time, deltaTime, desc),
+  );
   const motionBlurWeight =
     rt.camera.getViewMode() === 'ground'
       ? groundPresetMotionBlurWeight(rt.groundObserver.getBlendedEffects())

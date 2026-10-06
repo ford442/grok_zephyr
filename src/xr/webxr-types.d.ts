@@ -74,6 +74,8 @@ interface XRInputSource {
 
 interface XRRenderStateInit {
   baseLayer?: XRWebGLLayer | null;
+  /** WebXR Layers: composition layers (Stage 3 WebGPU uses one projection layer). */
+  layers?: XRLayer[];
   depthNear?: number;
   depthFar?: number;
   inlineVerticalFieldOfView?: number;
@@ -100,6 +102,54 @@ interface XRSystem {
 interface Navigator {
   readonly xr?: XRSystem;
 }
+
+/*
+ * WebXR Layers + WebGPU binding (Chrome WebXR/WebGPU interop). Still behind an
+ * origin trial / flag in some builds — the constructor is declared possibly
+ * undefined and every caller gates on a runtime `typeof` check.
+ */
+
+type XRLayer = EventTarget;
+
+interface XRProjectionLayer extends XRLayer {
+  readonly textureWidth: number;
+  readonly textureHeight: number;
+  readonly textureArrayLength: number;
+  readonly ignoreDepthValues: boolean;
+}
+
+interface XRGPUProjectionLayerInit {
+  colorFormat: GPUTextureFormat;
+  depthStencilFormat?: GPUTextureFormat;
+  textureUsage?: GPUTextureUsageFlags;
+  scaleFactor?: number;
+}
+
+interface XRSubImage {
+  readonly viewport: XRViewport;
+}
+
+interface XRGPUSubImage extends XRSubImage {
+  readonly colorTexture: GPUTexture;
+  readonly depthStencilTexture: GPUTexture | null;
+  readonly motionVectorTexture?: GPUTexture | null;
+  getViewDescriptor(): GPUTextureViewDescriptor;
+}
+
+interface XRGPUBinding {
+  readonly nativeProjectionScaleFactor: number;
+  getPreferredColorFormat(): GPUTextureFormat;
+  createProjectionLayer(init: XRGPUProjectionLayerInit): XRProjectionLayer;
+  getViewSubImage(layer: XRProjectionLayer, view: XRView): XRGPUSubImage;
+}
+
+// eslint-disable-next-line no-var
+declare var XRGPUBinding:
+  | {
+      prototype: XRGPUBinding;
+      new (session: XRSession, device: GPUDevice): XRGPUBinding;
+    }
+  | undefined;
 
 interface WebGL2RenderingContext {
   makeXRCompatible(): Promise<void>;

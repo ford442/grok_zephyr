@@ -13,6 +13,7 @@ Shader modules are cached per WGSL source. `getCompilationInfo()` is awaited dur
 | `timestamp-query` | Per-pass GPU timestamps in the performance dashboard | CPU / rAF frame timing |
 | `shader-f16` | Half-precision Kawase bloom downsample (`enable f16`) | f32 bloom downsample |
 | `texture-compression-bc` / `astc` / `etc2` | BC7 / ASTC 4x4 / ETC2 Earth plates. **Requested only when `?earthmap=` selects a tier** — see below | Uncompressed `rgba8unorm-srgb`, clamped to the 1K plates |
+| `subgroups` | Subgroup prefix sum in the close-approach hash. **Requested only when `?ca=1` will run** (not `?ca=0`, `low`, or mobile below cinematic) — see [CONJUNCTIONS.md](CONJUNCTIONS.md) | Workgroup-memory scan, identical full-fleet result |
 | Depth `depth32float` | Higher-precision scene depth | `depth24plus` when the adapter is a fallback, quality is `low`, or `maxTextureDimension2D < 8192` |
 | HDR canvas `rgba16float` | Extended-range presentation (`?hdr=1`, high/cinematic + HDR display) | SDR preferred canvas format, `colorSpace: 'srgb'` |
 | Canvas `usage` | `RENDER_ATTACHMENT` only (capture is 2D `drawImage` of the canvas, not a GPU copy into the swapchain) | — |
@@ -31,7 +32,6 @@ These names are documented so later systems can add them **explicitly** to `REQU
 | --- | --- |
 | `float32-filterable` | rgba32float internals (not used; HDR/bloom stay `rgba16float`) |
 | `bgra8unorm-storage` | Storage writes to BGRA8 (not used; capture does not copy into the swapchain) |
-| `subgroups` | Spatial-hash compute |
 
 ## Texture memory
 
@@ -56,4 +56,4 @@ Because device features are frozen at `requestDevice`, the compression features 
 2. For each adapter, resolve fleet size (`?sats=` / quality / storage limits). Snapshot includes `maxTextureDimension2D`, `maxComputeInvocationsPerWorkgroup`, and `minStorageBufferOffsetAlignment` (depth-format probe uses the 2D max).
 3. Pick the candidate with a usable fleet (prefer larger sat count, then more optional features, then high-performance).
 
-The performance dashboard shows `GPU: vendor / ts+f16 / 262,144* sats` (`*` = auto-reduced). Only requested-and-enabled features appear on that line.
+The performance dashboard shows `GPU: vendor / ts+f16 / 262,144* sats` (`sg` = `subgroups`) (`*` = auto-reduced). Only requested-and-enabled features appear on that line.

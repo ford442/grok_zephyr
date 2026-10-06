@@ -170,3 +170,75 @@ test.describe('Light Brush (WebGPU offscreen)', () => {
     await waitForBrushStatus(page, 'Brush: off on Low quality and mobile');
   });
 });
+
+/**
+ * Sky Strips golden at 16k satellites: WAVE in God View with the show clock
+ * pinned, so the frame does not depend on how long warm-up took. Strips are a
+ * WebGPU compute pass into the low half of the animation scratch; the WebGL2
+ * fallback disables the control, so there is no WebGL counterpart.
+ *
+ * Same SwiftShader caveat as the brush golden above: headless captures are
+ * black, and the status / isEnabled() checks carry the wiring assertions.
+ */
+test.describe('Sky Strips (WebGPU offscreen)', () => {
+  const STRIPS_QUERY = `${WEBGPU_QUERY}&mode=1&strips=1&stripsMode=wave`;
+
+  async function waitForStripsStatus(page: Page, expected: string): Promise<void> {
+    await page.waitForFunction(
+      (text) => document.getElementById('stripsStatus')?.textContent?.startsWith(text) ?? false,
+      expected,
+      { timeout: 120_000 },
+    );
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      try {
+        localStorage.clear();
+      } catch {
+        // ignore
+      }
+    });
+  });
+
+  test('webgpu-god-strips-wave offscreen capture matches baseline', async ({ page }) => {
+    const name = 'webgpu-god-strips-wave';
+    await page.goto(`/?${STRIPS_QUERY}`, { waitUntil: 'domcontentloaded' });
+    await hideChrome(page);
+    await waitForStripsStatus(page, 'Strips: wave');
+    await page.evaluate(() => {
+      const w = window as unknown as {
+        zephyrStrips: { setTime: (s: number) => void; isEnabled: () => boolean };
+      };
+      if (!w.zephyrStrips.isEnabled()) throw new Error('strips did not enable');
+      w.zephyrStrips.setTime(2);
+    });
+    const dataUrl = await warmupAndCaptureGpu(page, 30);
+    expect(dataUrl).toMatch(/^data:image\/png;base64,/);
+
+    const png = dataUrlToPng(dataUrl);
+    const metrics = computeMetrics(png);
+    if (UPDATE_BASELINES || !baselineExists(name)) {
+      const bands = bandsFromMetrics(metrics, 0.2);
+      bands.description = 'WebGPU offscreen God View with Sky Strips WAVE at a pinned show time';
+      saveBaselineArtifacts(name, png, bands);
+      test.info().annotations.push({
+        type: 'baseline',
+        description: `Wrote ${name} (meanLum=${metrics.meanLuminance.toFixed(4)})`,
+      });
+      return;
+    }
+    const bands = loadMetricBands(name);
+    assertMetricBands(metrics, bands);
+    const { diffRatio } = compareToBaseline(name, png, loadBaselinePng(name), bands.maxDiffRatio);
+    test.info().annotations.push({
+      type: 'metrics',
+      description: `meanLum=${metrics.meanLuminance.toFixed(4)} diff=${(diffRatio * 100).toFixed(2)}%`,
+    });
+  });
+
+  test('?strips=1 stays off on the low preset', async ({ page }) => {
+    await page.goto(`/?${STRIPS_QUERY}&preset=low`, { waitUntil: 'domcontentloaded' });
+    await waitForStripsStatus(page, 'Strips: off on Low quality and mobile');
+  });
+});

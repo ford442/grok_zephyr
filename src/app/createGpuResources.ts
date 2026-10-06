@@ -19,6 +19,7 @@ import {
   setConjunctionsEnabled,
 } from '@/app/ConjunctionController.js';
 import { applyBrushFromUrl } from '@/app/BrushController.js';
+import { applyStripsFromUrl } from '@/app/StripsController.js';
 import { applyQualityPreset } from '@/app/QualityController.js';
 import { applyExposureSettings } from '@/app/AppCallbackBinder.js';
 import { setupImageTuning } from '@/app/ViewModeCoordinator.js';
@@ -207,6 +208,7 @@ export async function createGpuResources(
     rt.ui.setConjunctionDisclaimer(conjunctionDisclaimer(rt.simulation.realismMode));
     // ?brush=1 etc. — after the quality preset, which can still force it off.
     applyBrushFromUrl(rt);
+    applyStripsFromUrl(rt);
 
     if (urlParams.patternMode !== null) {
       setPatternMode(rt, urlParams.patternMode);

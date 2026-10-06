@@ -51,7 +51,7 @@ function resolveAnchorCamera(rt: AppRuntime, id: XrAnchorId): CameraState {
   });
 }
 
-function currentAnchorCamera(rt: AppRuntime, state: XrFrameLoopState, nowMs: number): CameraState {
+export function currentAnchorCamera(rt: AppRuntime, state: XrFrameLoopState, nowMs: number): CameraState {
   const target = resolveAnchorCamera(rt, state.anchorId);
   if (!state.blendFrom || !state.blendTo) {
     return target;
@@ -98,7 +98,7 @@ function anySelectPressed(session: XRSession): boolean {
   return false;
 }
 
-function handleAnchorInput(rt: AppRuntime, state: XrFrameLoopState, session: XRSession): void {
+export function handleAnchorInput(rt: AppRuntime, state: XrFrameLoopState, session: XRSession): void {
   const pressed = anySelectPressed(session);
   if (pressed && !state.selectWasPressed) {
     cycleAnchor(rt, state, 1);
@@ -140,6 +140,20 @@ function buildWebGLFrame(
   };
 }
 
+/** Tick the sim clock from the XR frame time (delta capped at 0.1 s, like mono). */
+export function advanceXrClock(
+  rt: AppRuntime,
+  state: XrFrameLoopState,
+  timeMs: number,
+): { timeSec: number; delta: number } {
+  const timeSec = timeMs * 0.001;
+  const delta =
+    state.lastFrameTimeSec > 0 ? Math.min(timeSec - state.lastFrameTimeSec, 0.1) : 0.016;
+  state.lastFrameTimeSec = timeSec;
+  rt.simulation.clock.tick(delta);
+  return { timeSec, delta };
+}
+
 export type XrLayerLike = {
   framebuffer: WebGLFramebuffer | null;
   getViewport(view: XRView): { x: number; y: number; width: number; height: number } | null;
@@ -158,12 +172,7 @@ export function onXrFrame(
   if (!renderer) return;
 
   handleAnchorInput(rt, state, session);
-
-  const timeSec = timeMs * 0.001;
-  const delta =
-    state.lastFrameTimeSec > 0 ? Math.min(timeSec - state.lastFrameTimeSec, 0.1) : 0.016;
-  state.lastFrameTimeSec = timeSec;
-  rt.simulation.clock.tick(delta);
+  const { timeSec } = advanceXrClock(rt, state, timeMs);
 
   const pose = frame.getViewerPose(refSpace);
   if (!pose) return;

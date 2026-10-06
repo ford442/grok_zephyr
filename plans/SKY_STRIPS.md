@@ -1,189 +1,81 @@
-> **Status (2026-09):** never shipped. The `skyStrips.ts` stub and `skyStripUniforms` buffer were removed; the per-satellite scratch is `animScratch` (Smile V2 output, packed rgba8). A future Sky Strips pass must write into that buffer, not allocate its own.
+# Sky Strips v2 (shipped)
 
-# Sky Strips v1 - Implementation Summary
+> v1 (PULSE / CHASE / WAVE / BEAT_SYNC / MORSE / SPARKLE with a 16 B/sat
+> pattern buffer, a `skyStripUniforms` buffer and a `PatternSequencer`) never
+> shipped and was deleted on purpose. v2 replaces it and allocates **no
+> per-satellite buffer**.
 
-## What Was Built
+A light show on the fleet, driven by time, audio and orbit index. It is not
+communications: nothing is encoded, transmitted or addressed to the ground,
+and the HUD copy says so (a test asserts it).
 
-### 1. WGSL Compute Shader (`src/shaders/sky_strips_compute.wgsl`)
+## How it runs
 
-A new compute shader that transforms satellites into addressable LED pixels:
+- **Storage.** The low 16 bits of the packed animation scratch `animScratch`
+  (a8 + RGB332). The Light Brush owns the high 16 bits, so both show at once.
+  The bit table is in [`docs/BRUSH.md`](../docs/BRUSH.md#storage); the layout
+  is `src/shaders/compute/animScratchPack.wgsl`.
+- **Compute.** `src/shaders/compute/skyStrips.wgsl`, one dispatch over the fleet
+  per frame while strips are on, `@workgroup_size(256)`,
+  `override num_satellites` via `fleetPipelineConstants()`. It reads positions
+  and orbital elements and writes only its own half.
+- **CPU reference.** `src/physics/skyStrips.ts` is the authority the WGSL mirrors.
+  `skyStrips.test.ts` pins the constants, the uniform layout and the "no
+  ledger entry" rule.
+- **Uniform.** A 64-byte `StripsParams` holding mode, seed, two colours, and the
+  pre-reduced phases (wave phase, chase offset, sparkle bucket and fraction),
+  bass and presence. Phases are reduced in float64 on the CPU, so the shader
+  never multiplies a large f32 time. The ledger counts this block under
+  `uniforms`.
+- **Clock.** A show clock in real seconds, independent of the sim time scale.
 
-- **6 Pattern Types:**
-  - `PULSE` - Sinusoidal brightness modulation
-  - `CHASE` - Moving chase lights with exponential trails
-  - `WAVE` - Sine wave propagation across orbits
-  - `BEAT_SYNC` - Audio-reactive pulsing
-  - `MORSE` - Binary on/off patterns for text transmission
-  - `SPARKLE` - Random twinkle effects
+## Patterns
 
-- **Per-Satellite Data:** 16 bytes per satellite (brightness, pattern ID, phase offset, speed)
-- **Uniform Controls:** Global time, beat intensity, BPM, brightness
-- **HDR Output:** Colors written to RGBA8 buffer with bloom-ready intensity
+| Mode | Drives | What lights |
+|---|---|---|
+| `wave` | argument of latitude (along-track phase) | 4 crests per orbit, one passes each satellite per bar (4 beats) |
+| `chase` | RAAN (plane index) | 6 bands sweeping round the planes, a bright head with a fading tail |
+| `beat` | `AudioEngine` bass band × wave shape; presence picks the colour | dark while audio is muted, locked or suspended |
+| `sparkle` | lowbias32 hash of (index, seed, bucket) | about 3% of satellites per 1/8 s, flashing and fading |
 
-### 2. Pattern Sequencer (`src/patterns/PatternSequencer.ts`)
+The argument of latitude comes from the live position and the plane's RAAN and
+inclination, so WAVE follows the satellites in every physics mode.
 
-TypeScript controller for pattern management:
+## Audio
 
-```typescript
-// Set wave pattern across all satellites
-sequencer.setWavePattern(10000, 1.0, 1.0);
+`AudioEngine` taps an `AnalyserNode` (fftSize 1024) after the master gain.
+`getBands()` returns the mean of the 20–150 Hz bins (bass) and the 2–5 kHz bins
+(presence) as 0..1. It returns `null` while muted or suspended, and BEAT then
+draws nothing. There is no beat-detection library; plain FFT bins are enough.
 
-// Create chase sequence
-sequencer.setChasePattern(4, 5000, 2.0);
+## Controls and policy
 
-// Connect to audio for beat sync
-await sequencer.connectAudio(audioElement);
+- **URL.** `?strips=1&stripsMode=wave|chase|beat|sparkle&stripsBpm=40–240`.
+- **HUD.** STRIPS toggle plus a mode select under CONSTELLATION PATTERNS
+  (`#strips-controls`). It is independent of SMILE / MATRIX / HEARTBEAT, which
+  are vertex-shader patterns and compose underneath.
+- **Off by default.** Low quality and mobile force it off, as for ISL and the
+  brush. The WebGL2 fallback disables the control (no GLSL port).
+- **Reduced motion.** WAVE and CHASE hold still; BEAT and SPARKLE switch off.
+- **Turning off.** One CLEAR dispatch zeroes the strips half; after that the
+  pass is not encoded.
+- **XR.** The pass is not dispatched in XR, so the last strips frame holds.
+- **Smile V2.** Writes whole words, so it is not dispatched while strips or the
+  brush are using the scratch.
 
-// Trigger manual beat
-sequencer.triggerBeat();
-```
+## Verification
 
-- **Timeline System:** Schedule pattern events with start/duration
-- **Audio Reactivity:** Web Audio API integration for beat detection
-- **Export/Import:** Save/load pattern configurations as JSON
+- **Unit.** `skyStrips.test.ts`, `animScratchPacking.test.ts`,
+  `StripsController.test.ts` and `brushFalloff.test.ts`, which checks that the
+  brush preserves the strips half and still decays to 0 with strips off.
+- **Visual.** `tests/visual/webgpu-offscreen.spec.ts` › Sky Strips:
+  `webgpu-god-strips-wave` at `sats=16384&strips=1&stripsMode=wave` with the
+  show clock pinned via `zephyrStrips.setTime(2)`, plus a "stays off on low"
+  check.
 
-### 3. Ground Observer Camera (`src/camera/GroundObserverCamera.ts`)
+## Non-goals
 
-5 immersive ground perspectives:
-
-| Preset           | Description         | Effect                           |
-| ---------------- | ------------------- | -------------------------------- |
-| `houseWindow`    | Cozy indoor view    | Warm vignette, condensation      |
-| `carWindshield`  | Driving perspective | Dashboard glow, speed lines      |
-| `beachNight`     | Ocean horizon       | Water reflections, soft vignette |
-| `rooftop`        | Urban overlook      | City glow, building silhouettes  |
-| `airplaneWindow` | High altitude       | Oval window, wingtip lights      |
-
-- **Mouse Parallax:** Configurable parallax for immersive feel
-- **Atmospheric Scattering:** Per-preset scattering multipliers
-- **Effect Parameters:** Color temperature, bloom, motion blur
-
-### 4. CSS Frame Overlays (`src/styles/ground-observer.css`)
-
-Pure CSS frame overlays with animations:
-
-- Window frames with crossbars
-- Dashboard silhouettes with instrument glow
-- Water reflections and wave animations
-- City lights with twinkle effects
-- Oval airplane windows with wing lights
-
-### 5. Updated Buffer Management (`src/core/SatelliteGPUBuffer.ts`)
-
-Added new buffers:
-
-- `patterns` - 16MB storage buffer for per-satellite pattern data
-- `skyStripUniforms` - 32B uniform buffer for pattern parameters
-
-## Memory Usage
-
-| Buffer             | Size       | Description                  |
-| ------------------ | ---------- | ---------------------------- |
-| Orbital Elements   | 16 MB      | Read-only satellite elements |
-| Positions          | 16 MB      | Double-buffered positions    |
-| Colors             | 4 MB       | RGBA8 output from patterns   |
-| **Patterns (NEW)** | **16 MB**  | **Per-sat pattern data**     |
-| Sky Strip Uniforms | 32 B       | Global pattern uniforms      |
-| **Total NEW**      | **~16 MB** | Minimal overhead             |
-
-## Integration Steps
-
-### 1. Import the CSS
-
-Add to `index.html`:
-
-```html
-<link rel="stylesheet" href="src/styles/ground-observer.css" />
-```
-
-### 2. Create the Pattern Sequencer
-
-```typescript
-import { PatternSequencer, PatternType } from './src/patterns/PatternSequencer.js';
-
-const sequencer = new PatternSequencer(NUM_SATELLITES, buffers);
-```
-
-### 3. Setup Ground Observer Camera
-
-```typescript
-import { GroundObserverCamera, GroundObserverPreset } from './src/camera/GroundObserverCamera.js';
-
-const groundCamera = new GroundObserverCamera();
-groundCamera.setPreset(GroundObserverPreset.BEACH_NIGHT);
-
-// Add overlay to DOM
-const overlay = document.createElement('div');
-overlay.className = `ground-observer-frame ${groundCamera.getOverlayClass()}`;
-document.body.appendChild(overlay);
-```
-
-### 4. Create Compute Pipeline
-
-```typescript
-// Load the compute shader
-const skyStripsShader = await loadShader('src/shaders/sky_strips_compute.wgsl');
-
-// Create compute pipeline
-const computePipeline = device.createComputePipeline({
-  layout: device.createPipelineLayout({
-    bindGroupLayouts: [skyStripsBindGroupLayout],
-  }),
-  compute: {
-    module: device.createShaderModule({ code: skyStripsShader }),
-    entryPoint: 'updateSkyStrips',
-  },
-});
-```
-
-### 5. Render Loop Integration
-
-```typescript
-function renderLoop() {
-  // Update pattern uniforms
-  const uniforms = sequencer.updateUniforms(deltaTime);
-  device.queue.writeBuffer(buffers.skyStripUniforms, 0, sequencer.getUniformsArray());
-
-  // Run Sky Strips compute
-  const computeEncoder = device.createCommandEncoder();
-  const computePass = computeEncoder.beginComputePass();
-  computePass.setPipeline(computePipeline);
-  computePass.setBindGroup(0, skyStripsBindGroup);
-  computePass.dispatchWorkgroups(Math.ceil(NUM_SATELLITES / 256));
-  computePass.end();
-  device.queue.submit([computeEncoder.finish()]);
-
-  // Continue with normal render pipeline...
-}
-```
-
-## Pattern Bind Group Layout
-
-```wgsl
-@group(0) @binding(0) var<uniform> sky_uniforms: SkyStripUniforms;
-@group(0) @binding(1) var<storage, read> pattern_data: array<vec4f>;
-@group(0) @binding(2) var<storage, read> sat_positions: array<vec4f>;
-@group(0) @binding(3) var<storage, read> orb_elements: array<vec4f>;
-@group(0) @binding(4) var<storage, read_write> sat_colors: array<u32>;
-```
-
-## Next Steps
-
-1. **Pattern Sequencer UI** - Build React/Vue timeline editor
-2. **Music Visualizer** - Connect Web Audio API for frequency analysis
-3. **Video Export** - Capture canvas to MP4 with MediaRecorder
-4. **Real TLE Sync** - Overlay patterns on actual Starlink positions
-5. **Multi-POV Split** - Render 2-4 cameras simultaneously
-
-## Performance Notes
-
-- Compute shader runs at 1M satellites / 4k workgroups
-- 256 threads per workgroup (optimal for most GPUs)
-- Pattern calculation is O(1) per satellite
-- Minimal divergence (pattern type uses switch, not dynamic branch)
-- LOD culling happens before pattern compute in visibility pass
-
-## Credits
-
-Sky Strips concept by Grok-Zephyr + Kimi Swarm collaboration.
-Built on the solid WebGPU foundation of the Grok-Zephyr project.
+- No `PatternSequencer` JSON timelines.
+- No 16 MB `patterns` buffer.
+- No Morse or text.
+- No three.js or audio-reactive libraries.

@@ -10,9 +10,9 @@
 
 import type { WebGPUContext } from '@/core/WebGPUContext.js';
 import {
-  CONJUNCTION_BUCKET_CAPACITY,
   CONJUNCTION_PAIR_BYTES,
   MAX_CONJUNCTION_PAIRS,
+  conjunctionBlockCount,
   conjunctionBucketCount,
   conjunctionBufferBytes,
   conjunctionScanLimit,
@@ -21,11 +21,16 @@ import {
 
 export interface ConjunctionBufferSet {
   binCounts: GPUBuffer;
-  binIndices: GPUBuffer;
+  /** Exclusive scan of binCounts; after the scatter, each bucket's end. */
+  binOffsets: GPUBuffer;
+  /** Satellite indices grouped by bucket — one slot per scanned satellite. */
+  sorted: GPUBuffer;
+  blockSums: GPUBuffer;
   pairs: GPUBuffer;
   counters: GPUBuffer;
   readback: GPUBuffer;
   buckets: number;
+  blocks: number;
   scanCount: number;
   bytes: number;
 }
@@ -33,7 +38,8 @@ export interface ConjunctionBufferSet {
 /** What the compute pass read back last frame. */
 export interface ConjunctionStats {
   pairCount: number;
-  overflow: number;
+  /** Active satellites hashed — the scan coverage the dashboard reports. */
+  binned: number;
   truncated: boolean;
 }
 
@@ -41,7 +47,7 @@ export class ConjunctionBuffers {
   private set: ConjunctionBufferSet | null = null;
   private readbackPending = false;
   private mapInFlight = false;
-  private stats: ConjunctionStats = { pairCount: 0, overflow: 0, truncated: false };
+  private stats: ConjunctionStats = { pairCount: 0, binned: 0, truncated: false };
 
   constructor(private readonly context: WebGPUContext) {}
 
@@ -83,6 +89,7 @@ export class ConjunctionBuffers {
 
     const device = this.context.getDevice();
     const buckets = conjunctionBucketCount(scanCount);
+    const blocks = conjunctionBlockCount(buckets);
     const storage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
 
     const binCounts = device.createBuffer({
@@ -90,9 +97,19 @@ export class ConjunctionBuffers {
       size: buckets * 4,
       usage: storage,
     });
-    const binIndices = device.createBuffer({
-      label: 'conjunction-bin-indices',
-      size: buckets * CONJUNCTION_BUCKET_CAPACITY * 4,
+    const binOffsets = device.createBuffer({
+      label: 'conjunction-bin-offsets',
+      size: buckets * 4,
+      usage: storage,
+    });
+    const sorted = device.createBuffer({
+      label: 'conjunction-sorted',
+      size: Math.max(1, scanCount) * 4,
+      usage: storage,
+    });
+    const blockSums = device.createBuffer({
+      label: 'conjunction-block-sums',
+      size: blocks * 4,
       usage: storage,
     });
     const pairs = device.createBuffer({
@@ -113,17 +130,20 @@ export class ConjunctionBuffers {
 
     this.set = {
       binCounts,
-      binIndices,
+      binOffsets,
+      sorted,
+      blockSums,
       pairs,
       counters,
       readback,
       buckets,
+      blocks,
       scanCount,
       bytes: conjunctionBufferBytes(scanCount),
     };
     console.log(
       `[Conjunctions] ${(this.set.bytes / (1024 * 1024)).toFixed(2)} MB — ` +
-        `${buckets.toLocaleString()} buckets × ${CONJUNCTION_BUCKET_CAPACITY}, ` +
+        `${buckets.toLocaleString()} buckets (counting sort, ${device.features.has('subgroups') ? 'subgroup' : 'workgroup'} scan), ` +
         `scanning ${scanCount.toLocaleString()} of ${fleetSize.toLocaleString()} satellites`,
     );
     return { ok: true, set: this.set };
@@ -161,7 +181,7 @@ export class ConjunctionBuffers {
       readback.unmap();
       this.stats = {
         pairCount: Math.min(view[0], MAX_CONJUNCTION_PAIRS),
-        overflow: view[1],
+        binned: view[1],
         truncated: view[0] > MAX_CONJUNCTION_PAIRS,
       };
       return this.stats;
@@ -183,13 +203,15 @@ export class ConjunctionBuffers {
   destroy(): void {
     if (!this.set) return;
     this.set.binCounts.destroy();
-    this.set.binIndices.destroy();
+    this.set.binOffsets.destroy();
+    this.set.sorted.destroy();
+    this.set.blockSums.destroy();
     this.set.pairs.destroy();
     this.set.counters.destroy();
     this.set.readback.destroy();
     this.set = null;
     this.readbackPending = false;
     this.mapInFlight = false;
-    this.stats = { pairCount: 0, overflow: 0, truncated: false };
+    this.stats = { pairCount: 0, binned: 0, truncated: false };
   }
 }

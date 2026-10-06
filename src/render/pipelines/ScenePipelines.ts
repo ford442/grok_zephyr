@@ -4,6 +4,8 @@ import type { PipelineBuildArgs } from './pipelineLayouts.js';
 export async function createScenePipelines({ context, layouts, modules }: PipelineBuildArgs) {
   const depthFormat = context.getDepthFormat();
   const [stars,
+    starsCatalogBackground,
+    starsCatalog,
     earth,
     atmosphere,
     satellites,
@@ -22,6 +24,50 @@ export async function createScenePipelines({ context, layouts, modules }: Pipeli
         module: modules.stars,
         entryPoint: 'fs',
         targets: [{ format: RENDER.HDR_FORMAT }],
+      },
+      primitive: { topology: 'triangle-list' },
+      depthStencil: {
+        format: depthFormat,
+        depthWriteEnabled: false,
+        depthCompare: 'always',
+      },
+    }),
+    // ?sky=hip: procedural Milky Way + faint hash under the catalog points.
+    context.createRenderPipelineAsync({
+      label: 'stars-catalog-background',
+      layout: layouts.device.createPipelineLayout({
+        bindGroupLayouts: [layouts.sceneAtmosphereLayout, layouts.starCatalogLayout],
+      }),
+      vertex: { module: modules.stars, entryPoint: 'vs' },
+      fragment: {
+        module: modules.stars,
+        entryPoint: 'fs_catalog',
+        targets: [{ format: RENDER.HDR_FORMAT }],
+      },
+      primitive: { topology: 'triangle-list' },
+      depthStencil: {
+        format: depthFormat,
+        depthWriteEnabled: false,
+        depthCompare: 'always',
+      },
+    }),
+    context.createRenderPipelineAsync({
+      label: 'stars-catalog',
+      layout: layouts.device.createPipelineLayout({
+        bindGroupLayouts: [layouts.sceneAtmosphereLayout, layouts.starCatalogLayout],
+      }),
+      vertex: { module: modules.starsCatalog, entryPoint: 'vs' },
+      fragment: {
+        module: modules.starsCatalog,
+        entryPoint: 'fs',
+        targets: [{
+          format: RENDER.HDR_FORMAT,
+          // Pure additive color; the background's alpha is left as is.
+          blend: {
+            color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+            alpha: { srcFactor: 'zero', dstFactor: 'one', operation: 'add' },
+          },
+        }],
       },
       primitive: { topology: 'triangle-list' },
       depthStencil: {
@@ -219,5 +265,5 @@ export async function createScenePipelines({ context, layouts, modules }: Pipeli
       },
     })
   ]);
-  return { stars, earth, atmosphere, satellites, satellitesCulled, beam, beamCulled, groundTerrain, moonForeground, moonEarthDisk, skyline };
+  return { stars, starsCatalogBackground, starsCatalog, earth, atmosphere, satellites, satellitesCulled, beam, beamCulled, groundTerrain, moonForeground, moonEarthDisk, skyline };
 }

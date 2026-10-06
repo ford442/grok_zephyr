@@ -73,7 +73,7 @@ Under `'gmst'`, a ground station's ECI position (`GroundStation.ts`, true GMST) 
 
 The **WebGL2** Earth shader (`src/webgl/shaders.ts`) remains a simplified, **non-rotating** port — it never applied any spin, ART or GMST. That's an existing simplification, not something this change extends; WebGL2 continents are still a fixed art pose regardless of sun mode.
 
-If star catalogs land, the sky will still drift against GMST-rotated terrain unless the astro sun's celestial-sphere placement and `earthRotationRad('gmst', …)` share the same clock — they already do (`SimClock.simUtcMs`).
+The `?sky=hip` star catalog ([SKY.md](SKY.md)) is rotated ICRS → TEME of date by `gcrfToTemeMatrix(jd(simUtcMs))` (identity under `?frame=gcrf&sun=astro`). It shares `SimClock.simUtcMs` with the astro sun and `earthRotationRad('gmst', …)`, so stars, terminator and GMST terrain agree.
 
 ## Clock
 

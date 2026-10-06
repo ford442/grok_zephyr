@@ -152,7 +152,7 @@ export function packEarthMapSettings(
   return ab;
 }
 
-/** WGSL: ConjunctionParams — compute/conjunction.wgsl, render/conjunction.wgsl */
+/** WGSL: ConjunctionParams — compute/conjunction.wgsl, conjunctionScanCommon.wgsl, render/conjunction*.wgsl */
 export const CONJUNCTION_PARAMS_BYTE_SIZE = 32;
 
 export function packConjunctionParams(
@@ -160,7 +160,7 @@ export function packConjunctionParams(
   thresholdKm: number,
   scanCount: number,
   bucketMask: number,
-  bucketCapacity: number,
+  blockCount: number,
   maxPairs: number,
   time: number,
 ): ArrayBuffer {
@@ -171,7 +171,7 @@ export function packConjunctionParams(
   f32[1] = thresholdKm;
   u32[2] = scanCount >>> 0;
   u32[3] = bucketMask >>> 0;
-  u32[4] = bucketCapacity >>> 0;
+  u32[4] = blockCount >>> 0;
   u32[5] = maxPairs >>> 0;
   f32[6] = time;
   u32[7] = 0;
@@ -253,5 +253,37 @@ export function packBrushParams(params: {
     f32[o + 6] = stamp.axis[2];
     f32[o + 7] = stamp.strength;
   }
+  return ab;
+}
+
+/** WGSL: StripsParams — compute/skyStrips.wgsl (16 × 4-byte scalars) */
+export const STRIPS_PARAMS_BYTE_SIZE = 64;
+
+/** Fields of src/physics/skyStrips.ts `StripsFrame`. */
+export function packStripsParams(frame: {
+  mode: number;
+  seed: number;
+  colorA: number;
+  colorB: number;
+  sparkleBucket: number;
+  wavePhase: number;
+  chaseOffset: number;
+  sparkleFrac: number;
+  bass: number;
+  presence: number;
+}): ArrayBuffer {
+  const ab = new ArrayBuffer(STRIPS_PARAMS_BYTE_SIZE);
+  const f32 = new Float32Array(ab);
+  const u32 = new Uint32Array(ab);
+  u32[0] = frame.mode >>> 0;
+  u32[1] = frame.seed >>> 0;
+  u32[2] = frame.colorA & 0xffffff;
+  u32[3] = frame.colorB & 0xffffff;
+  u32[4] = frame.sparkleBucket >>> 0;
+  f32[5] = frame.wavePhase;
+  f32[6] = frame.chaseOffset;
+  f32[7] = frame.sparkleFrac;
+  f32[8] = frame.bass;
+  f32[9] = frame.presence;
   return ab;
 }

@@ -35,6 +35,7 @@ import type { GroundStationPanel } from '@/ui/GroundStationPanel.js';
 import type { GroundStationGuides } from '@/render/GroundStationGuides.js';
 import type { XrSessionManager } from '@/xr/XrSessionManager.js';
 import type { BrushController } from '@/app/BrushController.js';
+import type { StripsController } from '@/app/StripsController.js';
 
 /**
  * Shared runtime dependencies and mutable application state accessed by
@@ -78,6 +79,8 @@ export interface AppRuntime {
   xrSession: XrSessionManager | null;
   /** Light Brush — pointer / XR ray paint on the fleet (WebGPU only). */
   readonly brush: BrushController;
+  /** Sky Strips — time / audio / orbit light patterns (WebGPU only). */
+  readonly strips: StripsController;
 
   earthVertexBuffer: GPUBuffer | null;
   earthIndexBuffer: GPUBuffer | null;

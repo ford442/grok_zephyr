@@ -84,6 +84,8 @@ export class UIManager {
     onBrushRadiusChange: null,
     onBrushFadeChange: null,
     onBrushColorChange: null,
+    onStripsToggle: null,
+    onStripsModeChange: null,
     onTrailLengthChange: null,
     onExposureModeChange: null,
     onManualExposureChange: null,
@@ -630,6 +632,14 @@ export class UIManager {
     this.callbacks.onBrushColorChange = callback;
   }
 
+  onStripsToggle(callback: (enabled: boolean) => void): void {
+    this.callbacks.onStripsToggle = callback;
+  }
+
+  onStripsModeChange(callback: (mode: 'wave' | 'chase' | 'beat' | 'sparkle') => void): void {
+    this.callbacks.onStripsModeChange = callback;
+  }
+
   onGodIdleOrbitToggle(callback: (enabled: boolean) => void): void {
     this.callbacks.onGodIdleOrbitToggle = callback;
   }
@@ -819,6 +829,32 @@ export class UIManager {
 
   setBrushStatus(text: string): void {
     const el = this.elements.brushStatus;
+    if (el) el.textContent = text;
+  }
+
+  setStripsEnabled(enabled: boolean): void {
+    const btn = this.elements.stripsToggleButton;
+    if (!btn) return;
+    btn.classList.toggle('active', enabled);
+    btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  }
+
+  /** Disable the controls outright where the pass cannot run (WebGL2 fallback). */
+  setStripsAvailable(available: boolean): void {
+    const { stripsToggleButton, stripsModeSelect } = this.elements;
+    if (stripsToggleButton) {
+      stripsToggleButton.disabled = !available;
+      stripsToggleButton.setAttribute('aria-disabled', available ? 'false' : 'true');
+    }
+    if (stripsModeSelect) stripsModeSelect.disabled = !available;
+  }
+
+  setStripsMode(mode: 'wave' | 'chase' | 'beat' | 'sparkle'): void {
+    if (this.elements.stripsModeSelect) this.elements.stripsModeSelect.value = mode;
+  }
+
+  setStripsStatus(text: string): void {
+    const el = this.elements.stripsStatus;
     if (el) el.textContent = text;
   }
 

@@ -13,7 +13,7 @@ struct ConjunctionParams {
   threshold_km    : f32,
   scan_count      : u32,
   bucket_mask     : u32,
-  bucket_capacity : u32,
+  block_count     : u32,
   max_pairs       : u32,
   time            : f32,
   pad0            : u32,
@@ -24,7 +24,7 @@ struct ConjunctionParams {
 // degenerate — the draw is a fixed max_pairs instance count, not indirect.
 struct ConjunctionCounters {
   pair_count : u32,
-  overflow   : u32,
+  binned     : u32,
 }
 @group(0) @binding(3) var<storage, read> counters : ConjunctionCounters;
 

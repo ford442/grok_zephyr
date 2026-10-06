@@ -17,6 +17,34 @@ const AMBIENT_PROFILES: Record<ViewMode, AmbientProfile> = {
   skyline: { droneHz: 62, textureHz: 0.14, noiseCutoffHz: 900, textureGain: 0.24 },
 };
 
+/** Analyser bands Sky Strips' BEAT pattern reads, Hz. */
+export const AUDIO_BASS_BAND_HZ: readonly [number, number] = [20, 150];
+export const AUDIO_PRESENCE_BAND_HZ: readonly [number, number] = [2000, 5000];
+
+export interface AudioBands {
+  /** 0..1 mean level of the bass band. */
+  bass: number;
+  /** 0..1 mean level of the presence band. */
+  presence: number;
+}
+
+/**
+ * Mean of `getByteFrequencyData` bins whose centre frequency falls inside each
+ * band, normalised to 0..1. Plain FFT bins — no beat-detection library.
+ */
+export function bandLevels(bins: ArrayLike<number>, sampleRate: number, fftSize: number): AudioBands {
+  const hzPerBin = sampleRate / fftSize;
+  const mean = ([lo, hi]: readonly [number, number]): number => {
+    const first = Math.max(0, Math.ceil(lo / hzPerBin));
+    const last = Math.min(bins.length - 1, Math.floor(hi / hzPerBin));
+    if (last < first) return 0;
+    let sum = 0;
+    for (let i = first; i <= last; i++) sum += bins[i];
+    return sum / ((last - first + 1) * 255);
+  };
+  return { bass: mean(AUDIO_BASS_BAND_HZ), presence: mean(AUDIO_PRESENCE_BAND_HZ) };
+}
+
 /**
  * Procedural audio engine for ambient layers and interaction/UI cues.
  * Safe by default: muted until user enables audio and a user gesture unlocks AudioContext.
@@ -32,6 +60,8 @@ export class AudioEngine {
   private ambientGain: GainNode | null = null;
   private uiGain: GainNode | null = null;
   private interactionGain: GainNode | null = null;
+  private analyser: AnalyserNode | null = null;
+  private analyserBins: Uint8Array<ArrayBuffer> | null = null;
 
   private ambientLayers = new Map<ViewMode, GainNode>();
   private ambientSources: AudioScheduledSourceNode[] = [];
@@ -185,10 +215,23 @@ export class AudioEngine {
     this.ambientGain?.disconnect();
     this.uiGain?.disconnect();
     this.interactionGain?.disconnect();
+    this.analyser?.disconnect();
+    this.analyser = null;
+    this.analyserBins = null;
 
     void this.audioContext?.close().catch(() => undefined);
     this.audioContext = null;
     this.unlocked = false;
+  }
+
+  /**
+   * Bass / presence levels of what is playing, or null while muted, locked or
+   * suspended — callers treat null as silence.
+   */
+  getBands(): AudioBands | null {
+    if (!this.canPlay() || !this.analyser || !this.analyserBins || !this.audioContext) return null;
+    this.analyser.getByteFrequencyData(this.analyserBins);
+    return bandLevels(this.analyserBins, this.audioContext.sampleRate, this.analyser.fftSize);
   }
 
   private canPlay(): boolean {
@@ -212,6 +255,14 @@ export class AudioEngine {
     ui.connect(master);
     interaction.connect(master);
     master.connect(ctx.destination);
+
+    // Read-only tap after the master gain, for Sky Strips' BEAT pattern.
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.8;
+    master.connect(analyser);
+    this.analyser = analyser;
+    this.analyserBins = new Uint8Array(analyser.frequencyBinCount);
 
     this.masterGain = master;
     this.ambientGain = ambient;

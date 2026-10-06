@@ -3,6 +3,7 @@
  */
 
 export { STARS_SHADER as stars } from './stars.js';
+export { STARS_CATALOG_SHADER as starsCatalog } from './starsCatalog.js';
 export { EARTH_SHADER as earth } from './earth.js';
 export { ATM_SHADER as atmosphere } from './atmosphere.js';
 export { ATMOSPHERE_CLOUDS_SHADER as atmosphereClouds } from './atmosphereClouds.js';

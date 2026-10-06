@@ -3,12 +3,14 @@ import {
   CONJUNCTION_APPROXIMATE_LABEL,
   clampThreshold,
   conjunctionDisclaimer,
+  conjunctionOptionalFeatures,
   formatConjunctionStatus,
   parseConjunctionParams,
 } from './ConjunctionController.js';
 import {
   MAX_CONJUNCTION_THRESHOLD_KM,
   MIN_CONJUNCTION_THRESHOLD_KM,
+  formatConjunctionCoverage,
 } from '@/types/conjunction.js';
 
 describe('parseConjunctionParams', () => {
@@ -65,11 +67,11 @@ describe('honest framing', () => {
       formatConjunctionStatus({
         enabled: true,
         pairCount: 12,
-        overflow: 0,
         truncated: false,
-        fleetSize: 16384,
+        fleetSize: 1048576,
         unavailableReason: null,
       }),
+      formatConjunctionCoverage({ binned: 1048576, fleet: 1048576 }, 3.2),
     ]
       .join(' ')
       .toLowerCase();
@@ -103,7 +105,6 @@ describe('formatConjunctionStatus', () => {
   const base = {
     enabled: true,
     pairCount: 0,
-    overflow: 0,
     truncated: false,
     fleetSize: 16384,
     unavailableReason: null as string | null,
@@ -129,21 +130,45 @@ describe('formatConjunctionStatus', () => {
     expect(text).not.toContain('Close pairs: 0 ');
   });
 
-  it('says how much of the fleet was scanned when it is not all of it', () => {
-    const partial = formatConjunctionStatus({ ...base, fleetSize: 1048576, pairCount: 7 });
-    expect(partial).toContain('scanned 131,072/1,048,576');
+  it('scans the whole fleet and says so, even at 1M', () => {
+    const full = formatConjunctionStatus({ ...base, fleetSize: 1048576, pairCount: 7 });
+    expect(full).toContain('scanned 1,048,576/1,048,576');
+    expect(full).toContain(CONJUNCTION_APPROXIMATE_LABEL);
+    expect(full).not.toContain('dropped');
 
-    const whole = formatConjunctionStatus({ ...base, fleetSize: 16384, pairCount: 7 });
-    expect(whole).not.toContain('scanned');
-  });
-
-  it('flags a saturated hash table so a thin result is not read as a quiet sky', () => {
-    const text = formatConjunctionStatus({ ...base, pairCount: 3, overflow: 900 });
-    expect(text).toContain('900 dropped');
+    const small = formatConjunctionStatus({ ...base, fleetSize: 16384, pairCount: 7 });
+    expect(small).toContain('scanned 16,384/16,384');
   });
 
   it('marks a truncated count as a floor', () => {
     const text = formatConjunctionStatus({ ...base, pairCount: 4096, truncated: true });
     expect(text).toContain('≥4,096');
+  });
+});
+
+describe('formatConjunctionCoverage', () => {
+  it('reports hashed satellites against the fleet and the pass time', () => {
+    expect(formatConjunctionCoverage({ binned: 1048576, fleet: 1048576 }, 3.214)).toBe(
+      'hashed 1,048,576/1,048,576 · 3.21 ms',
+    );
+    expect(formatConjunctionCoverage(null, 0)).toBe('off');
+  });
+});
+
+describe('conjunctionOptionalFeatures', () => {
+  it('requests subgroups only when ?ca=1 will run', () => {
+    expect(conjunctionOptionalFeatures('?ca=1', 'high', false)).toEqual(['subgroups']);
+    expect(conjunctionOptionalFeatures('?ca=1&caKm=5', 'cinematic', true)).toEqual(['subgroups']);
+  });
+
+  it('requests nothing when the pass is off or absent', () => {
+    expect(conjunctionOptionalFeatures('', 'high', false)).toEqual([]);
+    expect(conjunctionOptionalFeatures('?ca=0', 'high', false)).toEqual([]);
+    expect(conjunctionOptionalFeatures('?caKm=5', 'cinematic', false)).toEqual([]);
+  });
+
+  it('requests nothing when quality forces the overlay off', () => {
+    expect(conjunctionOptionalFeatures('?ca=1', 'low', false)).toEqual([]);
+    expect(conjunctionOptionalFeatures('?ca=1', 'high', true)).toEqual([]);
   });
 });

@@ -9,19 +9,9 @@
 //  - Subtle TAA-friendly twinkling driven by uni.time + per-star hash offset.
 //  - HDR output values (no clamp to 1) so bright stars drive bloom correctly.
 #import "uniforms.wgsl"
+#import "starsCommon.wgsl"
 
 struct VSOut { @builtin(position) pos:vec4f, @location(0) uv:vec2f };
-
-struct AtmosphereSettings {
-  scatteringEnabled: u32,
-  _pad0: u32,
-  hazeStrength: f32,
-  _pad1: f32,
-}
-
-@group(0) @binding(1) var atmosphereLUT: texture_2d<f32>;
-@group(0) @binding(2) var atmosphereSampler: sampler;
-@group(0) @binding(3) var<uniform> atmosphereSettings: AtmosphereSettings;
 
 @vertex fn vs(@builtin(vertex_index) vi:u32) -> VSOut {
   const pts = array<vec2f,3>(vec2f(-1,-1),vec2f(3,-1),vec2f(-1,3));
@@ -30,12 +20,6 @@ struct AtmosphereSettings {
   o.uv  = pts[vi]*0.5 + 0.5;
   return o;
 }
-
-const PI: f32 = 3.14159265;
-const RAYLEIGH_COEFF = vec3f(5.8e-3, 13.5e-3, 33.1e-3);
-const MIE_COEFF = vec3f(2.1e-2);
-// Angular radius of Earth as seen from the Moon (~0.949°).
-const EARTH_ANG_RAD: f32 = 0.01655;
 
 // ── Hash / noise ─────────────────────────────────────────────────────────────
 
@@ -69,22 +53,6 @@ fn fbm(p:vec3f)->f32 {
     freq *= 2.0;
   }
   return v / mx;
-}
-
-// ── Blackbody color (Tanner Helland approximation, O/B/A/F/G/K/M range) ─────
-
-fn blackbodyColor(temp:f32)->vec3f {
-  let t = clamp(temp, 1000.0, 40000.0) / 1000.0;
-  var r: f32 = 1.0;
-  if (t > 6.6) { r = clamp(1.292 - 0.1292*t + 0.0054*t*t - 0.00007*t*t*t, 0.0, 1.0); }
-  var g: f32;
-  if (t <= 6.6) { g = clamp(0.04 + 0.319*t - 0.026*t*t + 0.0009*t*t*t, 0.0, 1.0); }
-  else          { g = clamp(1.016 - 0.0638*t + 0.0014*t*t, 0.0, 1.0); }
-  var b: f32;
-  if      (t < 4.0) { b = clamp(0.07 * t, 0.0, 1.0); }
-  else if (t < 6.6) { b = clamp(-1.839 + 0.839*t - 0.0956*t*t + 0.0036*t*t*t, 0.0, 1.0); }
-  else              { b = 1.0; }
-  return vec3f(r, g, b);
 }
 
 // ── Camera-space sky direction ────────────────────────────────────────────────
@@ -191,13 +159,6 @@ fn starLayer(dir:vec3f, cellsPerRad:f32, density:f32, twinklePower:f32) -> vec3f
   return color * hdrLum * starMask * twinkle;
 }
 
-// Magnitude-weighted HDR cap — keeps the bulk of the field sub-bloom.
-fn starHdrLuminance(mag: f32) -> f32 {
-  let raw = pow(2.512, -mag) * 2.35;
-  let cap = mix(1.25, 2.55, smoothstep(2.2, 0.2, mag));
-  return min(raw, cap);
-}
-
 // ── Fragment entry point ──────────────────────────────────────────────────────
 
 @fragment fn fs(in:VSOut) -> @location(0) vec4f {
@@ -270,5 +231,86 @@ fn starHdrLuminance(mag: f32) -> f32 {
   color = pow(max(color, vec3f(0.0)), vec3f(0.96, 0.97, 0.99));
 
   // Return HDR (values > 1 are intentional; brightest stars only)
+  return vec4f(color, 1.0);
+}
+
+// ── Catalog background (?sky=hip) ─────────────────────────────────────────────
+//
+// Same art as `fs`, minus the stars the Hipparcos points now draw. Differences:
+//  - The view ray comes from the real projection (frag coord + view_proj), not
+//    the FOV-less `skyDir`, so the Milky Way registers with catalog stars.
+//  - The Milky Way is evaluated on the ICRS ray, re-oriented to the real
+//    galactic plane (ICRS_TO_LEGACY_GALACTIC).
+//  - Hash stars brighter than the catalog limit are dropped.
+// `fs` is left untouched so `?sky=proc` (the default) renders the same pixels.
+
+// `renderMilkyWay`'s pole/centre constants are not the ICRS galactic pole and
+// centre (the art band is free-floating). This rotation takes a true ICRS ray
+// into the frame those constants assume, so under ?sky=hip the band runs
+// through Cygnus, Crux and Sagittarius. Column-major; mirrored and tested as
+// ICRS_TO_LEGACY_GALACTIC in src/render/SkyCatalog.ts.
+const ICRS_TO_LEGACY_GALACTIC = mat3x3f(
+  vec3f(0.543221, -0.391880, -0.742523),
+  vec3f(-0.383350, 0.671051, -0.634613),
+  vec3f(0.746963, 0.629381, 0.214301),
+);
+
+// Magnitude `starLayer` assigns to the cell containing `dir` (same hash).
+fn starLayerMag(dir:vec3f, cellsPerRad:f32) -> f32 {
+  let phi   = asin(clamp(dir.y, -1.0, 1.0));
+  let theta = atan2(dir.z, dir.x);
+  let cell  = floor(vec2f(theta, phi) * cellsPerRad);
+  return mix(0.5, 7.0, pow(hash2(cell), 0.55));
+}
+
+fn faintStarLayer(dir:vec3f, cellsPerRad:f32, density:f32, twinklePower:f32, minMag:f32) -> vec3f {
+  return starLayer(dir, cellsPerRad, density, twinklePower) * f32(starLayerMag(dir, cellsPerRad) > minMag);
+}
+
+// World ray through a framebuffer pixel. `view_proj` rows 0/1/3 are P·V rows;
+// for d = f + a·r + b·u, clip.w = f·d = 1, so NDC is linear in (a, b). This
+// also covers off-axis (XR) projections, unlike a single tan(fov/2).
+fn projectedSkyDir(fragCoord:vec2f) -> vec3f {
+  let ndc = vec2f(fragCoord.x / uni.screen_size.x * 2.0 - 1.0,
+                  1.0 - fragCoord.y / uni.screen_size.y * 2.0);
+  let vp = uni.view_proj;
+  let row0 = vec3f(vp[0][0], vp[1][0], vp[2][0]);
+  let row1 = vec3f(vp[0][1], vp[1][1], vp[2][1]);
+  let right   = uni.camera_right.xyz;
+  let up      = uni.camera_up.xyz;
+  let forward = normalize(cross(up, right));
+  let a = (ndc.x - dot(row0, forward)) / dot(row0, right);
+  let b = (ndc.y - dot(row1, forward)) / dot(row1, up);
+  return normalize(forward + a * right + b * up);
+}
+
+@fragment fn fs_catalog(in:VSOut) -> @location(0) vec4f {
+  let dir = projectedSkyDir(in.pos.xy);
+  let magLimit = skyCatalog.frame_x.w;
+
+  var sky = mix(vec3f(0.0, 0.005, 0.015), vec3f(0.01, 0.02, 0.05),
+                pow(clamp(in.uv.y, 0.0, 1.0), 1.7));
+
+  // Only the two dense layers reach past V 6.5 often enough to matter.
+  var stars = vec3f(0.0);
+  stars += faintStarLayer(dir,  960.0, 0.40, 0.6, magLimit);
+  stars += faintStarLayer(dir, 1920.0, 0.55, 0.3, magLimit);
+
+  let milkyWay = renderMilkyWay(ICRS_TO_LEGACY_GALACTIC * renderToCatalog(dir)) * 1.45;
+  let mwLum = dot(milkyWay, vec3f(0.2126, 0.7152, 0.0722));
+  stars += milkyWay * min(1.0, 1.25 / max(mwLum, 0.01));
+
+  let atmosphere = horizonFog(in.uv, uni.background_mode);
+  stars *= catalogStarScale(dir);
+
+  if ((uni.view_mode & 0xFFFFu) == 4u) {
+    let cosEarth = dot(dir, normalize(-uni.camera_pos.xyz));
+    let earthDiskGlow = smoothstep(cos(EARTH_ANG_RAD * 1.6), cos(EARTH_ANG_RAD * 0.75), cosEarth);
+    sky += vec3f(0.10, 0.20, 0.40) * earthDiskGlow * 1.55;
+  }
+
+  var color = (sky + stars * 1.02 + atmosphere) * skyModeBoost();
+  color *= skyExtinction(dir);
+  color = pow(max(color, vec3f(0.0)), vec3f(0.96, 0.97, 0.99));
   return vec4f(color, 1.0);
 }

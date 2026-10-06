@@ -169,7 +169,7 @@
             id="btnEnterVr"
             style="display: none"
             aria-label="Enter immersive VR"
-            title="Enter VR — WebXR immersive session (requires WebGL renderer)"
+            title="Enter VR — WebXR immersive session (WebGPU with XRGPUBinding, else WebGL renderer)"
           >
             ENTER VR
           </button>
@@ -221,6 +221,26 @@
         >
           💓 HEARTBEAT
         </button>
+        <div id="strips-controls" class="strips-controls">
+          <button
+            class="anim-btn"
+            id="stripsToggle"
+            aria-pressed="false"
+            title="Light-show patterns along each orbit; combines with the light brush"
+          >
+            🌈 STRIPS
+          </button>
+          <select id="stripsMode" aria-label="Sky strips pattern">
+            <option value="wave" selected>Wave</option>
+            <option value="chase">Chase</option>
+            <option value="beat">Beat (audio)</option>
+            <option value="sparkle">Sparkle</option>
+          </select>
+          <div id="stripsStatus" class="capture-note" role="status" aria-live="polite">Strips: off</div>
+          <div class="capture-note">
+            Light show only &mdash; changes how satellites glow, not what they do.
+          </div>
+        </div>
       </section>
 
       <section

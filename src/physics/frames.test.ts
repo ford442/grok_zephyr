@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { gmstRad, unixMsToJulianDate, eciToEcef, ecefToEci, earthRotationRad } from './frames.js';
+import {
+  gmstRad,
+  unixMsToJulianDate,
+  eciToEcef,
+  ecefToEci,
+  earthRotationRad,
+  gcrfToTemeMatrix,
+  mat3Mul,
+  mat3MulVec,
+  temeToGcrfMatrix,
+  JD_J2000,
+} from './frames.js';
 
 /**
  * The Meeus-degree GMST polynomial that used to live in `GroundStation.ts`
@@ -57,5 +68,26 @@ describe('frames', () => {
   it('earthRotationRad gmst mode matches gmstRad(simUtcMs)', () => {
     const utcMs = Date.UTC(2026, 8, 7, 6, 0, 0);
     expect(earthRotationRad('gmst', 0, utcMs)).toBeCloseTo(gmstRad(unixMsToJulianDate(utcMs)), 10);
+  });
+});
+
+describe('temeToGcrfMatrix', () => {
+  const angleArcsec = (a: [number, number, number], b: [number, number, number]): number =>
+    (Math.acos(Math.min(1, Math.max(-1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]))) * 180 * 3600) / Math.PI;
+
+  it('is orthonormal and inverted by gcrfToTemeMatrix', () => {
+    const jd = unixMsToJulianDate(Date.UTC(2026, 9, 5));
+    const id = mat3Mul(temeToGcrfMatrix(jd), gcrfToTemeMatrix(jd));
+    for (let i = 0; i < 9; i++) expect(id[i]).toBeCloseTo(i % 4 === 0 ? 1 : 0, 12);
+  });
+
+  it('is only nutation-sized at J2000 and precession-sized in 2026', () => {
+    const x: [number, number, number] = [1, 0, 0];
+    // Truncated nutation + equation of equinoxes alone: tens of arcsec.
+    expect(angleArcsec(x, mat3MulVec(temeToGcrfMatrix(JD_J2000), x))).toBeLessThan(40);
+    // ~50.3 arcsec/yr general precession → ~0.37° by late 2026.
+    const deg2026 = angleArcsec(x, mat3MulVec(temeToGcrfMatrix(unixMsToJulianDate(Date.UTC(2026, 9, 5))), x)) / 3600;
+    expect(deg2026).toBeGreaterThan(0.3);
+    expect(deg2026).toBeLessThan(0.42);
   });
 });

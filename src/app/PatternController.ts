@@ -18,7 +18,8 @@ export function setupPatternButtons(rt: AppRuntime): void {
 }
 
 export function setupAnimationPatternButtons(rt: AppRuntime): void {
-  const animButtons = document.querySelectorAll('.anim-btn');
+  // [data-pattern] only: STRIPS shares the look but is its own toggle (StripsController).
+  const animButtons = document.querySelectorAll('.anim-btn[data-pattern]');
   animButtons.forEach((btn) => {
     btn.addEventListener('click', (e) => {
       const target = e.target as HTMLButtonElement;

@@ -9,9 +9,15 @@
  *
  * Cell size is the threshold distance, so a pair within the threshold is always
  * either in the same cell or in one of the 26 neighbours.
+ *
+ * The table is a counting sort, not fixed-capacity buckets: count satellites
+ * per bucket, exclusive prefix-sum the counts into offsets, scatter each index
+ * into one dense array. No bucket can fill, so nothing is dropped and the scan
+ * covers the whole fleet. `exclusiveScanBlocked` mirrors the GPU's three scan
+ * dispatches (conjunctionScan*.wgsl).
  */
 
-import { CONJUNCTION_BUCKET_CAPACITY, conjunctionBucketCount } from '@/types/conjunction.js';
+import { CONJUNCTION_SCAN_BLOCK, conjunctionBucketCount } from '@/types/conjunction.js';
 
 /** Body-frame cell coordinate for a position, in kilometres. */
 export function cellCoord(x: number, y: number, z: number, cellKm: number): [number, number, number] {
@@ -29,6 +35,42 @@ export function hashCell(cx: number, cy: number, cz: number, buckets: number): n
   return h & (buckets - 1);
 }
 
+/**
+ * Exclusive prefix sum, structured as the GPU runs it: scan each block of
+ * `blockSize` independently (`scan_blocks`), scan the block totals
+ * (`scan_block_sums`), then add each block's base back (`add_block_offsets`).
+ * The result equals a plain sequential exclusive scan; the tests pin that.
+ */
+export function exclusiveScanBlocked(
+  counts: Uint32Array,
+  blockSize: number = CONJUNCTION_SCAN_BLOCK,
+): Uint32Array {
+  const n = counts.length;
+  const out = new Uint32Array(n);
+  const blocks = Math.ceil(n / blockSize);
+  const blockSums = new Uint32Array(blocks);
+
+  for (let b = 0; b < blocks; b++) {
+    let running = 0;
+    const end = Math.min(n, (b + 1) * blockSize);
+    for (let i = b * blockSize; i < end; i++) {
+      out[i] = running;
+      running += counts[i];
+    }
+    blockSums[b] = running;
+  }
+
+  let base = 0;
+  for (let b = 0; b < blocks; b++) {
+    const total = blockSums[b];
+    blockSums[b] = base;
+    base += total;
+  }
+
+  for (let i = 0; i < n; i++) out[i] += blockSums[Math.floor(i / blockSize)];
+  return out;
+}
+
 export interface ClosePair {
   a: number;
   b: number;
@@ -37,8 +79,8 @@ export interface ClosePair {
 
 export interface ClosePairResult {
   pairs: ClosePair[];
-  /** Satellites a full bucket refused. Non-zero means the view under-reports. */
-  dropped: number;
+  /** Active satellites hashed into the table (unlaunched / decayed skipped). */
+  binned: number;
   /** True once the pair cap was hit, so the count is a floor, not a total. */
   pairsTruncated: boolean;
 }
@@ -48,8 +90,8 @@ export interface ClosePairOptions {
   scanCount?: number;
   /** Stop after this many pairs, mirroring the GPU pair buffer cap. */
   maxPairs?: number;
-  /** Model the GPU's fixed per-bucket capacity, including its dropped overflow. */
-  bucketCapacity?: number;
+  /** Override the table size (power of two) — tests use it to force collisions. */
+  buckets?: number;
 }
 
 /**
@@ -67,13 +109,8 @@ export function findClosePairs(
 ): ClosePairResult {
   const scanCount = Math.min(options.scanCount ?? count, count);
   const maxPairs = options.maxPairs ?? Number.MAX_SAFE_INTEGER;
-  const capacity = options.bucketCapacity ?? CONJUNCTION_BUCKET_CAPACITY;
-  const buckets = conjunctionBucketCount(scanCount);
+  const buckets = options.buckets ?? conjunctionBucketCount(scanCount);
   const cellKm = Math.max(thresholdKm, 1e-6);
-
-  const counts = new Uint32Array(buckets);
-  const table = new Int32Array(buckets * capacity).fill(-1);
-  let dropped = 0;
 
   const active = (i: number): boolean => {
     const x = positions[i * 4];
@@ -83,22 +120,35 @@ export function findClosePairs(
     if (w < 0) return false;
     return x !== 0 || y !== 0 || z !== 0;
   };
-
-  for (let i = 0; i < scanCount; i++) {
-    if (!active(i)) continue;
+  const bucketOf = (i: number): number => {
     const [cx, cy, cz] = cellCoord(
       positions[i * 4],
       positions[i * 4 + 1],
       positions[i * 4 + 2],
       cellKm,
     );
-    const bucket = hashCell(cx, cy, cz, buckets);
-    const slot = counts[bucket];
-    // Overflow is dropped, exactly as the GPU pass drops it, and counted so the
-    // caller can say the view is saturated instead of quietly showing fewer.
-    if (slot < capacity) table[bucket * capacity + slot] = i;
-    else dropped++;
-    counts[bucket] = slot + 1;
+    return hashCell(cx, cy, cz, buckets);
+  };
+
+  // count_sats
+  const counts = new Uint32Array(buckets);
+  let binned = 0;
+  for (let i = 0; i < scanCount; i++) {
+    if (!active(i)) continue;
+    counts[bucketOf(i)]++;
+    binned++;
+  }
+
+  // scan_blocks / scan_block_sums / add_block_offsets
+  const starts = exclusiveScanBlocked(counts);
+
+  // scatter_sats. The GPU's atomic cursor leaves `offsets` at each bucket's
+  // end; the order inside a bucket differs, but the set it holds does not.
+  const cursor = starts.slice();
+  const sorted = new Uint32Array(Math.max(1, binned));
+  for (let i = 0; i < scanCount; i++) {
+    if (!active(i)) continue;
+    sorted[cursor[bucketOf(i)]++] = i;
   }
 
   const pairs: ClosePair[] = [];
@@ -118,9 +168,10 @@ export function findClosePairs(
           const ny = cy + dy;
           const nz = cz + dz;
           const bucket = hashCell(nx, ny, nz, buckets);
-          const filled = Math.min(counts[bucket], capacity);
-          for (let s = 0; s < filled; s++) {
-            const j = table[bucket * capacity + s];
+          const start = starts[bucket];
+          const end = start + counts[bucket];
+          for (let s = start; s < end; s++) {
+            const j = sorted[s];
             // a < b emits each unordered pair once and skips self-pairing.
             if (j <= i) continue;
             // Two different neighbour cells can hash to one bucket. Without
@@ -140,11 +191,11 @@ export function findClosePairs(
             const d2 = dxk * dxk + dyk * dyk + dzk * dzk;
             if (d2 > thresholdSq) continue;
             pairs.push({ a: i, b: j, distanceKm: Math.sqrt(d2) });
-            if (pairs.length >= maxPairs) return { pairs, dropped, pairsTruncated: true };
+            if (pairs.length >= maxPairs) return { pairs, binned, pairsTruncated: true };
           }
         }
       }
     }
   }
-  return { pairs, dropped, pairsTruncated: false };
+  return { pairs, binned, pairsTruncated: false };
 }

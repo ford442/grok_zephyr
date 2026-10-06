@@ -1,44 +1,48 @@
-// Close-approach detection — spatial-hash bin + pair search.
+// Close-approach detection — counting-sort spatial hash + pair search.
 //
-// Three entry points, dispatched in order each frame the feature is on:
-//   clear_bins  — zero the bucket counts and the frame's counters
-//   bin_sats    — hash each satellite into a bucket (atomic append)
-//   find_pairs  — walk the 27-cell neighbourhood, distance test, append pairs
+// Dispatched in order each frame the feature is on (one compute pass, so each
+// dispatch sees the previous one's writes):
+//   clear_bins         — zero the bucket counts and the frame's counters
+//   count_sats         — atomicAdd each active satellite's bucket count
+//   scan_blocks / scan_block_sums / add_block_offsets
+//                      — exclusive prefix sum of counts → offsets
+//                        (conjunctionScan.wgsl, or conjunctionScanSubgroups.wgsl
+//                        when the device has `subgroups`; same result)
+//   scatter_sats       — atomicAdd a cursor in offsets, write the index into
+//                        `sorted`; afterwards offsets[b] is bucket b's END
+//   find_pairs         — walk the 27-cell neighbourhood, distance test, append
 //
-// `cellCoord` and `hashCell` must stay bit-identical to the CPU reference in
-// src/physics/conjunctionHash.ts, which is what the unit tests pin. Cell size
-// is the threshold distance, so a pair inside the threshold is always in the
-// same cell or one of the 26 neighbours.
-//
-// Plain atomicAdd only — no `subgroups`. The feature is not worth requesting an
-// optional device feature no other system binds (GpuCapabilities used-only
-// policy), and the append is not the bottleneck; the neighbour walk is.
+// No bucket has a capacity, so no satellite is ever dropped and the scan covers
+// the whole fleet. `cellCoord` and `hashCell` must stay bit-identical to the CPU
+// reference in src/physics/conjunctionHash.ts, which is what the unit tests pin.
+// Cell size is the threshold distance, so a pair inside the threshold is always
+// in the same cell or one of the 26 neighbours.
 #import "uniforms.wgsl"
 
 @group(0) @binding(1) var<storage, read> sat_pos : array<vec4f>;
 @group(0) @binding(2) var<storage, read_write> bin_counts : array<atomic<u32>>;
-@group(0) @binding(3) var<storage, read_write> bin_indices : array<u32>;
-@group(0) @binding(4) var<storage, read_write> pairs : array<vec4f>;
+@group(0) @binding(3) var<storage, read_write> bin_offsets : array<atomic<u32>>;
+@group(0) @binding(4) var<storage, read_write> sorted : array<u32>;
+@group(0) @binding(5) var<storage, read_write> pairs : array<vec4f>;
 
 struct ConjunctionCounters {
   pair_count : atomic<u32>,
-  // Satellites a full bucket refused. Non-zero means the view under-reports,
-  // and the HUD says so rather than showing a quietly thin result.
-  overflow   : atomic<u32>,
+  // Active satellites hashed this frame — the dashboard's scan coverage.
+  binned     : atomic<u32>,
 }
-@group(0) @binding(5) var<storage, read_write> counters : ConjunctionCounters;
+@group(0) @binding(6) var<storage, read_write> counters : ConjunctionCounters;
 
 struct ConjunctionParams {
   enabled         : u32,
   threshold_km    : f32,
   scan_count      : u32,
   bucket_mask     : u32,
-  bucket_capacity : u32,
+  block_count     : u32,
   max_pairs       : u32,
   time            : f32,
   pad0            : u32,
 }
-@group(0) @binding(6) var<uniform> params : ConjunctionParams;
+@group(0) @binding(7) var<uniform> params : ConjunctionParams;
 
 // Teschner spatial-hash primes. bitcast (not a value conversion) so negative
 // cell coordinates keep their two's-complement bit pattern, matching the CPU
@@ -66,26 +70,36 @@ fn clear_bins(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
   if (i == 0u) {
     atomicStore(&counters.pair_count, 0u);
-    atomicStore(&counters.overflow, 0u);
+    atomicStore(&counters.binned, 0u);
   }
   if (i > params.bucket_mask) { return; }
   atomicStore(&bin_counts[i], 0u);
 }
 
+fn bucketOf(p: vec3f) -> u32 {
+  return hashCell(cellCoord(p, params.threshold_km), params.bucket_mask);
+}
+
 @compute @workgroup_size(256)
-fn bin_sats(@builtin(global_invocation_id) gid: vec3u) {
+fn count_sats(@builtin(global_invocation_id) gid: vec3u) {
   let i = gid.x;
   if (params.enabled == 0u || i >= params.scan_count) { return; }
   let p = sat_pos[i];
   if (!isActive(p)) { return; }
+  atomicAdd(&bin_counts[bucketOf(p.xyz)], 1u);
+  atomicAdd(&counters.binned, 1u);
+}
 
-  let bucket = hashCell(cellCoord(p.xyz, params.threshold_km), params.bucket_mask);
-  let slot = atomicAdd(&bin_counts[bucket], 1u);
-  if (slot < params.bucket_capacity) {
-    bin_indices[bucket * params.bucket_capacity + slot] = i;
-  } else {
-    atomicAdd(&counters.overflow, 1u);
-  }
+@compute @workgroup_size(256)
+fn scatter_sats(@builtin(global_invocation_id) gid: vec3u) {
+  let i = gid.x;
+  if (params.enabled == 0u || i >= params.scan_count) { return; }
+  let p = sat_pos[i];
+  if (!isActive(p)) { return; }
+  // offsets hold the exclusive scan, so the cursor walks each bucket's slice
+  // of `sorted` exactly; afterwards it rests on the slice's end.
+  let slot = atomicAdd(&bin_offsets[bucketOf(p.xyz)], 1u);
+  sorted[slot] = i;
 }
 
 @compute @workgroup_size(256)
@@ -103,10 +117,11 @@ fn find_pairs(@builtin(global_invocation_id) gid: vec3u) {
       for (var dx = -1; dx <= 1; dx++) {
         let neighbour = cell + vec3i(dx, dy, dz);
         let bucket = hashCell(neighbour, params.bucket_mask);
-        let filled = min(atomicLoad(&bin_counts[bucket]), params.bucket_capacity);
+        let end = atomicLoad(&bin_offsets[bucket]);
+        let start = end - atomicLoad(&bin_counts[bucket]);
 
-        for (var s = 0u; s < filled; s++) {
-          let j = bin_indices[bucket * params.bucket_capacity + s];
+        for (var s = start; s < end; s++) {
+          let j = sorted[s];
           // i < j emits each unordered pair once and skips self-pairing.
           if (j <= i) { continue; }
 
