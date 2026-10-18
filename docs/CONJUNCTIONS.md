@@ -103,12 +103,12 @@ The table is `B = nextPow2(N)` buckets, clamped to 2^12–2^19:
 | --- | --- | --- | --- |
 | 262,144 | ~26 MB | ~102 MB | 3.1 MB |
 | 1,048,576 (high) | ~84 MB | ~44 MB | 8.1 MB — fits |
-| 1,048,576 (cinematic) | ~116 MB | ~12 MB | 8.1 MB — fits |
+| 1,048,576 (cinematic) | ~97 MB | ~31 MB | 8.1 MB — fits |
+| 1,048,576 (cinematic + `doubleBuffer`) | ~113 MB | ~15 MB | 8.1 MB — fits |
 
 The buffers are still allocated **on first enable, never at boot**, measured
-against the buffers actually allocated. If they do not fit (for example
-`doubleBuffer` ping-pong plus cinematic trails at 1M, which already exceeds the
-cap), the feature declines and the HUD reports the real free bytes; a test pins
+against the buffers actually allocated. If they do not fit (less than
+the table left under the 128 MB cap), the feature declines and the HUD reports the real free bytes; a test pins
 that decline.
 
 At 1M the table holds ~2 satellites per bucket on average. A fuller table only
