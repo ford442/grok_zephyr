@@ -10,6 +10,7 @@ import {
   MAX_CONJUNCTION_PAIRS,
 } from '@/types/conjunction.js';
 import { calculateSatelliteBufferBudget } from '@/core/buffer/BufferAllocator.js';
+import { MAX_SAFE_BUFFER_SIZE } from '@/core/buffer/bufferTypes.js';
 
 /** Pack satellites as the GPU position buffer does: vec4 per satellite. */
 function pack(sats: [number, number, number, number?][]): Float32Array {
@@ -283,7 +284,7 @@ describe('buffer sizing', () => {
     // ~44 MB free at 1M high.
     expect(conjunctionsFitBudget(bytesFor(1048576), 1048576).fits).toBe(true);
 
-    // Cinematic trail history leaves ~12 MB; the full-fleet table is ~8.1 MB.
+    // Cinematic trail history leaves ~31 MB; the full-fleet table is ~8.1 MB.
     const trails = calculateSatelliteBufferBudget(1048576, {
       doubleBuffer: false,
       trailHistory: true,
@@ -291,12 +292,17 @@ describe('buffer sizing', () => {
     expect(conjunctionsFitBudget(trails, 1048576).fits).toBe(true);
   });
 
-  it('still declines when doubleBuffer + cinematic trails fill the cap', () => {
+  it('fits doubleBuffer + cinematic trails, and declines once the ledger is full', () => {
+    // Bounded GPU trails leave ~15 MB even with ping-pong positions at 1M.
     const full = calculateSatelliteBufferBudget(1048576, {
       doubleBuffer: true,
       trailHistory: true,
     }).total;
-    const budget = conjunctionsFitBudget(full, 1048576);
+    expect(conjunctionsFitBudget(full, 1048576).fits).toBe(true);
+
+    // With less than the table left, the pass declines instead of overrunning.
+    const need = conjunctionsFitBudget(0, 1048576).needBytes;
+    const budget = conjunctionsFitBudget(MAX_SAFE_BUFFER_SIZE - need + 1, 1048576);
     expect(budget.fits).toBe(false);
     expect(budget.freeBytes).toBeLessThan(budget.needBytes);
   });

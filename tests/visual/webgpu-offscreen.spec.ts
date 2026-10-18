@@ -111,7 +111,11 @@ test.describe('Light Brush (WebGPU offscreen)', () => {
   /** Boot applies ?brush after the quality preset; the HUD status line says what won. */
   async function waitForBrushStatus(page: Page, expected: string): Promise<void> {
     await page.waitForFunction(
-      (text) => document.getElementById('brushStatus')?.textContent?.startsWith(text) ?? false,
+      // The status line is written before boot finishes and the scripting
+      // hooks land at its end, so wait for both.
+      (text) =>
+        (document.getElementById('brushStatus')?.textContent?.startsWith(text) ?? false) &&
+        typeof (window as unknown as { zephyrBrush?: unknown }).zephyrBrush === 'object',
       expected,
       { timeout: 120_000 },
     );
@@ -185,7 +189,11 @@ test.describe('Sky Strips (WebGPU offscreen)', () => {
 
   async function waitForStripsStatus(page: Page, expected: string): Promise<void> {
     await page.waitForFunction(
-      (text) => document.getElementById('stripsStatus')?.textContent?.startsWith(text) ?? false,
+      // The status line is written before boot finishes and the scripting
+      // hooks land at its end, so wait for both.
+      (text) =>
+        (document.getElementById('stripsStatus')?.textContent?.startsWith(text) ?? false) &&
+        typeof (window as unknown as { zephyrStrips?: unknown }).zephyrStrips === 'object',
       expected,
       { timeout: 120_000 },
     );
