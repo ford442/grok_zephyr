@@ -425,8 +425,12 @@ export class App implements AppRuntime {
     }
   }
 
+  /** True once init has failed; the welcome modal must not cover the error. */
+  initFailed = false;
+
   private handleError(error: unknown): void {
     console.error('[GrokZephyr] Error:', error);
+    this.initFailed = true;
 
     let message = 'Unknown error occurred';
     let isWebGPUError = false;
