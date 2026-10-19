@@ -26,7 +26,11 @@ function stubDocument() {
   const controls = fakeEl();
   byId.set('controls', controls);
   const body = {
-    classList: { add: (c: string) => classes.add(c), contains: (c: string) => classes.has(c) },
+    classList: {
+      add: (...names: string[]) => names.forEach((c) => classes.add(c)),
+      toggle: (c: string, on: boolean) => (on ? classes.add(c) : classes.delete(c)),
+      contains: (c: string) => classes.has(c),
+    },
     appendChild: (el: ReturnType<typeof fakeEl>) => byId.set(el.id, el),
   };
   vi.stubGlobal('document', {
@@ -53,6 +57,14 @@ describe('rendererUnavailable', () => {
     expect(children.every((c) => c.disabled)).toBe(true);
     expect(byId.get(RENDERER_UNAVAILABLE_BANNER_ID)?.textContent).toContain('NO RENDERER');
     expect(RENDERER_UNAVAILABLE_CLASS).toBe('renderer-unavailable');
+  });
+
+  it('reserves room for the banner and tucks the panel away without saving that choice', () => {
+    stubDocument();
+    lockControlsForNoRenderer('Reload.');
+    const classes = (document.body.classList as unknown as { contains: (c: string) => boolean });
+    expect(classes.contains('has-status-banner')).toBe(true);
+    expect(classes.contains('controls-collapsed')).toBe(true);
   });
 
   it('is idempotent (one banner)', () => {

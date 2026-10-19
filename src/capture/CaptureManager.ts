@@ -5,6 +5,7 @@ import type { AppRuntime } from '@/app/AppRuntime.js';
 const CAPTURE_UI_HIDE_IDS = [
   'ui',
   'controls',
+  'controls-toggle',
   'horizon-indicator',
   'horizon-limb-line',
   'fleet-cockpit-hud',

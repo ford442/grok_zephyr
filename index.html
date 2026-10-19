@@ -54,21 +54,21 @@
     <!-- Ground observer preset selector (shown only in Ground View mode) -->
     <div id="ground-preset-selector" style="display: none">
       <div class="preset-label">GROUND PRESET</div>
-      <button class="preset-btn active" data-preset="houseWindow">🏠 HOUSE</button>
-      <button class="preset-btn" data-preset="carWindshield">🚗 CAR</button>
-      <button class="preset-btn" data-preset="beachNight">🏖️ BEACH</button>
-      <button class="preset-btn" data-preset="rooftop">🏢 ROOFTOP</button>
-      <button class="preset-btn" data-preset="airplaneWindow">✈️ AIRPLANE</button>
+      <button class="preset-btn active" data-preset="houseWindow">HOUSE</button>
+      <button class="preset-btn" data-preset="carWindshield">CAR</button>
+      <button class="preset-btn" data-preset="beachNight">BEACH</button>
+      <button class="preset-btn" data-preset="rooftop">ROOFTOP</button>
+      <button class="preset-btn" data-preset="airplaneWindow">AIRPLANE</button>
     </div>
 
     <div id="ui" role="status" aria-live="polite" aria-label="Simulation Status">
       <div class="title" aria-label="Application Title">◈ GROK ZEPHYR</div>
       <div class="stat" id="s-alt" aria-label="Altitude">Altitude : 720 km</div>
       <div class="stat" id="s-fleet" aria-label="Satellite Fleet Count">Fleet : 1,048,576</div>
-      <div class="stat" id="s-fps" aria-label="Frames Per Second">FPS : --</div>
+      <div class="stat" id="s-fps" aria-label="Frames Per Second" title="Frames per second — shown once the first frames have rendered">FPS : --</div>
       <div class="stat" id="s-view" aria-label="Current View Mode">View : 720km Horizon</div>
       <div class="stat" id="s-tuning" aria-label="Active View Tuning Profile">Tuning : Horizon</div>
-      <div class="stat" id="s-visible" aria-label="Visible Satellites">Visible : --</div>
+      <div class="stat" id="s-visible" aria-label="Visible Satellites" title="Satellites inside the view — shown once the first frames have rendered">Visible : --</div>
       <div class="stat" id="s-quality" aria-label="Rendering Quality">Quality : HIGH</div>
       <div class="stat" id="s-sim-utc" aria-label="Simulation UTC">Sim UTC : —</div>
       <div class="stat" id="s-sim-rate" aria-label="Simulation Rate">Sim Rate : 1×</div>
@@ -92,6 +92,18 @@
         </div>
       </div>
     </div>
+
+    <!-- Hide / show the controls panel (tablet and desktop; phones use the hamburger below) -->
+    <button
+      id="controls-toggle"
+      type="button"
+      aria-controls="controls"
+      aria-expanded="true"
+      aria-label="Hide controls panel"
+    >
+      <span class="controls-toggle-icon" aria-hidden="true"></span>
+      <span class="controls-toggle-label">HIDE CONTROLS</span>
+    </button>
 
     <div id="controls" role="navigation" aria-label="Simulation Controls">
       <section class="control-group control-group-view" aria-label="View Modes">
@@ -203,7 +215,7 @@
           data-pattern="3"
           aria-label="Activate smile animation pattern"
         >
-          😊 SMILE
+          SMILE
         </button>
         <button
           class="anim-btn"
@@ -211,7 +223,7 @@
           data-pattern="4"
           aria-label="Activate digital rain animation pattern"
         >
-          💧 MATRIX
+          MATRIX
         </button>
         <button
           class="anim-btn"
@@ -219,7 +231,7 @@
           data-pattern="5"
           aria-label="Activate heartbeat animation pattern"
         >
-          💓 HEARTBEAT
+          HEARTBEAT
         </button>
         <div id="strips-controls" class="strips-controls">
           <button
@@ -228,7 +240,7 @@
             aria-pressed="false"
             title="Light-show patterns along each orbit; combines with the light brush"
           >
-            🌈 STRIPS
+            STRIPS
           </button>
           <select id="stripsMode" aria-label="Sky strips pattern">
             <option value="wave" selected>Wave</option>
@@ -359,6 +371,7 @@
         >
           SGP4
         </button>
+        <div id="physicsNote" class="capture-note" role="note" hidden></div>
       </section>
 
       <section id="sun-controls" class="control-group" aria-label="Sun Lighting">

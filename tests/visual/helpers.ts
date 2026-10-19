@@ -173,6 +173,8 @@ export function compareToBaseline(
 export const UI_HIDE_IDS = [
   'ui',
   'controls',
+  'controls-toggle',
+  'renderer-fallback-badge',
   'horizon-indicator',
   'horizon-limb-line',
   'moon-scale-annotation',

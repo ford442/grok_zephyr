@@ -289,7 +289,13 @@ export class XrSessionManager {
 
   private hideDesktopChrome(): void {
     this.hiddenEls = [];
-    for (const id of ['controls', 'hud', 'ground-preset-selector', 'ground-station-panel']) {
+    for (const id of [
+      'controls',
+      'controls-toggle',
+      'hud',
+      'ground-preset-selector',
+      'ground-station-panel',
+    ]) {
       const el = document.getElementById(id);
       if (!el) continue;
       this.hiddenEls.push({ el, prev: el.style.display });
