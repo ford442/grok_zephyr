@@ -168,11 +168,39 @@ export class OnboardingManager {
     OnboardingManager.markDismissed();
   }
 
+  private static active: OnboardingManager | null = null;
+
+  /**
+   * Remove the welcome modal immediately because init failed and the error
+   * must be visible. Unlike dismiss(), this does not persist the dismissal,
+   * so the intro still shows on a later visit where rendering works.
+   */
+  static hideForError(): void {
+    OnboardingManager.active?.removeNow();
+  }
+
+  private removeNow(): void {
+    if (this.escapeHandler) {
+      document.removeEventListener('keydown', this.escapeHandler);
+      this.escapeHandler = null;
+    }
+    this.focusTrap?.release();
+    this.focusTrap = null;
+    if (this.dismissTimeoutId !== null) {
+      clearTimeout(this.dismissTimeoutId);
+      this.dismissTimeoutId = null;
+    }
+    this.overlayElement?.remove();
+    this.overlayElement = null;
+    OnboardingManager.active = null;
+  }
+
   /**
    * Show the overlay if not dismissed (checks WebGPU support first)
    */
   showIfNew(): void {
     if (!OnboardingManager.isDismissed()) {
+      OnboardingManager.active = this;
       // Skip showing onboarding if WebGPU is not supported at all
       if (typeof navigator === 'undefined' || !('gpu' in navigator)) {
         return;
