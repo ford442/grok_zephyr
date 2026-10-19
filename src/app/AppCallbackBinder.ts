@@ -46,6 +46,7 @@ import {
   searchAndSelectSatellite,
 } from '@/app/SatelliteSelection.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
+import { isRendererUnavailable } from '@/ui/rendererUnavailable.js';
 
 function shouldPlayButtonTick(button: HTMLButtonElement): boolean {
   if (/^btn[0-4]$/.test(button.id)) return false;
@@ -351,6 +352,7 @@ export function setupCallbacks(rt: AppRuntime): void {
 
 export function registerUserActivity(rt: AppRuntime, interruptCinematic: boolean): void {
   rt.simulation.lastUserActivityTime = performance.now() * 0.001;
+  if (isRendererUnavailable()) return;
   void rt.audio.unlock();
   if (interruptCinematic && rt.camera.isCinematicActive()) {
     rt.camera.stopCinematic();

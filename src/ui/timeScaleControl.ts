@@ -1,5 +1,6 @@
 import type { UIElements } from '@/ui/uiTypes.js';
 import type { SimClock } from '@/app/SimClock.js';
+import { isRendererUnavailable } from '@/ui/rendererUnavailable.js';
 import {
   formatSimRate,
   formatSimUtc,
@@ -122,7 +123,7 @@ export function createSimTransportControl(state: SimTransportState): void {
   });
 
   document.addEventListener('keydown', (e) => {
-    if (isTypingTarget(e.target)) return;
+    if (isTypingTarget(e.target) || isRendererUnavailable()) return;
     const clock = state.getClock();
 
     if (e.code === 'Space') {

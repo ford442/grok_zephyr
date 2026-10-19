@@ -535,3 +535,29 @@ body {
   border: 1px solid #f44;
   border-radius: 10px;
 }
+
+/* No-renderer state (src/ui/rendererUnavailable.ts): controls are inert, so dim
+   them and keep a banner on screen. */
+body.renderer-unavailable #controls,
+body.renderer-unavailable #ground-preset-selector,
+body.renderer-unavailable #camera-controls {
+  opacity: 0.35;
+  filter: grayscale(1);
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+#renderer-unavailable-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10000;
+  padding: 8px 16px;
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: #a11;
+  border-bottom: 1px solid #f44;
+}

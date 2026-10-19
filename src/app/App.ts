@@ -426,10 +426,22 @@ export class App implements AppRuntime {
     }
   }
 
+  /**
+   * No renderer is running (init failed or recovery gave up): park everything
+   * that would otherwise change state behind a blank canvas.
+   */
+  private enterNoRendererState(): void {
+    this.stop();
+    if (this.camera.isCinematicActive()) this.camera.stopCinematic();
+    this.simulation.demoAutoEnabled = false;
+    this.ui.setRendererUnavailable('Reload once WebGPU is available.');
+  }
+
   private handleError(error: unknown): void {
     console.error('[GrokZephyr] Error:', error);
     // The welcome modal would otherwise cover the failure message.
     OnboardingManager.hideForError();
+    this.enterNoRendererState();
 
     let message = 'Unknown error occurred';
     let isWebGPUError = false;

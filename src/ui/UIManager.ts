@@ -44,6 +44,7 @@ import {
   updateSimClockHud,
 } from '@/ui/timeScaleControl.js';
 import type { SimClock } from '@/app/SimClock.js';
+import { lockControlsForNoRenderer } from '@/ui/rendererUnavailable.js';
 
 /**
  * UI Manager
@@ -450,6 +451,21 @@ export class UIManager {
       this.dashboard.destroy();
       this.dashboard = null;
     }
+  }
+
+  /**
+   * No renderer exists: show neutral stats, force the demo off and lock the
+   * controls so nothing changes state behind a blank canvas.
+   */
+  setRendererUnavailable(reason: string): void {
+    this.setDemoActive(false);
+    this.setDemoAutoEnabled(false);
+    this.elements.altitude.textContent = 'Altitude : —';
+    this.elements.viewMode.textContent = 'View     : —';
+    this.elements.fleet.textContent = 'Fleet    : —';
+    this.elements.fps.textContent = 'FPS      : --';
+    this.elements.visible.textContent = 'Visible  : --';
+    lockControlsForNoRenderer(reason);
   }
 
   showError(message: string): void {
