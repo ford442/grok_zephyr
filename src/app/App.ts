@@ -8,6 +8,7 @@ import { AudioEngine } from '@/audio/AudioEngine.js';
 import { SkylineCity } from '@/render/SkylineCity.js';
 import { UI as UI_CONSTANTS } from '@/types/constants.js';
 import { WebGPUCompatibilityManager } from '@/ui/WebGPUCompatibilityManager.js';
+import { OnboardingManager } from '@/ui/OnboardingManager.js';
 import { resolveRendererBackend } from '@/webgl/rendererSelection.js';
 import { parseSavedExposureSettings } from '@/core/ExposureRuntime.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
@@ -427,6 +428,8 @@ export class App implements AppRuntime {
 
   private handleError(error: unknown): void {
     console.error('[GrokZephyr] Error:', error);
+    // The welcome modal would otherwise cover the failure message.
+    OnboardingManager.hideForError();
 
     let message = 'Unknown error occurred';
     let isWebGPUError = false;
