@@ -27,6 +27,7 @@ import { setPatternMode, setAnimationPattern } from '@/app/PatternController.js'
 import { FocusManager, type FocusBufferSource } from '@/camera/FocusManager.js';
 import { rebuildSatelliteCatalog } from '@/app/SatelliteSelection.js';
 import { startWebGLLoop } from '@/app/FrameLoop.js';
+import { PHYSICS_MODE } from '@/physics/physicsMode.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
 
 export async function bootWebGL(
@@ -136,6 +137,14 @@ export async function bootWebGL(
   rt.ui.setConstellationLegend(formatGroupCountLegend(merged.groupCounts));
   rt.ui.setConstellationChips(enabledIds, merged.groupCounts, rt.webglGroupVisibility);
   rt.ui.setRealismControls(false, rt.simulation.hasTleCatalog);
+  // Satellites are culled in the vertex shader, so there is no per-frame count to show.
+  rt.ui.setVisibleCountUnavailable('WebGL2');
+  // Propagation runs in the GLSL vertex shader on circular shells; the Keplerian /
+  // J2 / SGP4 paths are WebGPU compute only (docs/WEBGL_FALLBACK.md).
+  rt.ui.setPhysicsModesAvailable(
+    [PHYSICS_MODE.SIMPLE],
+    'WebGL2 fallback: circular shells only — Keplerian, J2 and SGP4 need WebGPU.',
+  );
 
   // Close approaches are a WebGPU compute pass with no GLSL port — the fallback
   // renderer says so rather than offering a toggle that does nothing.

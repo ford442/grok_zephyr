@@ -4,6 +4,9 @@
  * Handles comprehensive WebGPU support detection and user-friendly error messaging.
  */
 
+import { webgl2OptInHref } from '@/webgl/rendererSelection.js';
+import { FALLBACK_LIMITS } from '@/ui/rendererFallbackBadge.js';
+
 export interface CompatibilityCheckResult {
   isSupported: boolean;
   browserName: string;
@@ -11,7 +14,30 @@ export interface CompatibilityCheckResult {
   suggestions: string[];
   severity: 'critical' | 'warning' | 'info';
   featureLines?: string[];
+  /** Overlay heading; defaults to the WebGPU wording for the severity. */
+  title?: string;
+  /**
+   * Offer the opt-in WebGL2 renderer (`?webgl2=1`). It is a button the user
+   * presses, never something the app switches to on its own.
+   */
+  offerWebgl2?: boolean;
 }
+
+/** Inline so it renders on machines with no emoji font (the old glyph showed as a box). */
+const WARNING_ICON_SVG =
+  '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">' +
+  '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>' +
+  '<line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+const RECOVERY_ICON_SVG =
+  '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">' +
+  '<path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg>';
+const INFO_ICON_SVG =
+  '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">' +
+  '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/>' +
+  '<line x1="12" y1="8" x2="12.01" y2="8"/></svg>';
 
 export class WebGPUCompatibilityManager {
   /**
@@ -49,6 +75,7 @@ export class WebGPUCompatibilityManager {
         message: 'WebGPU is not available in your browser.',
         suggestions: this.getSuggestionsForBrowser(browser),
         severity: 'critical',
+        offerWebgl2: true,
       };
     }
 
@@ -126,7 +153,7 @@ export class WebGPUCompatibilityManager {
 
     overlay.innerHTML = `
       <div class="compatibility-content">
-        <div class="compatibility-icon" aria-hidden="true">⟳</div>
+        <div class="compatibility-icon" aria-hidden="true">${RECOVERY_ICON_SVG}</div>
         <h1 class="compatibility-title">GPU Device Lost — Recovering…</h1>
         <p class="compatibility-message">
           The graphics device was reset. Grok Zephyr is rebuilding GPU resources.
@@ -138,18 +165,26 @@ export class WebGPUCompatibilityManager {
     return overlay;
   }
 
-  /** Build a compatibility result for a failed initialization or recovery stage. */
+  /**
+   * Build a compatibility result for a failed initialization or recovery stage.
+   * `stage: 'webgl2'` means the opt-in fallback itself failed, so it is not offered again.
+   */
   static createInitFailureResult(stage: string, message: string): CompatibilityCheckResult {
+    const webgl2Failed = stage === 'webgl2';
     return {
       isSupported: false,
       browserName: this.detectBrowser(),
-      message: `Initialization failed during ${stage}: ${message}`,
+      message: webgl2Failed
+        ? `The WebGL2 fallback failed to start: ${message}`
+        : `Initialization failed during ${stage}: ${message}`,
       suggestions: [
         'Reload the page and try again.',
         'Update your browser to the latest Chrome 113+ or Edge 113+ build.',
         'If the problem persists, try disabling hardware acceleration or switching GPUs.',
       ],
       severity: 'critical',
+      title: webgl2Failed ? 'WebGL2 Fallback Failed' : undefined,
+      offerWebgl2: !webgl2Failed,
     };
   }
 
@@ -185,11 +220,14 @@ export class WebGPUCompatibilityManager {
     overlay.innerHTML = `
       <div class="compatibility-content">
         <div class="compatibility-icon" aria-hidden="true">
-          ${result.severity === 'critical' ? '⚠️' : 'ℹ️'}
+          ${result.severity === 'critical' ? WARNING_ICON_SVG : INFO_ICON_SVG}
         </div>
 
         <h1 class="compatibility-title">
-          ${result.severity === 'critical' ? 'WebGPU Not Available' : 'WebGPU Status'}
+          ${this.escapeHtml(
+            result.title ??
+              (result.severity === 'critical' ? 'WebGPU Not Available' : 'WebGPU Status'),
+          )}
         </h1>
 
         <p class="compatibility-message">
@@ -224,19 +262,34 @@ export class WebGPUCompatibilityManager {
               result.severity === 'critical'
                 ? `
               <button class="option-btn option-download" id="compat-download-btn">
-                📥 Get Chrome 113+
+                Get Chrome 113+
               </button>
               <button class="option-btn option-continue" id="compat-retry-btn">
-                ↻ Retry
+                Retry
               </button>
+              ${
+                result.offerWebgl2
+                  ? `<button class="option-btn option-fallback" id="compat-webgl2-btn">
+                Try WebGL2 (reduced)
+              </button>`
+                  : ''
+              }
             `
                 : `
               <button class="option-btn option-continue" id="compat-continue-btn">
-                ✓ Continue Anyway
+                Continue Anyway
               </button>
             `
             }
           </div>
+          ${
+            result.offerWebgl2 && result.severity === 'critical'
+              ? `<p class="compatibility-fallback-note">
+            Optional: WebGL2 is a reduced-fidelity view that only starts when you choose it.
+            ${this.escapeHtml(FALLBACK_LIMITS)}
+          </p>`
+              : ''
+          }
         </div>
 
         <p class="compatibility-note">
@@ -249,6 +302,7 @@ export class WebGPUCompatibilityManager {
     const downloadBtn = overlay.querySelector('#compat-download-btn');
     const retryBtn = overlay.querySelector('#compat-retry-btn');
     const continueBtn = overlay.querySelector('#compat-continue-btn');
+    const webgl2Btn = overlay.querySelector('#compat-webgl2-btn');
 
     if (downloadBtn) {
       downloadBtn.addEventListener('click', () => {
@@ -259,6 +313,12 @@ export class WebGPUCompatibilityManager {
     if (retryBtn) {
       retryBtn.addEventListener('click', () => {
         location.reload();
+      });
+    }
+
+    if (webgl2Btn) {
+      webgl2Btn.addEventListener('click', () => {
+        window.location.assign(webgl2OptInHref());
       });
     }
 

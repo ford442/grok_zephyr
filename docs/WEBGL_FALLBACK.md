@@ -17,13 +17,31 @@ constellation animations to GLSL unless a specific test needs them. Keep
 `preserveDrawingBuffer` and `window.zephyrGL.capture()`. WebGPU pixels in CI use
 `?capture=offscreen` (`window.zephyrGPU.capture()`).
 
+## Opt-in only — never a silent fallback
+
+When WebGPU cannot start (no adapter, device creation fails, no `navigator.gpu`)
+the app shows the **WebGPU Not Available** overlay and the "no renderer" state
+(locked controls, `NO RENDERER` banner, `n/a (no renderer)` stats). It does **not**
+switch to WebGL2 by itself. The overlay offers a **Try WebGL2 (reduced)** button
+that reloads with `?webgl2=1`; that is the only way a visitor without WebGPU gets a
+picture.
+
+Whenever the WebGL2 renderer is running — by `?webgl2=1`, `?renderer=webgl`, or a
+saved preference — an amber **WEBGL2 FALLBACK** banner stays on screen, says how it
+was selected and what is missing, and links back to WebGPU (`?renderer=webgpu`,
+which also overwrites a saved WebGL preference). In this mode Keplerian / J2 / SGP4
+are disabled with the reason (they are WebGPU compute), and `Visible` reads
+`n/a (WebGL2)` because satellites are culled in the vertex shader and there is no
+count to show. FPS is measured in the WebGL loop itself.
+
 ## Usage
 
 | Action                  | How                                                                                  |
 | ----------------------- | ------------------------------------------------------------------------------------ |
-| Use the WebGL2 renderer | `?renderer=webgl`                                                                    |
+| Opt in to WebGL2 (user) | `?webgl2=1` — this page load only, **not** persisted; `?webgl2=0` forces WebGPU      |
+| Use the WebGL2 renderer | `?renderer=webgl` (CI / agents; wins over `?webgl2`)                                 |
 | Force WebGPU (default)  | `?renderer=webgpu`                                                                   |
-| Persisted choice        | Either value is saved to `localStorage['zephyr.renderer']` and used on the next load |
+| Persisted choice        | `?renderer=` values are saved to `localStorage['zephyr.renderer']` and used on the next load; `?webgl2` is never saved |
 | Reduce satellite count  | `&sats=100000` (clamped to `[1, 1048576]`; default is the full constellation)        |
 | Pick a view mode        | `&mode=0..4` (0 horizon, 1 god, 2 fleet, 3 ground, 4 moon)                           |
 | Load real TLE data      | `&tle=starlink` (shared with the WebGPU path)                                        |

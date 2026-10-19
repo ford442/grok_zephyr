@@ -266,6 +266,10 @@ const SATELLITES_PER_PLANE = 1024; // satellites per plane
 | Ground View   | 3   | Surface observer looking up at the constellation; includes environmental overlays |
 | Moon View     | 4   | Camera positioned at Earth-Moon distance viewing the near-side constellation      |
 
+### Control panel layout
+
+`#controls` is a CSS grid (`src/styles/controls-layout.css`, imported last) capped at 60% of the viewport height and scrollable; from 768px up `#controls-toggle` (bottom-left) hides/shows it (`src/ui/controlsCollapse.ts`, saved in `localStorage['zephyr.controlsCollapsed']`; starts collapsed on windows shorter than 640px and while no renderer runs). Phones (≤ 767px) keep the hamburger. Labels are text-only — no emoji or exotic symbols (a machine without an emoji font drew them as boxes); `tests/visual/no-webgpu.spec.ts` guards this, the 1024×594 no-adapter layout, and the `?webgl2=1` opt-in.
+
 ### Ground Observer Presets
 
 When in Ground View, the following presets are available via UI buttons:
@@ -516,7 +520,7 @@ it whenever you need to _see_ what the simulation renders — WebGPU output is n
 readable in headless Chromium, but the WebGL2 canvas is (`gl.readPixels` /
 `canvas.toDataURL` work; `preserveDrawingBuffer` is on).
 
-- Activate: `?renderer=webgl` (persists in `localStorage['zephyr.renderer']`).
+- Activate: `?renderer=webgl` (persists in `localStorage['zephyr.renderer']`) or, for end users, `?webgl2=1` (one page load, never persisted). **WebGL2 is never an automatic fallback** — when WebGPU init fails the app shows the compatibility overlay (with a **Try WebGL2 (reduced)** button that opts in via `?webgl2=1`) and locks the UI (`src/ui/rendererUnavailable.ts`). Whenever WebGL2 does run, a loud amber `WEBGL2 FALLBACK` banner stays up (`src/ui/rendererFallbackBadge.ts`), Keplerian/J2/SGP4 are disabled with a reason, and `Visible` reads `n/a (WebGL2)`.
 - Reduce load: `?renderer=webgl&sats=100000` (default = full 1,048,576).
 - Debug flags: `?renderer=webgl&debug=wireframe,lod,points,noearth,nostars,nobloom,nosats`.
 - Scripting: `window.zephyrGL.{getDebug,setDebug,capture}()` for Playwright/agents.

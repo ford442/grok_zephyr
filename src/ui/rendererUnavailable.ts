@@ -10,6 +10,13 @@
  * compatibility overlay's Retry button).
  */
 
+import { collapseControlsTemporarily } from '@/ui/controlsCollapse.js';
+import {
+  STATUS_BANNER_CLASS,
+  removeRendererFallbackBadge,
+  reserveBannerSpace,
+} from '@/ui/rendererFallbackBadge.js';
+
 export const RENDERER_UNAVAILABLE_CLASS = 'renderer-unavailable';
 export const RENDERER_UNAVAILABLE_BANNER_ID = 'renderer-unavailable-banner';
 
@@ -19,6 +26,7 @@ const LOCKED_CONTAINER_IDS = [
   'ground-preset-selector',
   'camera-controls',
   'capture-gallery',
+  'ground-station-panel',
 ] as const;
 
 const FORM_CONTROL_SELECTOR = 'button, input, select, textarea';
@@ -36,7 +44,12 @@ export function isRendererUnavailable(): boolean {
  */
 export function lockControlsForNoRenderer(reason: string): void {
   if (typeof document === 'undefined') return;
-  document.body.classList.add(RENDERER_UNAVAILABLE_CLASS);
+  document.body.classList.add(RENDERER_UNAVAILABLE_CLASS, STATUS_BANNER_CLASS);
+  // Nothing in the panel works, so don't let it cover the page; the toggle stays
+  // live (it is outside the locked subtree) and the saved preference is untouched.
+  collapseControlsTemporarily();
+  // A failed WebGL2 boot must not leave the "fallback running" badge up as well.
+  removeRendererFallbackBadge();
 
   for (const id of LOCKED_CONTAINER_IDS) {
     const container = document.getElementById(id);
@@ -57,4 +70,5 @@ export function lockControlsForNoRenderer(reason: string): void {
     document.body.appendChild(banner);
   }
   banner.textContent = `NO RENDERER — controls inactive. ${reason}`;
+  reserveBannerSpace(banner);
 }
