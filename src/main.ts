@@ -13,12 +13,18 @@ import './styles/fleet-cockpit.css';
 
 function main(): void {
   const onboarding = new OnboardingManager();
-  onboarding.showIfNew();
 
   const app = new App();
-  void app.initialize().catch((err: unknown) => {
-    console.error(err);
-  });
+  // Welcome modal only after a successful init, so it never covers the failure reason.
+  void app
+    .initialize()
+    .catch((err: unknown) => {
+      console.error(err);
+      app.initFailed = true;
+    })
+    .finally(() => {
+      if (!app.initFailed) onboarding.showIfNew();
+    });
 
   window.addEventListener('beforeunload', () => {
     app.destroy();
