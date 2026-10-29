@@ -8,7 +8,9 @@ import { AudioEngine } from '@/audio/AudioEngine.js';
 import { SkylineCity } from '@/render/SkylineCity.js';
 import { UI as UI_CONSTANTS } from '@/types/constants.js';
 import { WebGPUCompatibilityManager } from '@/ui/WebGPUCompatibilityManager.js';
-import { resolveRendererBackend } from '@/webgl/rendererSelection.js';
+import { OnboardingManager } from '@/ui/OnboardingManager.js';
+import { resolveRendererChoice } from '@/webgl/rendererSelection.js';
+import { showRendererFallbackBadge } from '@/ui/rendererFallbackBadge.js';
 import { parseSavedExposureSettings } from '@/core/ExposureRuntime.js';
 import type { QualityLevel } from '@/core/QualityPresets.js';
 import type { FocusManager, FocusSelection } from '@/camera/FocusManager.js';
@@ -69,7 +71,9 @@ import { isImmersiveVrSupported, XrSessionManager } from '@/xr/index.js';
 
 export class App implements AppRuntime {
   readonly canvas: HTMLCanvasElement;
-  readonly backend = resolveRendererBackend();
+  /** Resolved once: it can persist `?renderer=` and the fallback badge needs the source. */
+  readonly rendererChoice = resolveRendererChoice();
+  readonly backend = this.rendererChoice.backend;
   readonly isMobileDevice = detectMobileDevice();
   readonly mobileDefaultQuality: QualityLevel = detectMobileDefaultQuality();
   readonly demoIdleTimeoutSeconds = UI_CONSTANTS.DEMO_IDLE_TIMEOUT_SECONDS;
@@ -288,6 +292,8 @@ export class App implements AppRuntime {
     try {
       console.log('[GrokZephyr] Initializing...');
       if (this.backend === 'webgl') {
+        // Opt-in only (never an automatic fallback), and loud for as long as it runs.
+        showRendererFallbackBadge(this.rendererChoice.source);
         await bootWebGL(
           this,
           this.resizeListener,
@@ -431,6 +437,26 @@ export class App implements AppRuntime {
   private handleError(error: unknown): void {
     console.error('[GrokZephyr] Error:', error);
     this.initFailed = true;
+  /**
+   * No renderer is running (init failed or recovery gave up): park everything
+   * that would otherwise change state behind a blank canvas.
+   */
+  private enterNoRendererState(): void {
+    this.stop();
+    if (this.camera.isCinematicActive()) this.camera.stopCinematic();
+    this.simulation.demoAutoEnabled = false;
+    this.ui.setRendererUnavailable(
+      this.backend === 'webgl'
+        ? 'The WebGL2 fallback could not start.'
+        : 'Reload once WebGPU is available.',
+    );
+  }
+
+  private handleError(error: unknown): void {
+    console.error('[GrokZephyr] Error:', error);
+    // The welcome modal would otherwise cover the failure message.
+    OnboardingManager.hideForError();
+    this.enterNoRendererState();
 
     let message = 'Unknown error occurred';
     let isWebGPUError = false;
@@ -446,7 +472,10 @@ export class App implements AppRuntime {
         return;
       }
 
-      const failure = WebGPUCompatibilityManager.createInitFailureResult('webgpu', message);
+      const failure = WebGPUCompatibilityManager.createInitFailureResult(
+        this.backend === 'webgl' ? 'webgl2' : 'webgpu',
+        message,
+      );
       if (!WebGPUCompatibilityManager.hasActiveOverlay()) {
         document.body.appendChild(WebGPUCompatibilityManager.createCompatibilityOverlay(failure));
       } else {
@@ -472,6 +501,7 @@ export class App implements AppRuntime {
     this.ui.showError(
       message +
         '<br><br>Please use a modern browser with WebGPU enabled (Chrome 113+, Edge 113+, or Firefox Nightly).',
+      this.backend === 'webgl' ? 'WebGL2 Error' : 'WebGPU Error',
     );
   }
 

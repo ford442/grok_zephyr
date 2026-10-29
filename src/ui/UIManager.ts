@@ -44,6 +44,8 @@ import {
   updateSimClockHud,
 } from '@/ui/timeScaleControl.js';
 import type { SimClock } from '@/app/SimClock.js';
+import { lockControlsForNoRenderer } from '@/ui/rendererUnavailable.js';
+import { setupControlsCollapse } from '@/ui/controlsCollapse.js';
 
 /**
  * UI Manager
@@ -110,6 +112,7 @@ export class UIManager {
   private dashboard: IDashboard | null = null;
   private currentQualityLevel: QualityLevel = 'high';
   private demoAutoEnabled = true;
+  private visibleCountUnavailableReason: string | null = null;
   private toastTimeout: number | null = null;
   private getClock: (() => SimClock) | null = null;
 
@@ -126,6 +129,7 @@ export class UIManager {
     });
     createAnimationControls(this.elements, this.animationState, this.callbacks);
     setupMobileMenu(this.elements);
+    setupControlsCollapse();
     setupConstellationChips(this.elements, this.callbacks);
     this.setConstellationChips(readSavedConstellationSelection(), new Map());
   }
@@ -166,6 +170,28 @@ export class UIManager {
       const btnMode = parseInt(btn?.dataset.physics || '-1');
       btn?.classList.toggle('active', btnMode === mode);
     });
+  }
+
+  /**
+   * Disable the physics modes a renderer cannot run (the WebGL2 fallback stays on
+   * circular shells), with the reason on the button and in a visible note — a
+   * selectable mode that silently does nothing is worse than a greyed one.
+   */
+  setPhysicsModesAvailable(available: readonly number[], reason: string): void {
+    this.elements.physicsButtons.forEach((btn) => {
+      if (!btn) return;
+      const mode = parseInt(btn.dataset.physics || '-1');
+      const ok = available.includes(mode);
+      btn.disabled = !ok;
+      btn.setAttribute('aria-disabled', ok ? 'false' : 'true');
+      btn.classList.toggle('disabled', !ok);
+      if (!ok) btn.title = reason;
+    });
+    const note = document.getElementById('physicsNote');
+    if (note) {
+      note.textContent = reason;
+      note.hidden = false;
+    }
   }
 
   setActiveSunButton(mode: SunLightingMode): void {
@@ -344,7 +370,15 @@ export class UIManager {
   }
 
   setVisibleCount(count: number): void {
+    if (this.visibleCountUnavailableReason) return;
     this.elements.visible.textContent = `Visible  : ${count.toLocaleString()}`;
+  }
+
+  /** A renderer with no cull count says so instead of showing "--" forever or a guess. */
+  setVisibleCountUnavailable(reason: string): void {
+    this.visibleCountUnavailableReason = reason;
+    this.elements.visible.textContent = `Visible  : n/a (${reason})`;
+    this.elements.visible.title = `Not measured: ${reason}.`;
   }
 
   setDataSource(label: string): void {
@@ -452,9 +486,26 @@ export class UIManager {
     }
   }
 
-  showError(message: string): void {
+  /**
+   * No renderer exists: show neutral stats, force the demo off and lock the
+   * controls so nothing changes state behind a blank canvas.
+   */
+  setRendererUnavailable(reason: string): void {
+    this.setDemoActive(false);
+    this.setDemoAutoEnabled(false);
+    this.elements.altitude.textContent = 'Altitude : —';
+    this.elements.viewMode.textContent = 'View     : —';
+    this.elements.fleet.textContent = 'Fleet    : —';
+    // "--" alone reads as "still loading"; say that nothing is being measured.
+    this.elements.fps.textContent = 'FPS      : n/a (no renderer)';
+    this.elements.visible.textContent = 'Visible  : n/a (no renderer)';
+    this.elements.fps.title = this.elements.visible.title = 'No renderer is running, so nothing is measured.';
+    lockControlsForNoRenderer(reason);
+  }
+
+  showError(message: string, title = 'WebGPU Error'): void {
     this.elements.error.style.display = 'block';
-    this.elements.error.innerHTML = `<b>WebGPU Error</b><br>${message}`;
+    this.elements.error.innerHTML = `<b>${title}</b><br>${message}`;
   }
 
   hideError(): void {

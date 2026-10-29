@@ -1,5 +1,6 @@
 import type { UIElements } from '@/ui/uiTypes.js';
 import type { SimClock } from '@/app/SimClock.js';
+import { isRendererUnavailable } from '@/ui/rendererUnavailable.js';
 import {
   formatSimRate,
   formatSimUtc,
@@ -39,10 +40,10 @@ export function createSimTransportControl(state: SimTransportState): void {
   container.className = 'time-controls';
 
   container.innerHTML = `
-      <div class="time-label">⏱ SIM TIME</div>
+      <div class="time-label">SIM TIME</div>
       <div class="time-display" id="sim-time-display">Sim UTC: —</div>
       <div class="sim-transport-row">
-        <button class="time-preset-btn sim-transport-btn" id="simPlayPause" type="button" aria-label="Play or pause simulation" title="Space">▶</button>
+        <button class="time-preset-btn sim-transport-btn" id="simPlayPause" type="button" aria-label="Play or pause simulation" title="Space">PLAY</button>
         <button class="time-preset-btn sim-transport-btn" id="simNowBtn" type="button" title="Jump to current UTC">NOW</button>
       </div>
       <div class="time-presets sim-rate-presets">
@@ -122,7 +123,7 @@ export function createSimTransportControl(state: SimTransportState): void {
   });
 
   document.addEventListener('keydown', (e) => {
-    if (isTypingTarget(e.target)) return;
+    if (isTypingTarget(e.target) || isRendererUnavailable()) return;
     const clock = state.getClock();
 
     if (e.code === 'Space') {
@@ -161,7 +162,7 @@ export function syncTransportUi(
   }
 
   if (state.elements.simPlayPauseButton) {
-    state.elements.simPlayPauseButton.textContent = clock.isPaused() ? '▶' : '⏸';
+    state.elements.simPlayPauseButton.textContent = clock.isPaused() ? 'PLAY' : 'PAUSE';
     state.elements.simPlayPauseButton.classList.toggle('active', !clock.isPaused());
   }
 

@@ -12,6 +12,12 @@ export class GroundStationPanel {
   private passes: SatellitePass[] = [];
   private abort: AbortController | null = null;
   private predictionKey = '';
+  /**
+   * Survives re-renders (the markup is rebuilt on every change). Starts open only when
+   * it fits in the gutter beside the centred controls panel (1220px + 2 x 406px);
+   * anywhere narrower it would sit on top of the controls, so it starts closed.
+   */
+  private open = typeof window === 'undefined' || window.innerWidth >= 2032;
   private readonly tle = new TlePropagator();
 
   constructor(private readonly rt: AppRuntime) {
@@ -76,7 +82,7 @@ export class GroundStationPanel {
     const controller = this.rt.simulation.groundStations;
     const s = controller.active;
     const options = [...GROUND_STATION_PRESETS, ...controller.saved].map((p) => `<option value="${esc(p.name)}" ${s?.name === p.name ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
-    this.root.innerHTML = `<details open><summary>GROUND STATION</summary><div class="gs-body">
+    this.root.innerHTML = `<details ${this.open ? 'open' : ''}><summary>GROUND STATION</summary><div class="gs-body">
       <label>Station <select id="gs-preset"><option value="">Choose…</option>${options}</select></label>
       <div class="gs-grid"><label>Name<input id="gs-name" value="${esc(s?.name ?? 'Custom Station')}"></label><label>Latitude<input id="gs-lat" type="number" min="-90" max="90" step="0.0001" value="${s?.latitudeDeg ?? ''}"></label><label>Longitude<input id="gs-lon" type="number" step="0.0001" value="${s?.longitudeDeg ?? ''}"></label><label>Altitude m<input id="gs-alt" type="number" value="${s?.altitudeM ?? 0}"></label><label>Min elevation °<input id="gs-min" type="number" min="0" max="90" value="${s?.minimumElevationDeg ?? 0}"></label></div>
       <div class="gs-actions"><button id="gs-apply">Apply</button><button id="gs-location">Use My Location</button><button id="gs-save" ${s ? '' : 'disabled'}>Save Custom</button><button id="gs-clear" ${s ? '' : 'disabled'}>Clear</button></div>
@@ -84,6 +90,9 @@ export class GroundStationPanel {
       <div class="gs-coords">${s ? `${s.latitudeDeg.toFixed(4)}°, ${s.longitudeDeg.toFixed(4)}° · ${s.altitudeM.toFixed(0)} m · ${s.source}` : 'Station features disabled'}</div>
       <div id="gs-status" aria-live="polite">${esc(this.status)}</div><div class="gs-passes">${this.passHtml()}</div>
     </div></details>`;
+    this.root.querySelector('details')?.addEventListener('toggle', (e) => {
+      this.open = (e.currentTarget as HTMLDetailsElement).open;
+    });
     this.bind();
   }
 

@@ -1,0 +1,296 @@
+/**
+ * Grok Zephyr - control panel layout, legibility and top banners.
+ *
+ * Imported last (src/styles.css) so it can replace the flex-wrap layout from
+ * base.css without raising specificity. Phones (≤ 767px) keep the hamburger
+ * layout from panels.css; the grid and collapse rules below start at 768px.
+ */
+
+/* ---- Legibility ---------------------------------------------------------- */
+
+:root {
+  /* Was 0.78 alpha on a translucent panel: faint over a bright scene. */
+  --hud-muted: rgba(160, 255, 228, 0.96);
+  --hud-font-small: 11px;
+}
+
+/* The group titles, notes and read-outs were 9–10px. 11px is the floor. */
+:is(
+    .group-label,
+    .pattern-label,
+    .anim-label,
+    .physics-label,
+    .time-label,
+    .quality-label,
+    .capture-label
+  ) {
+  font-size: var(--hud-font-small);
+  letter-spacing: 1.4px;
+}
+
+:is(.capture-note, .catalog-meta, .tuning-row, .exposure-row, .capture-toggle, #captureStatus, .hint) {
+  font-size: var(--hud-font-small);
+}
+
+:is(.pbtn, .anim-btn, .physics-btn, .quality-btn, .time-preset-btn, .capture-btn) {
+  font-size: var(--hud-font-small);
+}
+
+:is(#capVideoLength, #trailsLength, #exposureMode, #tonemapMode, #stripsMode, #brushMode) {
+  font-size: var(--hud-font-small);
+}
+
+.capture-note {
+  color: rgba(190, 240, 255, 0.92);
+}
+
+/* The strips block and the brush / strips selects had no styles of their own:
+   a half-width button and a bright default <select> in the dark panel. */
+.strips-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.strips-controls > * {
+  width: 100%;
+}
+
+:is(#stripsMode, #brushMode) {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 6px;
+  color: #d8fff0;
+  background: rgba(2, 20, 36, 0.85);
+  border: 1px solid rgba(95, 224, 255, 0.4);
+  border-radius: 7px;
+  font-family: 'Courier New', monospace;
+}
+
+:is(#stripsMode, #brushMode):disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.catalog-meta {
+  color: #ffc861;
+}
+
+.hint {
+  opacity: 1;
+}
+
+/* Disabled controls are meant to look inert, but still readable. */
+.physics-btn.disabled,
+.physics-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+#physicsNote {
+  margin-top: 2px;
+}
+
+#controls {
+  background: linear-gradient(
+    130deg,
+    rgba(4, 16, 34, 0.93) 0%,
+    rgba(2, 20, 36, 0.9) 60%,
+    rgba(12, 18, 34, 0.93) 100%
+  );
+}
+
+/* ---- Top banners (no renderer / opt-in WebGL2) --------------------------- */
+
+/* --status-banner-h is set from the banner's real height (statusBanner.ts). */
+body.has-status-banner #ui {
+  top: calc(var(--status-banner-h, 40px) + 12px);
+}
+
+#renderer-fallback-badge {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10000;
+  padding: 7px 14px;
+  text-align: center;
+  font-family: var(--overlay-font-family);
+  font-size: 13px;
+  line-height: 1.35;
+  color: #1a1000;
+  background: #ffb000;
+  border-bottom: 2px solid #ffd66b;
+  box-shadow: 0 2px 14px rgba(255, 176, 0, 0.45);
+}
+
+#renderer-fallback-badge strong {
+  letter-spacing: 0.04em;
+}
+
+#renderer-fallback-badge a {
+  color: #1a1000;
+  font-weight: 700;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+#renderer-unavailable-banner {
+  font-family: var(--overlay-font-family);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+body.renderer-unavailable #ground-station-panel {
+  opacity: 0.45;
+  filter: grayscale(1);
+  cursor: not-allowed;
+}
+
+/* ---- Collapse toggle ------------------------------------------------------ */
+
+#controls-toggle {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  #controls-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    position: fixed;
+    bottom: 14px;
+    /* Bottom-left, clear of the right-hand widgets (ground station, horizon read-out,
+       WebGL2 debug panel) that a centred button collided with at 768-1024px. */
+    left: 14px;
+    z-index: 11;
+    min-height: 34px;
+    padding: 0 16px;
+    font-family: 'Courier New', monospace;
+    font-size: var(--hud-font-small);
+    font-weight: bold;
+    letter-spacing: 1.4px;
+    color: #d8fff0;
+    background: rgba(4, 16, 34, 0.93);
+    border: 1px solid var(--hud-border-strong);
+    border-radius: 999px;
+    box-shadow: var(--hud-shadow);
+    backdrop-filter: blur(14px) saturate(135%);
+    cursor: pointer;
+    pointer-events: auto;
+  }
+
+  #controls-toggle:hover {
+    border-color: var(--hud-accent);
+    color: #fff;
+  }
+
+  #controls-toggle:focus-visible {
+    outline: 2px solid var(--hud-accent-2);
+    outline-offset: 2px;
+  }
+
+  /* Chevron drawn with borders so it does not depend on a font having the glyph. */
+  .controls-toggle-icon {
+    width: 7px;
+    height: 7px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-2px) rotate(45deg);
+    transition: transform 160ms ease;
+  }
+
+  body.controls-collapsed .controls-toggle-icon {
+    transform: translateY(2px) rotate(-135deg);
+  }
+
+  body.controls-collapsed #controls {
+    display: none;
+  }
+
+  /* ---- Grid layout ------------------------------------------------------- */
+
+  /* A flex-wrap with centred rows made every row a different height and width
+     (the last row sat in the middle) and grew past the viewport. A grid gives
+     aligned columns, and the panel scrolls instead of covering the scene. */
+  #controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+    align-items: start;
+    justify-content: stretch;
+    gap: 10px;
+    bottom: 58px;
+    /* At most 60% of the viewport, and the top HUD read-outs stay visible; never
+       smaller than a usable strip. */
+    max-height: max(240px, min(60vh, calc(100vh - 188px)));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(95, 224, 255, 0.5) transparent;
+  }
+
+  #controls > .control-group {
+    min-height: 0;
+    min-width: 0;
+    width: auto;
+  }
+
+  #controls > .control-group-view {
+    grid-column: span 3;
+  }
+
+  #controls > #tle-catalog-controls {
+    grid-column: span 2;
+  }
+
+  #controls > #conjunction-controls,
+  #controls > #brush-controls {
+    grid-column: span 1;
+  }
+
+  /* The disclosure is a one-row group when closed — not an empty tall box. */
+  #image-tuning-controls {
+    align-self: start;
+    padding: 0;
+  }
+
+  .image-tuning-details > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 34px;
+    padding: 8px 10px;
+    color: var(--hud-text);
+    font-size: var(--hud-font-small);
+  }
+
+  .image-tuning-details > summary::after {
+    content: '';
+    float: none;
+    width: 7px;
+    height: 7px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-2px) rotate(45deg);
+  }
+
+  .image-tuning-details[open] > summary::after {
+    transform: translateY(2px) rotate(-135deg);
+  }
+
+  .image-tuning-details .tuning-body {
+    padding: 0 10px 10px;
+  }
+}
+
+/* Short desktop windows: tighter chrome so more of the scene stays visible. */
+@media (min-width: 768px) and (max-height: 700px) {
+  #controls {
+    padding: 8px;
+    gap: 8px;
+  }
+}

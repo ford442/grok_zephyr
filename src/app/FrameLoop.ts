@@ -482,6 +482,10 @@ export function createWebGPURenderLoop(rt: AppRuntime): (timestamp: number) => v
 }
 
 export function createWebGLRenderLoop(rt: AppRuntime): (timestamp: number) => void {
+  // Own FPS meter: the profiler's stats callback also feeds the quality governor,
+  // which is WebGPU-only, so the fallback loop does not go through it.
+  let fpsFrames = 0;
+  let fpsSinceMs = performance.now();
   const render = (timestamp: number): void => {
     if (!rt.loop.isRunning || !rt.webglRenderer || !rt.webglOrbital) return;
 
@@ -577,6 +581,13 @@ export function createWebGLRenderLoop(rt: AppRuntime): (timestamp: number) => vo
     });
 
     rt.ui.updateSimClock(rt.simulation.clock);
+
+    fpsFrames++;
+    if (timestamp - fpsSinceMs >= 500) {
+      rt.ui.setFPS(Math.round((fpsFrames * 1000) / (timestamp - fpsSinceMs)));
+      fpsFrames = 0;
+      fpsSinceMs = timestamp;
+    }
 
     rt.loop.animationId = requestAnimationFrame(render);
   };
