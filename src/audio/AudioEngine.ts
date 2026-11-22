@@ -8,6 +8,15 @@ type AmbientProfile = {
 };
 
 const AUDIO_MUTED_STORAGE_KEY = 'gz.audio.muted';
+/** How long to wait for a context to reach `running` before calling it unavailable. */
+const AUDIO_RESUME_TIMEOUT_MS = 1500;
+
+export const AUDIO_NO_SUPPORT_REASON = 'Web Audio is not supported in this browser.';
+export const AUDIO_NO_DEVICE_REASON =
+  'No audio output device is available (or the browser blocked audio).';
+
+/** Called when an enable attempt cannot produce sound; `reason` is user-facing. */
+export type AudioUnavailableListener = (reason: string) => void;
 const AMBIENT_PROFILES: Record<ViewMode, AmbientProfile> = {
   'horizon-720': { droneHz: 58, textureHz: 0.11, noiseCutoffHz: 420, textureGain: 0.18 },
   god: { droneHz: 54, textureHz: 0.08, noiseCutoffHz: 380, textureGain: 0.16 },
@@ -67,36 +76,96 @@ export class AudioEngine {
   private ambientSources: AudioScheduledSourceNode[] = [];
   private textureLfoByMode = new Map<ViewMode, OscillatorNode>();
 
+  private unavailableListener: AudioUnavailableListener | null = null;
+
   constructor() {
     this.muted = this.loadMutedPreference();
+  }
+
+  /** Be told when audio cannot start (no API, no device, blocked). */
+  onUnavailable(listener: AudioUnavailableListener | null): void {
+    this.unavailableListener = listener;
+  }
+
+  /**
+   * Back to muted without touching the saved preference (a missing device is
+   * transient and must not turn audio off on a machine that has one), then tell
+   * the UI so it cannot keep claiming AUDIO ON.
+   */
+  private reportUnavailable(reason: string): void {
+    this.muted = true;
+    this.unlocked = false;
+    this.unavailableListener?.(reason);
+  }
+
+  private ensureContext(): AudioContext | string {
+    if (this.audioContext) return this.audioContext;
+    const Ctor: typeof AudioContext | undefined =
+      typeof AudioContext !== 'undefined'
+        ? AudioContext
+        : (globalThis as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return AUDIO_NO_SUPPORT_REASON;
+    try {
+      const ctx = new Ctor({ latencyHint: 'interactive' });
+      this.setupGraph(ctx);
+      this.audioContext = ctx;
+      return ctx;
+    } catch {
+      return AUDIO_NO_DEVICE_REASON;
+    }
+  }
+
+  /** `resume()` can stay pending forever with no output device, so bound the wait. */
+  private async resumeBounded(ctx: AudioContext): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        ctx.resume(),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, AUDIO_RESUME_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   isMuted(): boolean {
     return this.muted;
   }
 
-  async unlock(): Promise<void> {
+  /**
+   * `explicit` is true when the user just asked for audio (a click). Only then is
+   * "still not running" reported: from passive activity it is the normal
+   * autoplay-policy wait and stays silent.
+   */
+  async unlock(explicit = false): Promise<void> {
     if (this.unlocked || this.muted || this.initializing) return;
     this.initializing = true;
 
+    let failure: string | null = null;
     try {
-      if (!this.audioContext) {
-        this.audioContext = new AudioContext({ latencyHint: 'interactive' });
-        this.setupGraph(this.audioContext);
-      }
-      if (this.audioContext.state !== 'running') {
-        await this.audioContext.resume();
-      }
-      this.unlocked = this.audioContext.state === 'running';
-      if (this.unlocked) {
-        this.applyMutedState(false);
-        this.applyAmbientMode(this.currentMode, false);
+      const ctx = this.ensureContext();
+      if (typeof ctx === 'string') {
+        failure = ctx;
+      } else {
+        if (ctx.state !== 'running') {
+          await this.resumeBounded(ctx);
+        }
+        this.unlocked = ctx.state === 'running';
+        if (this.unlocked) {
+          this.applyMutedState(false);
+          this.applyAmbientMode(this.currentMode, false);
+        } else if (explicit) {
+          failure = AUDIO_NO_DEVICE_REASON;
+        }
       }
     } catch {
-      // Ignore unlock failures to keep autoplay-policy behavior silent and safe.
+      failure = AUDIO_NO_DEVICE_REASON;
     } finally {
       this.initializing = false;
     }
+    if (failure) this.reportUnavailable(failure);
   }
 
   async setMuted(muted: boolean): Promise<void> {
@@ -109,14 +178,21 @@ export class AudioEngine {
     }
 
     if (!this.unlocked) {
-      await this.unlock();
+      await this.unlock(true);
       return;
     }
 
     if (this.audioContext && this.audioContext.state !== 'running') {
       try {
-        await this.audioContext.resume();
+        await this.resumeBounded(this.audioContext);
       } catch {
+        this.reportUnavailable(AUDIO_NO_DEVICE_REASON);
+        return;
+      }
+      // `state` is mutated by the resume above; re-read it through a method so
+      // TypeScript does not keep the narrowed pre-resume value.
+      if (!this.canPlayState(this.audioContext)) {
+        this.reportUnavailable(AUDIO_NO_DEVICE_REASON);
         return;
       }
     }
@@ -232,6 +308,10 @@ export class AudioEngine {
     if (!this.canPlay() || !this.analyser || !this.analyserBins || !this.audioContext) return null;
     this.analyser.getByteFrequencyData(this.analyserBins);
     return bandLevels(this.analyserBins, this.audioContext.sampleRate, this.analyser.fftSize);
+  }
+
+  private canPlayState(ctx: AudioContext): boolean {
+    return ctx.state === 'running';
   }
 
   private canPlay(): boolean {

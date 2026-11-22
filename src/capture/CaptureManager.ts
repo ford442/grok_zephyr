@@ -1,6 +1,9 @@
 import { getBeamPatternTitle } from '@/patterns/index.js';
 import { growthCaptureLabel } from '@/growth/GrowthController.js';
 import type { AppRuntime } from '@/app/AppRuntime.js';
+import { isRendererUnavailable } from '@/ui/rendererUnavailable.js';
+
+export const CAPTURE_NO_RENDERER_STATUS = 'Capture unavailable: no renderer';
 
 const CAPTURE_UI_HIDE_IDS = [
   'ui',
@@ -91,6 +94,17 @@ export class CaptureManager {
     if (this.captureStatus) {
       this.captureStatus.textContent = text;
     }
+  }
+
+  /**
+   * With no renderer the canvas is blank, so a PNG/clip would be an empty file
+   * presented as a success. The DOM lock covers the buttons; this also covers the
+   * `P` shortcut (a window listener) and any in-flight state.
+   */
+  private rejectIfNoRenderer(): boolean {
+    if (!isRendererUnavailable()) return false;
+    this.setCaptureStatus(CAPTURE_NO_RENDERER_STATUS);
+    return true;
   }
 
   private getCurrentViewDisplayName(): string {
@@ -276,7 +290,7 @@ export class CaptureManager {
   }
 
   private async captureStillImage(scale: 1 | 2): Promise<void> {
-    if (this.captureInProgress) return;
+    if (this.captureInProgress || this.rejectIfNoRenderer()) return;
     this.captureInProgress = true;
     this.setCaptureStatus(`Capturing PNG ${scale}x...`);
 
@@ -317,6 +331,7 @@ export class CaptureManager {
 
   private async captureVideoClip(durationSeconds: number): Promise<void> {
     if (this.captureInProgress || durationSeconds <= 0) return;
+    if (this.rejectIfNoRenderer()) return;
     if (!('MediaRecorder' in window)) {
       this.setCaptureStatus('MediaRecorder unsupported');
       return;
@@ -387,7 +402,8 @@ export class CaptureManager {
       console.error('Video capture failed:', error);
       this.setCaptureStatus('Video capture failed');
     } finally {
-      if (this.captureVideoButton) this.captureVideoButton.disabled = false;
+      // Don't re-enable REC if the controls were locked while recording.
+      if (this.captureVideoButton) this.captureVideoButton.disabled = isRendererUnavailable();
       this.captureInProgress = false;
     }
   }
