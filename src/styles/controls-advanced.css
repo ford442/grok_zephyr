@@ -412,11 +412,20 @@
   accent-color: #86c8ff;
 }
 
-#captureStatus {
+#captureStatus,
+#audioStatus {
   font-size: 10px;
   color: #b5d7ff;
   border-top: 1px solid rgba(140, 190, 255, 0.2);
   padding-top: 5px;
+}
+
+#audioStatus {
+  color: #ffd27a;
+}
+
+#audioStatus:empty {
+  display: none;
 }
 
 :is(.pbtn, .anim-btn, .physics-btn, .quality-btn, .time-preset-btn, .capture-btn) {

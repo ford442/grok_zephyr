@@ -776,6 +776,28 @@ export class UIManager {
     btn.classList.toggle('active', !muted);
     btn.setAttribute('aria-pressed', muted ? 'false' : 'true');
     btn.setAttribute('title', muted ? 'Enable audio' : 'Mute audio');
+    // A fresh toggle clears any earlier "unavailable" message.
+    this.setAudioStatus('');
+  }
+
+  /**
+   * Audio could not start (no Web Audio, no output device, blocked). Revert the
+   * toggle to off and say why; clicking again retries.
+   */
+  setAudioUnavailable(reason: string): void {
+    const btn = this.elements.audioToggleButton;
+    if (btn) {
+      btn.textContent = 'AUDIO N/A';
+      btn.classList.remove('active');
+      btn.setAttribute('aria-pressed', 'false');
+      btn.setAttribute('title', `${reason} Click to retry.`);
+    }
+    this.setAudioStatus(reason);
+  }
+
+  private setAudioStatus(text: string): void {
+    const el = document.getElementById('audioStatus');
+    if (el) el.textContent = text;
   }
 
   setIslEnabled(enabled: boolean): void {

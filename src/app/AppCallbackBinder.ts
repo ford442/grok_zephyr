@@ -123,6 +123,7 @@ export function setupCallbacks(rt: AppRuntime): void {
   rt.ui.onAudioToggle((muted) => {
     void rt.audio.setMuted(muted);
   });
+  rt.audio.onUnavailable((reason) => rt.ui.setAudioUnavailable(reason));
   rt.ui.setAudioMuted(rt.audio.isMuted());
   rt.ui.onTrailsToggle((enabled) => {
     rt.trailToggleOverride = enabled;

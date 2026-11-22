@@ -434,9 +434,6 @@ export class App implements AppRuntime {
   /** True once init has failed; the welcome modal must not cover the error. */
   initFailed = false;
 
-  private handleError(error: unknown): void {
-    console.error('[GrokZephyr] Error:', error);
-    this.initFailed = true;
   /**
    * No renderer is running (init failed or recovery gave up): park everything
    * that would otherwise change state behind a blank canvas.
@@ -454,6 +451,7 @@ export class App implements AppRuntime {
 
   private handleError(error: unknown): void {
     console.error('[GrokZephyr] Error:', error);
+    this.initFailed = true;
     // The welcome modal would otherwise cover the failure message.
     OnboardingManager.hideForError();
     this.enterNoRendererState();

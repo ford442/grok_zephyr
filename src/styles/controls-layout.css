@@ -28,7 +28,7 @@
   letter-spacing: 1.4px;
 }
 
-:is(.capture-note, .catalog-meta, .tuning-row, .exposure-row, .capture-toggle, #captureStatus, .hint) {
+:is(.capture-note, .catalog-meta, .tuning-row, .exposure-row, .capture-toggle, #captureStatus, #audioStatus, .hint) {
   font-size: var(--hud-font-small);
 }
 
